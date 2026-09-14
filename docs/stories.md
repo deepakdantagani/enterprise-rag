@@ -507,9 +507,9 @@ around it -> True, it is a section heading.
 - APIs: `is_numbered_heading(lines: list[str], i: int) -> bool`; regex `NUMBERED_LINE`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-4d  label_flags  ⬜
+### PARSE-4d  label_flags  ✅
 
-**Status:** To do
+**Status:** Done (merged 4f27c77)
 
 **As a** pipeline developer
 **I want to** `label_flags(lines)` to return one True/False per line, using 4b for shape and the neighbour rules for position
@@ -528,6 +528,19 @@ around it -> True, it is a section heading.
 **Example with real data**
 The 24-line listing in the PARSE-4 background is exactly `label_flags` on that file:
 20 headings out of 143 lines.
+
+**Walkthrough with the two core rules only** (line 0 is the title; any other line is a
+heading if it is label-shaped and the line above is blank):
+```
+i  line                  label-shaped?   above blank?   flags[i]
+0  Title                 (title rule)    -              True
+1  (blank)               no              -              False
+2  Overview              yes             yes            True
+3  (blank)               no              -              False
+4  This is body text.    no (sentence)   -              False
+```
+Result `[True, False, True, False, False]`. The fence, indent, numbered and stacked
+checks are extra ways to say no or yes on top of these two rules.
 
 **Non-functional Requirements**
 - Shared NFRs. Pure. Output length always equals input length.
