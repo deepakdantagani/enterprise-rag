@@ -21,6 +21,8 @@ from typing import Protocol, runtime_checkable
 
 from markdown_it import MarkdownIt
 
+from pipeline.label_rule import label_flags
+
 MARKDOWN = MarkdownIt("commonmark").enable("table")   # created once, reused for every file
 
 
@@ -102,3 +104,21 @@ def with_title(lines: list[str], found: list[Heading]) -> list[Heading]:
     if found and found[0].line == 0:
         return found
     return [Heading(line=0, level=1, text=lines[0].strip())] + found
+
+
+class LabelHeadings:
+    """Headings found by the plain-label rule (PARSE-4), for files with no Markdown headings.
+
+    One Heading per True flag. Line 0 is the level-1 title (label_flags applies the
+    title rule itself); every other label is level 2, the rule has no notion of depth.
+
+    >>> LabelHeadings().find_headings(["Title", "", "Overview", "", "Body."])
+    [Heading(line=0, level=1, text='Title'), Heading(line=2, level=2, text='Overview')]
+    >>> LabelHeadings().find_headings(["", "Label"])      # blank line 0: no title
+    [Heading(line=1, level=2, text='Label')]
+    """
+
+    def find_headings(self, lines: list[str]) -> list[Heading]:
+        flags = label_flags(lines)
+        return [Heading(line=i, level=1 if i == 0 else 2, text=lines[i].strip())
+                for i, is_label in enumerate(flags) if is_label]
