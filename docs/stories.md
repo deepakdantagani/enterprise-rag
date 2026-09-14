@@ -1,6 +1,8 @@
 # Parsing stories
 
-One story = one PR = one module with one responsibility. Each story is independent:
+One story = one function = one PR (about 60 lines including its tests). Stories below
+PARSE-2 are still module-level; each gets split into one-function sub-stories (a, b, c)
+when we reach it, not before. Each story is independent:
 it can be built and merged without the others, because the existing modules keep
 working until a later story switches the caller over. TDD on every story: write the
 acceptance tests first (red), then the code (green), then the PR.
@@ -31,21 +33,48 @@ Shared non-functional requirements (apply to every story):
 
 ---
 
-## PARSE-2  Corpus writer
+## PARSE-2  Corpus writer  (split into one function per PR)
+
+### PARSE-2a  clean_one_file
 
 **As a** pipeline developer
-**I want to** run the cleaning rules over a folder and write the clean files plus a manifest
-**So that** file handling lives in one place, separate from the rules
+**I want to** `clean_one_file(src, dst)` to read one raw file, clean it, and write one clean file
+**So that** the smallest unit of file handling is testable on a temp folder
 
 **Acceptance Criteria (Gherkin)**
-- Given a folder with raw `.txt` files, When I call `write_clean_corpus(raw_dir, clean_dir)`, Then every file appears in `clean_dir` with the same name, cleaned
-- Given the same input, When I run it twice, Then `_manifest.json` is byte-identical both times
-- Given an empty folder, When I run it, Then I get an empty manifest and no error
+- Given a raw file, When I call `clean_one_file(src, dst)`, Then `dst` contains `clean_text(src text).text`
+- Given an escaped raw file, Then the return value says `was_escaped=True`
+- Given `dst`'s folder does not exist, Then it is created
 
 **Dependencies**
-- APIs: `write_clean_corpus(raw_dir, clean_dir) -> (manifest: list[dict], counts: dict)`; manifest rows keep today's keys (`file, raw_sha256, clean_sha256, was_escaped, raw_lines, clean_lines, raw_bytes, clean_bytes`)
-- Uses: PARSE-1
-- Service Bus: N/A · Database: N/A · UI: N/A
+- APIs: `clean_one_file(src: Path, dst: Path) -> CleanResult`  (uses PARSE-1 `clean_text`)
+
+### PARSE-2b  manifest_row
+
+**As a** pipeline developer
+**I want to** `manifest_row(name, raw, result)` to build one manifest entry
+**So that** the row shape is defined in exactly one place
+
+**Acceptance Criteria (Gherkin)**
+- Given a name, raw text and a CleanResult, When I call it, Then I get a dict with keys `file, raw_sha256, clean_sha256, was_escaped, raw_lines, clean_lines, raw_bytes, clean_bytes`
+- Given the same inputs twice, Then the two dicts are equal
+
+**Dependencies**
+- APIs: `manifest_row(name: str, raw: str, result: CleanResult) -> dict`
+
+### PARSE-2c  write_clean_corpus
+
+**As a** pipeline developer
+**I want to** `write_clean_corpus(raw_dir, clean_dir)` to run 2a over every `.txt` and save the rows from 2b as `_manifest.json`
+**So that** one command produces the clean folder
+
+**Acceptance Criteria (Gherkin)**
+- Given a folder with two raw files, When I run it, Then two clean files and `_manifest.json` with two rows exist
+- Given an empty folder, Then an empty manifest and no error
+- Given the real raw folder, Then the fingerprint of the manifest equals `tests/golden/corpus_fingerprint.json`
+
+**Dependencies**
+- APIs: `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]`  (uses 2a, 2b)
 
 ---
 
