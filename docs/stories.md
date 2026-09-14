@@ -158,9 +158,9 @@ golden fingerprint depends only on `clean_sha256`, so they stay as they are.
 - APIs: `manifest_row(name: str, raw: str, result: CleanResult) -> dict` in `pipeline/manifest.py`; uses PARSE-1 `CleanResult`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-2c  write_clean_corpus  ⬜
+### PARSE-2c  write_clean_corpus  ✅
 
-**Status:** To do
+**Status:** Done (merged cddd3ab)
 
 **As a** pipeline developer
 **I want to** `write_clean_corpus(raw_dir, clean_dir)` to run 2a over every `.txt` and save the rows from 2b as `_manifest.json`
@@ -217,9 +217,9 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 - APIs: `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]` in `pipeline/corpus.py` next to 2a; uses 2a `clean_one_file`, 2b `manifest_row`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-2d  Fix: one job per function in corpus.py (SOLID)  ⬜
+### PARSE-2d  Fix: one job per function in corpus.py (SOLID)  ✅
 
-**Status:** To do
+**Status:** Done (merged cddd3ab)
 
 **As a** code reviewer
 **I want to** every function in `pipeline/corpus.py` to do exactly one thing that its name says
