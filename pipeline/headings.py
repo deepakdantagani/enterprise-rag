@@ -21,6 +21,7 @@ from typing import Protocol, runtime_checkable
 
 from markdown_it import MarkdownIt
 
+from pipeline.buckets import bucket
 from pipeline.label_rule import label_flags
 
 MARKDOWN = MarkdownIt("commonmark").enable("table")   # created once, reused for every file
@@ -122,3 +123,18 @@ class LabelHeadings:
         flags = label_flags(lines)
         return [Heading(line=i, level=1 if i == 0 else 2, text=lines[i].strip())
                 for i, is_label in enumerate(flags) if is_label]
+
+
+def detector_for(text: str) -> HeadingDetector:
+    """Pick the detector for one clean file: Markdown for buckets A/B, the label rule for C/D.
+
+    The chunker calls this and never sees bucket names.
+
+    >>> type(detector_for("# Title\\n\\ntext")).__name__
+    'MarkdownHeadings'
+    >>> type(detector_for("Overview\\n\\n- item")).__name__
+    'LabelHeadings'
+    """
+    if bucket(text) in ("A_hash", "B_setext"):
+        return MarkdownHeadings()
+    return LabelHeadings()
