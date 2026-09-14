@@ -701,6 +701,14 @@ detector_for("\n".join(lines))  -> LabelHeadings()      because bucket(text) == 
 Golden check: `LabelHeadings` produces exactly one `Heading` per True flag, so its
 per-file counts must equal `tests/golden/label_fingerprint.json` (104,537 headings).
 
+**Known limit (checked 2026-09-14): bucket C files do have hierarchy, the label rule flattens it.**
+Example `dsid_021076ec…sdk-patch-release-playbook…txt`: `Step-by-step playbook: detailed
+procedure` (L28) is a parent and `Phase A … Phase D` (L30–L56) are its children, but all are
+reported as level 2. Depth signals present in C+D label headings: numbered/Step/Phase/Stage
+prefix 3,741 headings in 2,281 files; a label stacked directly under a label (`FAQ` then
+`Q: …`) 1,513 in 748 files; dotted numbers 16 in 2 files. Chunk boundaries are unaffected;
+only the middle of the breadcrumb is lost. Tracked as PARSE-12.
+
 Module: `pipeline/headings.py` (same file as PARSE-5). Pure.
 
 ### PARSE-6a  LabelHeadings  ⬜
@@ -869,4 +877,46 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 
 **Dependencies**
 - Uses: PARSE-3, PARSE-4
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## PARSE-12  Depth for label headings  ⬜
+
+**Status:** Backlog (found while reviewing PARSE-6a on 2026-09-14)
+
+**As a** RAG developer
+**I want to** label headings to get a level from their depth signals (Step/Phase/numbered prefix, stacked labels, dotted numbers)
+**So that** bucket C breadcrumbs keep their middle, e.g. `SDK Patch Release Playbook > Step-by-step playbook > Phase A`
+
+**Acceptance Criteria (Gherkin)**
+- Given `dsid_021076ec…sdk-patch-release-playbook…txt`, When I call `LabelHeadings().find_headings`, Then `Phase A … Phase D` are level 3 under `Step-by-step playbook: detailed procedure` (level 2)
+- Given `dsid_006e117c…tenant-bootstrapping…txt`, Then `Pre-upgrade checks`, `Canary stages and validation gates`, `Ramped rollout`, `Rollback policy` are level 3 under `Step 3 — Immutable upgrade strategy`
+- Given a file with no depth signals, Then the result is unchanged from today (title level 1, rest level 2)
+- Given the corpus, Then the number of headings per file is unchanged (label golden still matches); only levels change
+
+**Spot check, 2026-09-14** (all 2,763 label files, `LabelHeadings` output)
+
+| Depth signal present in the file | Files |
+|---|---|
+| Stacked labels, child directly under parent (e.g. `FAQ` then `Q: How does ...`) | 748 |
+| Numbered headings (`3) Escalation` style) | 208 |
+| Dotted numbers (`1.2. Request and approval flow`) | 2 |
+
+Random file `dsid_9679c592…slot-abort-contract…txt` shows the clearest case: ALL-CAPS
+sections (`GOALS AND NON-GOALS`, `SIGNALING AND CONTRACT`) with Title-case sub-labels
+directly under them (`Goals:`, `Non-goals:`, `Default timeouts (configurable):`). Today
+all 26 are level 2; the caps/mixed-case switch is a fourth depth signal to consider.
+
+Precision note from the same spot check, out of scope here but worth its own story: a few
+flagged lines are not headings: `telemetry:` (a YAML key on the line after a heading),
+`Artifact | Minimum window | Format ...` (a table header row with no leading pipe), and
+`Emit standardized tracing annotations and metrics for every ...` (a sentence stacked
+under a caps heading). Ties to the open item "30-file hand-labelled precision sample".
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. To be split into one-function sub-stories when reached.
+
+**Dependencies**
+- Uses: PARSE-4, PARSE-6a
 - Service Bus: N/A · Database: N/A · UI: N/A

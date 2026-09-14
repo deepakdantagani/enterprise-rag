@@ -2,6 +2,7 @@
 
 5a: Heading value and HeadingDetector interface.
 5b: MarkdownHeadings (plus the corpus golden fingerprint).
+6a: LabelHeadings (plus the label golden fingerprint).
 
 Run: uv run python -m unittest discover tests
 """
@@ -16,10 +17,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline import headings  # noqa: E402
-from pipeline.headings import Heading, HeadingDetector, MarkdownHeadings  # noqa: E402
+from pipeline.headings import Heading, HeadingDetector, LabelHeadings, MarkdownHeadings  # noqa: E402
 
 CLEAN_DIR = ROOT / "data/confluence/clean"
 GOLDEN = ROOT / "tests/golden/markdown_headings_fingerprint.json"
+LABEL_GOLDEN = ROOT / "tests/golden/label_fingerprint.json"
 
 
 class HeadingValue(unittest.TestCase):
@@ -87,6 +89,40 @@ class MarkdownHeadingsDetector(unittest.TestCase):
         lines = "\n".join(f"{name} {n}" for name, n in counts)
         self.assertEqual(len(counts), golden["files"])
         self.assertEqual(sum(n for _, n in counts), golden["total_headings"])
+        self.assertEqual(hashlib.sha256(lines.encode("utf-8")).hexdigest(), golden["fingerprint_sha256"])
+
+
+class LabelHeadingsDetector(unittest.TestCase):
+    def find(self, lines):
+        return LabelHeadings().find_headings(lines)
+
+    def test_title_and_one_label(self):
+        self.assertEqual(self.find(["Title", "", "Overview", "", "Body."]),
+                         [Heading(0, 1, "Title"), Heading(2, 2, "Overview")])
+
+    def test_stacked_labels_are_both_level_two(self):
+        self.assertEqual(self.find(["Title", "", "Parent", "Child label", "", "Body."]),
+                         [Heading(0, 1, "Title"), Heading(2, 2, "Parent"), Heading(3, 2, "Child label")])
+
+    def test_no_title_when_line_zero_is_blank(self):
+        self.assertEqual(self.find(["", "Label"]), [Heading(1, 2, "Label")])
+
+    def test_empty(self):
+        self.assertEqual(self.find([]), [])
+
+    def test_text_is_stripped_only(self):
+        self.assertEqual(self.find(["Title", "", "Goals:  "]), [Heading(0, 1, "Title"), Heading(2, 2, "Goals:")])
+
+    def test_satisfies_the_protocol(self):
+        self.assertIsInstance(LabelHeadings(), HeadingDetector)
+
+    @unittest.skipUnless(CLEAN_DIR.is_dir(), "clean corpus not present (data/ is gitignored)")
+    def test_real_corpus_matches_label_golden_fingerprint(self):
+        golden = json.loads(LABEL_GOLDEN.read_text())
+        counts = [(p.name, len(self.find(p.read_text(encoding="utf-8").split("\n"))))
+                  for p in sorted(CLEAN_DIR.glob("*.txt"))]
+        lines = "\n".join(f"{name} {n}" for name, n in counts)
+        self.assertEqual(sum(n for _, n in counts), golden["total_labels"])
         self.assertEqual(hashlib.sha256(lines.encode("utf-8")).hexdigest(), golden["fingerprint_sha256"])
 
 
