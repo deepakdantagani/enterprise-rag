@@ -217,6 +217,67 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 - APIs: `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]` in `pipeline/corpus.py` next to 2a; uses 2a `clean_one_file`, 2b `manifest_row`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
+### PARSE-2d  Fix: one job per function in corpus.py (SOLID)  ⬜
+
+**Status:** To do
+
+**As a** code reviewer
+**I want to** every function in `pipeline/corpus.py` to do exactly one thing that its name says
+**So that** reading, cleaning, saving and the loop can each be understood and tested alone
+
+**Background**
+Review of PARSE-2a and 2c found two Single Responsibility breaks:
+- `clean_one_file(src, dst)` reads, cleans and writes. Its name says "clean" only. Cleaning
+  already lives in PARSE-1 `clean_text`, so this function hides a save behind a clean name.
+- `write_clean_corpus` builds the JSON and writes `_manifest.json` inline, a second job
+  inside the loop function.
+A side effect of the first break: the loop read each raw file twice (once for the
+manifest row, once inside `clean_one_file`).
+
+The fix: delete `clean_one_file`; add two save functions with one job each; the loop
+calls the pure functions and the save functions in order. Nothing else changes.
+
+Before (2a + 2c as merged/proposed):
+```
+write_clean_corpus
+  for each src:
+    raw = read(src)
+    result = clean_one_file(src, dst)        # read again + clean + write
+    row = manifest_row(name, raw, result)
+  write _manifest.json inline               # json.dumps + write_text
+```
+After:
+```
+write_clean_corpus
+  for each src:
+    raw = read(src)                         # read once
+    result = clean_text(raw)                # PARSE-1, pure
+    save_text(clean_dir / name, result.text)  # one job: write one file
+    row = manifest_row(name, raw, result)   # PARSE-2b, pure
+  save_manifest(clean_dir, rows)            # one job: rows -> _manifest.json
+```
+
+**Acceptance Criteria (Gherkin)**
+- Given a path whose folder does not exist, When I call `save_text(path, "x\n")`, Then the folder is created and the file contains exactly `"x\n"`
+- Given two rows, When I call `save_manifest(clean_dir, rows)`, Then `clean_dir/_manifest.json` parses back to the same two rows
+- Given `pipeline/corpus.py`, When I grep it, Then `clean_one_file` is gone and `write_clean_corpus` contains no `json.` call
+- Given the existing 2c tests (two files, empty folder, name order, golden fingerprint), Then they pass unchanged
+- Given the real raw folder, Then each raw file is read exactly once per run
+
+**Example with real data**  (same file as 2a)
+Nothing about the data changes. `dsid_a99282d9…` still becomes 149 clean lines with
+`was_escaped=true`, and the golden fingerprint stays `22453b4e…62920`. This story moves
+code, it does not change output; the golden test is what proves that.
+
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+- One function = one verb in its name = one job in its body.
+
+**Dependencies**
+- APIs: `save_text(path: Path, text: str) -> None`; `save_manifest(clean_dir: Path, rows: list[dict]) -> None`; `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]` (signature unchanged). `clean_one_file` removed; `tests/test_corpus.py` replaced by tests for `save_text`.
+- Uses: PARSE-1 `clean_text`, PARSE-2b `manifest_row`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
 ---
 
 ## PARSE-3  Bucket classifier  ⬜
