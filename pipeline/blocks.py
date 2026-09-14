@@ -19,7 +19,7 @@ Pure module.
 """
 from dataclasses import dataclass
 
-from pipeline.headings import MARKDOWN
+from pipeline.markdown import MARKDOWN
 
 
 @dataclass(frozen=True)

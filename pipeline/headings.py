@@ -19,12 +19,9 @@ Line 3, the underline, is markup and produces no Heading.
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from markdown_it import MarkdownIt
-
 from pipeline.buckets import bucket
 from pipeline.label_rule import label_flags
-
-MARKDOWN = MarkdownIt("commonmark").enable("table")   # created once, reused for every file
+from pipeline.markdown import MARKDOWN
 
 
 @dataclass(frozen=True)
