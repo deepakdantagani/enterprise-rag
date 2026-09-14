@@ -2,6 +2,7 @@
 
 4a: looks_like_a_sentence, is_key_with_long_value.
 4b: is_label_shaped.
+4c: is_numbered_heading.
 
 Run: uv run python -m unittest discover tests
 """
@@ -16,6 +17,7 @@ from pipeline import label_rule  # noqa: E402
 from pipeline.label_rule import (  # noqa: E402
     is_key_with_long_value,
     is_label_shaped,
+    is_numbered_heading,
     looks_like_a_sentence,
 )
 
@@ -95,6 +97,29 @@ class IsLabelShaped(unittest.TestCase):
                     ("High-level design", True)]
         for line, want in expected:
             self.assertEqual(is_label_shaped(line), want, line)
+
+
+class IsNumberedHeading(unittest.TestCase):
+    def test_alone_with_blank_above_and_below(self):
+        self.assertTrue(is_numbered_heading(["T", "", "3) Escalation", "", "Body."], 2))
+
+    def test_tight_list_stays_a_list(self):
+        self.assertFalse(is_numbered_heading(["T", "", "1) first", "2) second"], 2))
+
+    def test_only_digits_count(self):
+        self.assertFalse(is_numbered_heading(["T", "", "- bullet", "", "Body."], 2))
+
+    def test_last_line_counts_as_blank_below(self):
+        self.assertTrue(is_numbered_heading(["T", "", "3) Escalation"], 2))
+
+    def test_dotted_numbers_count(self):
+        self.assertTrue(is_numbered_heading(["T", "", "10.1 Sub-section", "", "Body."], 2))
+        self.assertTrue(is_numbered_heading(["T", "", "2. Scope", "", "Body."], 2))
+
+    def test_real_lines(self):
+        lines = ["High-level design", "1) Signal ingestion: aggregated telemetry",
+                 "2) Feature synthesis: rolling-error rates"]
+        self.assertFalse(is_numbered_heading(lines, 1))   # heading above, list item below
 
 
 class PureModule(unittest.TestCase):

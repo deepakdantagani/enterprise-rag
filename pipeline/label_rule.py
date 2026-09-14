@@ -15,6 +15,7 @@ MAX_LABEL_CHARS = 80
 MAX_LABEL_WORDS = 12
 BLOCK_MARKER = re.compile(r"^(\||>|```|#|---|\*\*\*|___|[{}\[\]])")  # table, quote, fence, heading, rule, json
 HAS_A_WORD = re.compile(r"[A-Za-z]{2}")
+NUMBERED_LINE = re.compile(r"^(\d+[.)]|\d+(\.\d+)+) ")                # "3) ", "2. ", "10.1 "
 SENTENCE_STARTER = re.compile(r"^(We|This|The|It|If|You|Use|All) ")
 KEY_COLON_VALUE = re.compile(r"^[^:]{1,40}: (.+)$")                    # "Owner: Identity team ..."
 LABEL_LIKE_KEY = re.compile(                                            # "Stage 4:", "Q:", "Appendix B:"
@@ -123,3 +124,30 @@ def is_label_shaped(line: str) -> bool:
     if not HAS_A_WORD.search(line) or line.startswith(("-", "/")):
         return False
     return True
+
+
+def is_numbered_heading(lines: list[str], i: int) -> bool:
+    """A numbered line standing alone, blank above and below, is a heading, not a list item.
+
+    A tight list ("1) a" / "2) b") or an item with sub-bullets under it stays a list.
+    The last line of the file counts as having a blank line below.
+
+    Input -> output:
+        >>> is_numbered_heading(["T", "", "3) Escalation", "", "Body."], 2)
+        True
+        >>> is_numbered_heading(["T", "", "1) first", "2) second"], 2)
+        False
+        >>> is_numbered_heading(["T", "", "10.1 Sub-section", "", "Body."], 2)
+        True
+
+    Edge cases:
+        >>> is_numbered_heading(["T", "", "- bullet", "", "Body."], 2)   # only digits count
+        False
+        >>> is_numbered_heading(["T", "", "3) Escalation"], 2)          # last line
+        True
+    """
+    if not NUMBERED_LINE.match(lines[i]):
+        return False
+    above_blank = not lines[i - 1].strip()
+    below_blank = i + 1 >= len(lines) or not lines[i + 1].strip()
+    return above_blank and below_blank
