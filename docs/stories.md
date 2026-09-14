@@ -669,26 +669,91 @@ export that writes `# Title`.
 
 ---
 
-## PARSE-6  Label heading detector + selector  ⬜
+## PARSE-6  Label heading detector + selector  (split into one function per PR)
+
+**Background for all of PARSE-6**
+PARSE-5 gave us the interface (`find_headings(lines) -> list[Heading]`) and the Markdown
+implementation. Bucket C files (53% of the corpus) have no Markdown headings, so they
+need the second implementation: one that wraps the label rule from PARSE-4. Then one
+tiny function decides, per file, which detector to use, so the chunker never looks at
+buckets itself.
+
+```
+detector_for(text)
+    bucket A_hash, B_setext     -> MarkdownHeadings()     markdown-it finds the headings
+    bucket C_plain_labels, D    -> LabelHeadings()        label_flags finds the headings
+```
+`LabelHeadings` is a straight translation: every line where `label_flags` says True
+becomes a `Heading`. Line 0 is level 1 (the title rule inside `label_flags`), every
+other label is level 2; the label rule has no notion of depth.
+
+Real example, bucket C `dsid_0012a01f…scheduler-health-oracle…txt` (143 lines, 20 labels):
+```
+label_flags(lines)  -> [True, False, True, False, False, False, True, ...]
+LabelHeadings().find_headings(lines)
+  -> [Heading(line=0,  level=1, text='Scheduler Health Oracle and Self‑Heal Procedures'),
+      Heading(line=2,  level=2, text='Overview:'),
+      Heading(line=6,  level=2, text='Audience:'),
+      Heading(line=11, level=2, text='Why SHO: problem statement'),
+      Heading(line=16, level=2, text='High-level design'), ...]      20 in total
+detector_for("\n".join(lines))  -> LabelHeadings()      because bucket(text) == "C_plain_labels"
+```
+Golden check: `LabelHeadings` produces exactly one `Heading` per True flag, so its
+per-file counts must equal `tests/golden/label_fingerprint.json` (104,537 headings).
+
+Module: `pipeline/headings.py` (same file as PARSE-5). Pure.
+
+### PARSE-6a  LabelHeadings  ⬜
 
 **Status:** To do
 
 **As a** chunker developer
-**I want to** a second detector that wraps the label rule, and one function that picks the detector for a file
-**So that** adding a third way to find headings never touches the chunker
+**I want to** `LabelHeadings().find_headings(lines)` to turn the label rule's flags into `Heading` values
+**So that** bucket C files get structure through the same interface as bucket A/B
 
 **Acceptance Criteria (Gherkin)**
-- Given lines `["Title", "", "Overview", "", "Body."]`, When I call `LabelHeadings().find_headings(lines)`, Then I get `[Heading(0,1,"Title"), Heading(2,2,"Overview")]`
-- Given a bucket-A text, When I call `detector_for(text)`, Then I get a `MarkdownHeadings`
-- Given a bucket-C text, Then a `LabelHeadings`
-- Given both detectors, When I run them on the same lines, Then both return `list[Heading]` sorted by line
+- Given `["Title", "", "Overview", "", "Body."]`, When I call `LabelHeadings().find_headings(lines)`, Then `[Heading(0, 1, "Title"), Heading(2, 2, "Overview")]`
+- Given `["Title", "", "Parent", "Child label", "", "Body."]` (stacked), Then `[Heading(0, 1, "Title"), Heading(2, 2, "Parent"), Heading(3, 2, "Child label")]`
+- Given `["", "Label"]` (no title), Then `[Heading(1, 2, "Label")]`
+- Given `[]`, Then `[]`
+- Given `LabelHeadings()`, Then it satisfies `HeadingDetector`
+- Given every clean file, When I count headings per file and fingerprint them, Then it equals `tests/golden/label_fingerprint.json`; skipped if the data folder is missing
+
+**Example with real data**
+The listing in the PARSE-6 background: 20 headings for the scheduler file.
 
 **Non-functional Requirements**
-- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+- Shared NFRs. Pure. `text` is the line stripped of surrounding whitespace, nothing else removed.
 
 **Dependencies**
-- APIs: `LabelHeadings`, `detector_for(text) -> HeadingDetector`
-- Uses: PARSE-3, PARSE-4, PARSE-5
+- APIs: `LabelHeadings` implementing `HeadingDetector`
+- Uses: PARSE-4d `label_flags`, PARSE-5a `Heading`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-6b  detector_for  ⬜
+
+**Status:** To do
+
+**As a** chunker developer
+**I want to** `detector_for(text)` to return the right detector for a file
+**So that** the chunker asks one question and never sees bucket names
+
+**Acceptance Criteria (Gherkin)**
+- Given `"# Title\n\ntext"` (bucket A), When I call `detector_for(text)`, Then I get a `MarkdownHeadings`
+- Given `"Title\n-----\n\ntext"` (bucket B), Then a `MarkdownHeadings`
+- Given `"Overview\n\n- item"` (bucket C), Then a `LabelHeadings`
+- Given `"Just prose."` or `""` (bucket D), Then a `LabelHeadings`
+- Given the real corpus, When I count which detector each file gets, Then `MarkdownHeadings` 2,426 (A 1,645 + B 781) and `LabelHeadings` 2,763 (C 2,751 + D 12); skipped if the data folder is missing
+
+**Example with real data**
+`detector_for(<scheduler file text>)` is a `LabelHeadings`; `detector_for(<customer-security-questionnaire text>)` is a `MarkdownHeadings`.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. One `if`, no other logic.
+
+**Dependencies**
+- APIs: `detector_for(text: str) -> HeadingDetector`
+- Uses: PARSE-3 `bucket`, PARSE-5b `MarkdownHeadings`, PARSE-6a `LabelHeadings`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
