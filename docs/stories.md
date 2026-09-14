@@ -895,6 +895,25 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 - Given a file with no depth signals, Then the result is unchanged from today (title level 1, rest level 2)
 - Given the corpus, Then the number of headings per file is unchanged (label golden still matches); only levels change
 
+**Spot check, 2026-09-14** (all 2,763 label files, `LabelHeadings` output)
+
+| Depth signal present in the file | Files |
+|---|---|
+| Stacked labels, child directly under parent (e.g. `FAQ` then `Q: How does ...`) | 748 |
+| Numbered headings (`3) Escalation` style) | 208 |
+| Dotted numbers (`1.2. Request and approval flow`) | 2 |
+
+Random file `dsid_9679c592…slot-abort-contract…txt` shows the clearest case: ALL-CAPS
+sections (`GOALS AND NON-GOALS`, `SIGNALING AND CONTRACT`) with Title-case sub-labels
+directly under them (`Goals:`, `Non-goals:`, `Default timeouts (configurable):`). Today
+all 26 are level 2; the caps/mixed-case switch is a fourth depth signal to consider.
+
+Precision note from the same spot check, out of scope here but worth its own story: a few
+flagged lines are not headings: `telemetry:` (a YAML key on the line after a heading),
+`Artifact | Minimum window | Format ...` (a table header row with no leading pipe), and
+`Emit standardized tracing annotations and metrics for every ...` (a sentence stacked
+under a caps heading). Ties to the open item "30-file hand-labelled precision sample".
+
 **Non-functional Requirements**
 - Shared NFRs. Pure. To be split into one-function sub-stories when reached.
 
