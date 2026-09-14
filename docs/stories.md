@@ -477,9 +477,9 @@ also depends on the neighbours (4d). Shape is necessary, not sufficient.
 - Uses: PARSE-4a
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-4c  is_numbered_heading  ⬜
+### PARSE-4c  is_numbered_heading  ✅
 
-**Status:** To do
+**Status:** Done (merged 368138a)
 
 **As a** pipeline developer
 **I want to** a predicate that tells a numbered heading (`3) Escalation`, alone) from a numbered list item (`1) first` / `2) second`, tight)
