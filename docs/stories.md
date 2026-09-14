@@ -625,9 +625,9 @@ Module: `pipeline/headings.py`. Pure (no file IO).
 - APIs: `Heading(line: int, level: int, text: str)`; `HeadingDetector` with `find_headings(lines: list[str]) -> list[Heading]`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-5b  MarkdownHeadings  ⬜
+### PARSE-5b  MarkdownHeadings  ✅
 
-**Status:** To do
+**Status:** Done (merged 9f367b0)
 
 **As a** chunker developer
 **I want to** `MarkdownHeadings().find_headings(lines)` to return the Markdown headings plus the title line
