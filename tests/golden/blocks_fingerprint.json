@@ -1,0 +1,7 @@
+{
+ "files": 5189,
+ "total_blocks": 281283,
+ "per_kind": {"text": 119459, "list": 110824, "heading": 39807, "rule": 5253, "table": 3740, "code": 2076, "quote": 121, "html": 3},
+ "fingerprint_sha256": "f851b2d698410fc5376e64363e8a7271016782953e4eabea7ced48a920266ffe",
+ "how": "sha256 over lines '<file> <number of blocks from blocks(clean text)>' for every clean file in name order; a block is a markdown-it (commonmark+table) token at nesting level 0 with a line map whose type does not end in _close, mapped to a kind by KIND_OF_TOKEN. Mirrors archive/v0 nodes._blocks token walk."
+}

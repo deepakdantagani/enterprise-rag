@@ -766,26 +766,110 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 
 ---
 
-## PARSE-7  Blocks from markdown-it  ⬜
+## PARSE-7  Blocks from markdown-it  (split into one function per PR)
+
+**Background for all of PARSE-7**
+Headings (PARSE-5/6) tell the chunker where sections start. Blocks tell it what must
+not be cut in half: a list, a table, a code fence. markdown-it already knows the
+boundaries of every block, so this story only reads them out.
+
+How markdown-it reports blocks: `parse(text)` returns a flat token list. A top-level
+block is a token with nesting `level == 0`, a line `map = [start, end)`, and a type that
+does not end in `_close` (`paragraph_open` opens a paragraph; its `_close` twin carries
+no map we need). Ten token types occur in the corpus; we map them to eight kinds:
+
+| Token type | Kind | Blocks in corpus |
+|---|---|---|
+| `paragraph_open` | `text` | 119,459 |
+| `bullet_list_open`, `ordered_list_open` | `list` | 110,824 |
+| `heading_open` | `heading` | 39,807 |
+| `hr` | `rule` | 5,253 |
+| `table_open` | `table` | 3,740 |
+| `fence`, `code_block` | `code` | 2,076 |
+| `blockquote_open` | `quote` | 121 |
+| `html_block` | `html` | 3 |
+
+`end` is exclusive and, for lists, may include the trailing blank line (markdown-it's
+map). Coverage check over the whole corpus: every non-blank line falls in exactly one
+block, in all 5,189 files.
+
+Bucket C note: a bare label such as `Overview:` is a one-line `text` block here.
+`blocks` does not know about the label rule; the chunker (PARSE-8) uses the headings
+list to treat that line as a heading. Line 0, the title, is likewise a `text` block.
+
+Real example, `dsid_0012a01f…scheduler-health-oracle…txt`, first 12 blocks:
+```
+Block(kind='text',  start=0,  end=1)    'Scheduler Health Oracle and Self‑Heal Procedures'
+Block(kind='text',  start=2,  end=3)    'Overview:'
+Block(kind='text',  start=4,  end=5)    'This playbook defines the Scheduler Health Oracle ...'
+Block(kind='text',  start=6,  end=7)    'Audience:'
+Block(kind='list',  start=7,  end=11)   '- Oncall SREs and runtime engineers'  (3 items + trailing blank)
+Block(kind='text',  start=11, end=12)   'Why SHO: problem statement'
+Block(kind='list',  start=12, end=16)   '- Scheduler-level regressions ...'
+Block(kind='text',  start=16, end=17)   'High-level design'
+Block(kind='list',  start=17, end=23)   '1) Signal ingestion: ...'             (numbered list, 5 items)
+Block(kind='text',  start=23, end=24)   'Detection signals and thresholds (baseline)'
+Block(kind='list',  start=24, end=32)   '- kernel_cpu_latency_p50/p95/p99 ...'
+Block(kind='text',  start=32, end=33)   'Policy mapping examples'
+```
+Golden check: `tests/golden/blocks_fingerprint.json`, sha256 over `<file> <block count>`
+for all 5,189 files (281,283 blocks). Computed once with the v0 token walk.
+
+Module: `pipeline/blocks.py`. Pure.
+
+### PARSE-7a  Block value and the token-to-kind table  ⬜
 
 **Status:** To do
 
 **As a** chunker developer
-**I want to** the file as a list of top-level blocks with line ranges and a kind (text / list / table / code / quote)
-**So that** the chunker can keep whole blocks together without knowing markdown-it tokens
+**I want to** a `Block(kind, start, end)` value and one table `KIND_OF_TOKEN` from markdown-it token type to kind
+**So that** the eight kinds are defined in exactly one place before any parsing code exists
 
 **Acceptance Criteria (Gherkin)**
-- Given a fenced code block on lines 10-14, When I call `blocks(text)`, Then one block has `kind="code", start=10, end=15`
-- Given a bullet list on lines 3-6, Then one block with `kind="list"` covering exactly those lines
-- Given a pipe table, Then one block `kind="table"`
-- Given two paragraphs separated by a blank line, Then two `kind="text"` blocks
-- Given the blocks for any fixture file, When I take the union of their line ranges, Then every non-blank line is covered exactly once
+- Given `Block(kind="list", start=7, end=11)`, When I read its fields, Then `"list"`, `7`, `11`; it is frozen and compared by value
+- Given `KIND_OF_TOKEN`, When I look up each of the ten token types in the table above, Then I get the kind in the same row
+- Given a `Block`, When I ask `block.lines`, Then I get `end - start` (4 for the list above)
+- Given `pipeline/blocks.py`, When I read it, Then it holds `Block`, `KIND_OF_TOKEN` and nothing else yet
+
+**Example with real data**
+`Block(kind="list", start=7, end=11)` is the `Audience:` bullet list in the scheduler file: lines 7, 8, 9 plus the blank line 10.
 
 **Non-functional Requirements**
-- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+- Shared NFRs. Pure. Frozen dataclass; the table is a plain dict.
 
 **Dependencies**
-- APIs: `Block(kind: str, start: int, end: int)`; `blocks(text: str) -> list[Block]`
+- APIs: `Block(kind: str, start: int, end: int)` with property `lines`; `KIND_OF_TOKEN: dict[str, str]`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-7b  blocks  ⬜
+
+**Status:** To do
+
+**As a** chunker developer
+**I want to** `blocks(text)` to return every top-level block of a clean file, in line order
+**So that** the chunker can keep lists, tables and code fences whole without knowing markdown-it tokens
+
+**Acceptance Criteria (Gherkin)**
+- Given a fenced code block on lines 10-14, When I call `blocks(text)`, Then one block is `Block("code", 10, 15)`
+- Given a bullet list on lines 3-6 followed by a blank line and a paragraph, Then one `Block("list", 3, 7)` (markdown-it includes the trailing blank) and one `Block("text", 7, 8)`
+- Given a pipe table with a separator row, Then one `Block("table", ...)` covering header, separator and rows
+- Given two paragraphs separated by a blank line, Then two `text` blocks
+- Given `## Scope`, Then `Block("heading", ...)` of one line
+- Given a `#` inside a fence or a list inside a blockquote, Then no separate block for it (nested, level > 0)
+- Given a token type not in `KIND_OF_TOKEN`, Then `blocks` raises `KeyError` naming the type (we would rather fail loudly than silently drop lines)
+- Given `""`, Then `[]`
+- Given every fixture file and every clean file, When I take the union of block line ranges, Then every non-blank line is covered exactly once
+- Given every clean file, When I count blocks per file and fingerprint them, Then it equals `tests/golden/blocks_fingerprint.json`; skipped if the data folder is missing
+
+**Example with real data**
+The 12-block listing in the PARSE-7 background is `blocks(text)` on the scheduler file.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. markdown-it instance shared with `headings.py` (import `MARKDOWN` from there, do not create a second one).
+
+**Dependencies**
+- APIs: `blocks(text: str) -> list[Block]`
+- Uses: PARSE-7a; `pipeline.headings.MARKDOWN`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
