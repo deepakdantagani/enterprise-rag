@@ -602,9 +602,9 @@ line plus any stray Markdown; the label rule fills the rest in PARSE-6.
 
 Module: `pipeline/headings.py`. Pure (no file IO).
 
-### PARSE-5a  Heading value and HeadingDetector interface  ⬜
+### PARSE-5a  Heading value and HeadingDetector interface  ✅
 
-**Status:** To do
+**Status:** Done (merged ebb2d0f)
 
 **As a** chunker developer
 **I want to** a `Heading` value type and a `HeadingDetector` protocol
