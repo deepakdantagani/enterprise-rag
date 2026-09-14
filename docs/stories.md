@@ -2,7 +2,8 @@
 
 One story = one function = one PR (about 60 lines including its tests). Stories below
 PARSE-2 are still module-level; each gets split into one-function sub-stories (a, b, c)
-when we reach it, not before. Each story is independent:
+when we reach it, not before. Every sub-story carries an "Example with real data"
+section: a before/after taken from the actual corpus, so the change is concrete. Each story is independent:
 it can be built and merged without the others, because the existing modules keep
 working until a later story switches the caller over. TDD on every story: write the
 acceptance tests first (red), then the code (green), then the PR.
@@ -46,6 +47,18 @@ Shared non-functional requirements (apply to every story):
 - Given an escaped raw file, Then the return value says `was_escaped=True`
 - Given `dst`'s folder does not exist, Then it is created
 
+**Example with real data**  (`dsid_a99282d9a6c5422e8b14168701df46f2__service-c...txt`)
+
+Before, the raw file. Line 3 is one long line, 8,600 characters, with `\\n` as text:
+```
+'Service Catalog Contract and Integration Playbook\n\nSummary:\\n\\nThis playbook defines the canonical service catalog contract for model and variant metadata and d'...
+```
+After, the clean file. Real lines:
+```
+'Service Catalog Contract and Integration Playbook\n\nSummary:\n\nThis playbook defines the canonical service catalog contract for model and variant metadata and doc'...
+```
+Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
+
 **Dependencies**
 - APIs: `clean_one_file(src: Path, dst: Path) -> CleanResult`  (uses PARSE-1 `clean_text`)
 
@@ -58,6 +71,21 @@ Shared non-functional requirements (apply to every story):
 **Acceptance Criteria (Gherkin)**
 - Given a name, raw text and a CleanResult, When I call it, Then I get a dict with keys `file, raw_sha256, clean_sha256, was_escaped, raw_lines, clean_lines, raw_bytes, clean_bytes`
 - Given the same inputs twice, Then the two dicts are equal
+
+**Example with real data**  (same file)
+```json
+{
+  "file": "dsid_a99282d9a6c5422e8b14168701df46f2__service-catalog-contract-integration-playbook-2026-12-01.txt",
+  "raw_sha256": "f8d6d71ca99d591405998474f382e25b2301e709b49bf6ce4c86afa9010bfe12",
+  "clean_sha256": "2ad5d14f3f643429548be9a5db2ad33cc9413005841af0b0f7c72aab0c797523",
+  "was_escaped": true,
+  "raw_lines": 3,
+  "clean_lines": 149,
+  "raw_bytes": 8555,
+  "clean_bytes": 8401
+}
+```
+`raw_lines` 3 -> `clean_lines` 149: that is the unescape doing its work. `was_escaped` true. The two sha256 values let you prove later which raw bytes produced which clean bytes.
 
 **Dependencies**
 - APIs: `manifest_row(name: str, raw: str, result: CleanResult) -> dict`
@@ -72,6 +100,19 @@ Shared non-functional requirements (apply to every story):
 - Given a folder with two raw files, When I run it, Then two clean files and `_manifest.json` with two rows exist
 - Given an empty folder, Then an empty manifest and no error
 - Given the real raw folder, Then the fingerprint of the manifest equals `tests/golden/corpus_fingerprint.json`
+
+**Example with real data**  (`data/confluence/clean/_manifest.json`, first two of 5,189 rows)
+```json
+[
+ {"file": "dsid_000aabb424694648b5651aa9a2438c81__operational-onboarding-and-authorization-playbook-2028.txt",
+  "raw_sha256": "...", "clean_sha256": "...", "was_escaped": false,
+  "raw_lines": 194, "clean_lines": 193, "raw_bytes": 9749, "clean_bytes": 9748},
+ {"file": "dsid_000dce03310548ffa90f5d2f706a92df__customer-security-questionnaire-exception-...txt",
+  "raw_sha256": "...", "clean_sha256": "...", "was_escaped": false,
+  "raw_lines": 120, "clean_lines": 120, "raw_bytes": 6402, "clean_bytes": 6403}
+]
+```
+Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `tests/golden/corpus_fingerprint.json`.
 
 **Dependencies**
 - APIs: `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]`  (uses 2a, 2b)
