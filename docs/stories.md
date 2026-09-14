@@ -104,6 +104,21 @@ Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 ```
 `raw_lines` 3 -> `clean_lines` 149: that is the unescape doing its work. `was_escaped` true. The two sha256 values let you prove later which raw bytes produced which clean bytes.
 
+**Key definitions**
+
+| Key | Type | How it is computed | Why it is there |
+|---|---|---|---|
+| `file` | str | the raw file's name, e.g. `dsid_...txt` | joins the row to the raw and clean files (same name in both folders) |
+| `raw_sha256` | str | `sha256(raw.encode("utf-8")).hexdigest()` | fingerprint of the input; changes only if the export changes |
+| `clean_sha256` | str | `sha256(result.text.encode("utf-8")).hexdigest()` | fingerprint of the output; the golden check hashes these in order |
+| `was_escaped` | bool | `result.was_escaped` from `clean_text` | tells you the file was JSON-escaped and got unescaped (910 of 5,189) |
+| `raw_lines` | int | `raw.count("\n") + 1` | line count of the input (raw files may not end with a newline, so +1) |
+| `clean_lines` | int | `result.text.count("\n")` | line count of the output (clean text always ends with exactly one newline, so no +1) |
+| `raw_bytes` | int | `len(raw.encode("utf-8"))` | size of the input in bytes |
+| `clean_bytes` | int | `len(result.text.encode("utf-8"))` | size of the output in bytes; a big drop means content was lost, worth a look |
+
+In the example: `raw_lines` 3 vs `clean_lines` 149 shows the unescape; `raw_bytes` 8555 vs `clean_bytes` 8401 is only the two-character `\n` becoming one real newline, so nothing was lost.
+
 **Non-functional Requirements**
 - Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
 
