@@ -711,9 +711,9 @@ only the middle of the breadcrumb is lost. Tracked as PARSE-12.
 
 Module: `pipeline/headings.py` (same file as PARSE-5). Pure.
 
-### PARSE-6a  LabelHeadings  ⬜
+### PARSE-6a  LabelHeadings  ✅
 
-**Status:** To do
+**Status:** Done (merged 00b61e9)
 
 **As a** chunker developer
 **I want to** `LabelHeadings().find_headings(lines)` to turn the label rule's flags into `Heading` values
