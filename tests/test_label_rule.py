@@ -3,10 +3,13 @@
 4a: looks_like_a_sentence, is_key_with_long_value.
 4b: is_label_shaped.
 4c: is_numbered_heading.
+4d: label_flags (plus the corpus golden fingerprint).
 
 Run: uv run python -m unittest discover tests
 """
 import doctest
+import hashlib
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -18,8 +21,12 @@ from pipeline.label_rule import (  # noqa: E402
     is_key_with_long_value,
     is_label_shaped,
     is_numbered_heading,
+    label_flags,
     looks_like_a_sentence,
 )
+
+CLEAN_DIR = ROOT / "data/confluence/clean"
+GOLDEN = ROOT / "tests/golden/label_fingerprint.json"
 
 
 class LooksLikeASentence(unittest.TestCase):
@@ -120,6 +127,51 @@ class IsNumberedHeading(unittest.TestCase):
         lines = ["High-level design", "1) Signal ingestion: aggregated telemetry",
                  "2) Feature synthesis: rolling-error rates"]
         self.assertFalse(is_numbered_heading(lines, 1))   # heading above, list item below
+
+
+class LabelFlags(unittest.TestCase):
+    def test_title_labels_and_body(self):
+        self.assertEqual(label_flags(["Title", "", "Overview", "", "Body text.", "", "Goals:", "- a"]),
+                         [True, False, True, False, False, False, True, False])
+
+    def test_stacked_labels(self):
+        self.assertEqual(label_flags(["Title", "", "Parent", "Child label", "", "Body."]),
+                         [True, False, True, True, False, False])
+
+    def test_needs_blank_line_above(self):
+        self.assertEqual(label_flags(["Title", "", "Body text.", "Not a label"]),
+                         [True, False, False, False])
+
+    def test_nothing_inside_a_fence_and_fence_lines_are_false(self):
+        self.assertEqual(label_flags(["Title", "", "```", "", "Label", "```", "", "After"]),
+                         [True, False, False, False, False, False, False, True])
+
+    def test_indented_label_is_not_a_heading(self):
+        self.assertEqual(label_flags(["Title", "", "  Indented"]), [True, False, False])
+
+    def test_numbered_lines_go_through_is_numbered_heading(self):
+        self.assertEqual(label_flags(["T", "", "3) Escalation", "", "Body."]), [True, False, True, False, False])
+        self.assertEqual(label_flags(["T", "", "1) first", "2) second"]), [True, False, False, False])
+
+    def test_empty_and_first_line_rules(self):
+        self.assertEqual(label_flags([]), [])
+        self.assertEqual(label_flags(["", "Label"]), [False, True])   # empty line 1: no title; "Label" has blank above
+        self.assertEqual(label_flags(["```", "code", "```"]), [False, False, False])
+
+    def test_output_length_equals_input_length(self):
+        lines = ["Title", "", "A", "", "b.", "```", "x", "```", ""]
+        self.assertEqual(len(label_flags(lines)), len(lines))
+
+    @unittest.skipUnless(CLEAN_DIR.is_dir(), "clean corpus not present (data/ is gitignored)")
+    def test_real_corpus_matches_golden_fingerprint(self):
+        golden = json.loads(GOLDEN.read_text())
+        counts = []
+        for path in sorted(CLEAN_DIR.glob("*.txt")):
+            counts.append((path.name, sum(label_flags(path.read_text(encoding="utf-8").split("\n")))))
+        lines = "\n".join(f"{name} {n}" for name, n in counts)
+        self.assertEqual(len(counts), golden["files"])
+        self.assertEqual(sum(n for _, n in counts), golden["total_labels"])
+        self.assertEqual(hashlib.sha256(lines.encode("utf-8")).hexdigest(), golden["fingerprint_sha256"])
 
 
 class PureModule(unittest.TestCase):

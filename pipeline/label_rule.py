@@ -16,6 +16,7 @@ MAX_LABEL_WORDS = 12
 BLOCK_MARKER = re.compile(r"^(\||>|```|#|---|\*\*\*|___|[{}\[\]])")  # table, quote, fence, heading, rule, json
 HAS_A_WORD = re.compile(r"[A-Za-z]{2}")
 NUMBERED_LINE = re.compile(r"^(\d+[.)]|\d+(\.\d+)+) ")                # "3) ", "2. ", "10.1 "
+LIST_ITEM = re.compile(r"^\s*([-*+]|\d+[.)]|[a-z][.)]) ")            # "- ", "1) ", "a. "
 SENTENCE_STARTER = re.compile(r"^(We|This|The|It|If|You|Use|All) ")
 KEY_COLON_VALUE = re.compile(r"^[^:]{1,40}: (.+)$")                    # "Owner: Identity team ..."
 LABEL_LIKE_KEY = re.compile(                                            # "Stage 4:", "Q:", "Appendix B:"
@@ -151,3 +152,77 @@ def is_numbered_heading(lines: list[str], i: int) -> bool:
     above_blank = not lines[i - 1].strip()
     below_blank = i + 1 >= len(lines) or not lines[i + 1].strip()
     return above_blank and below_blank
+
+
+def label_flags(lines: list[str]) -> list[bool]:
+    """For each line, True if it is a section heading. Same length as `lines`.
+
+    Line 1 is the title. Every other line must be label-shaped (4b), not indented,
+    not inside a code fence, and either have a blank line above or sit directly under
+    another label (stacked). List items and numbered lines go through 4c instead.
+
+    Input -> output:
+        >>> label_flags(["Title", "", "Overview", "", "Body text.", "", "Goals:", "- a"])
+        [True, False, True, False, False, False, True, False]
+        >>> label_flags(["Title", "", "Parent", "Child label", "", "Body."])   # stacked labels
+        [True, False, True, True, False, False]
+
+    Edge cases:
+        >>> label_flags([])
+        []
+        >>> label_flags(["Title", "", "```", "", "def f():", "```", "", "After"])   # nothing inside a fence
+        [True, False, False, False, False, False, False, True]
+        >>> label_flags(["Title", "", "Body text.", "Not a label"])   # needs a blank line above
+        [True, False, False, False]
+    """
+    if not lines:
+        return []
+    flags = [False] * len(lines)
+    flags[0] = is_title_line(lines[0])
+
+    inside_fence = False
+    for i in range(1, len(lines)):
+        line = lines[i]
+        if is_fence_marker(line):
+            inside_fence = not inside_fence
+            continue
+        if inside_fence:
+            continue
+        if not is_label_shaped(line.strip()) or is_indented(line):
+            continue
+        if LIST_ITEM.match(line) or NUMBERED_LINE.match(line):
+            flags[i] = is_numbered_heading(lines, i)
+            continue
+        line_above_is_blank = not lines[i - 1].strip()
+        line_above_is_label = flags[i - 1]
+        flags[i] = line_above_is_blank or line_above_is_label
+    return flags
+
+
+def is_title_line(line: str) -> bool:
+    """Line 1 is the document title unless it is empty or opens a code fence.
+
+        >>> is_title_line("Scheduler Health Oracle")
+        True
+        >>> is_title_line(""), is_title_line("```")
+        (False, False)
+    """
+    return bool(line.strip()) and not line.startswith("```")
+
+
+def is_fence_marker(line: str) -> bool:
+    """Opens or closes a code block.
+
+        >>> is_fence_marker("```python"), is_fence_marker("  ```"), is_fence_marker("code")
+        (True, True, False)
+    """
+    return line.lstrip().startswith("```")
+
+
+def is_indented(line: str) -> bool:
+    """Starts with whitespace: continuation or nested content, never a heading.
+
+        >>> is_indented("  Indented"), is_indented("Flush")
+        (True, False)
+    """
+    return line[:1].isspace()
