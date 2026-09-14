@@ -164,10 +164,30 @@ golden fingerprint depends only on `clean_sha256`, so they stay as they are.
 **I want to** `write_clean_corpus(raw_dir, clean_dir)` to run 2a over every `.txt` and save the rows from 2b as `_manifest.json`
 **So that** one command produces the clean folder
 
+**Background**
+This is the loop that turns the raw folder into the clean folder. It has no rules of its
+own; it composes the two finished pieces:
+
+1. list every `*.txt` in `raw_dir`, sorted by file name (the manifest order must be
+   stable, because the golden fingerprint hashes the rows in order)
+2. for each file: read the raw text, call PARSE-2a `clean_one_file(src, clean_dir / src.name)`,
+   build the row with PARSE-2b `manifest_row(src.name, raw, result)`
+3. write the rows as a JSON list to `clean_dir / "_manifest.json"`, and return the same list
+
+The raw text is read here for the manifest row and again inside `clean_one_file`. Two
+reads of a 10 KB file is cheaper than widening 2a's return type, so we accept it.
+
+Golden check, in words: take each row's `file` and `clean_sha256`, join them with one
+space, one row per line, sha256 the whole thing. The result must equal the
+`fingerprint_sha256` in `tests/golden/corpus_fingerprint.json`
+(`22453b4e…62920`, 5,189 files, 910 escaped). That value came from the archived v0
+code; matching it proves 2a + 2b + 2c reproduce v0 byte for byte on every file.
+
 **Acceptance Criteria (Gherkin)**
 - Given a folder with two raw files, When I run it, Then two clean files and `_manifest.json` with two rows exist
 - Given an empty folder, Then an empty manifest and no error
-- Given the real raw folder, Then the fingerprint of the manifest equals `tests/golden/corpus_fingerprint.json`
+- Given `raw_dir` with `b.txt` and `a.txt`, Then the manifest rows are in the order `a.txt`, `b.txt`
+- Given the real raw folder `data/confluence/raw/` exists, When I run it into a temp folder, Then the fingerprint of the returned rows equals `tests/golden/corpus_fingerprint.json`; if the raw folder is missing (fresh clone, data is gitignored), the test is skipped, not failed
 
 **Example with real data**  (`data/confluence/clean/_manifest.json`, first two of 5,189 rows)
 ```json
@@ -180,13 +200,19 @@ golden fingerprint depends only on `clean_sha256`, so they stay as they are.
   "raw_lines": 120, "clean_lines": 120, "raw_bytes": 6402, "clean_bytes": 6403}
 ]
 ```
-Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `tests/golden/corpus_fingerprint.json`.
+`_manifest.json` is written with `json.dump(rows, f, indent=1)`; formatting does not affect the golden check, which uses only the values.
+
+Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `tests/golden/corpus_fingerprint.json`:
+```python
+lines = "\n".join(f"{r['file']} {r['clean_sha256']}" for r in rows)
+sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
+```
 
 **Non-functional Requirements**
 - Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
 
 **Dependencies**
-- APIs: `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]`  (uses 2a, 2b)
+- APIs: `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]` in `pipeline/corpus.py` next to 2a; uses 2a `clean_one_file`, 2b `manifest_row`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
