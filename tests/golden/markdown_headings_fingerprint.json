@@ -1,0 +1,7 @@
+{
+ "files": 5189,
+ "total_headings": 44996,
+ "per_bucket": {"A_hash": 31622, "B_setext": 10502, "C_plain_labels": 2860, "D_prose": 12},
+ "fingerprint_sha256": "ea70cba04f76b30c204c692f96b740afcd9c4a1af5c58e66a14430d4bd1b3afb",
+ "how": "sha256 over lines '<file> <number of headings from MarkdownHeadings().find_headings(clean lines)>' for every clean file in name order; markdown-it commonmark+table heading_open tokens at nesting level 0, plus line 0 as a level-1 title when non-blank and not already a heading. Mirrors archive/v0 nodes._blocks."
+}

@@ -552,25 +552,106 @@ checks are extra ways to say no or yes on top of these two rules.
 
 ---
 
-## PARSE-5  Heading detector interface + Markdown implementation  ⬜
+## PARSE-5  Heading detector interface + Markdown implementation  (split into one function per PR)
+
+**Background for all of PARSE-5**
+The chunker (PARSE-8) needs to know where the headings are, but it must not care *how*
+they were written. Files in bucket A/B write headings in Markdown (`## Scope`, or
+`Scope` over `-----`); files in bucket C write bare labels that only our label rule
+(PARSE-4) can see. So we define one small interface and two implementations:
+
+```
+HeadingDetector.find_headings(lines) -> list[Heading]      the contract
+    MarkdownHeadings     uses markdown-it                   this story (5b)
+    LabelHeadings        uses label_flags                   PARSE-6
+```
+A `Heading` is three values: `line` (0-based index into `lines`), `level` (1 for the
+title, 2+ for sections), `text` (the heading text, stripped of `#` and whitespace).
+
+How markdown-it reports a heading: `MarkdownIt("commonmark").enable("table").parse(text)`
+returns a flat token list. A heading is a `heading_open` token whose `tag` is `h1`..`h6`
+and whose `map` is `[start_line, end_line)`; the text is in the next token's `content`.
+Only tokens at nesting `level == 0` are top-level (a `#` inside a blockquote or list is
+nested and skipped); a `#` inside a code fence is never a token at all. For a setext
+heading (`Scope` over `-----`) the map covers two lines; we report `line = map[0]`, the
+text line, and the underline is not a heading.
+
+Title rule, shared by every detector: line 0, when non-blank, is the document title,
+level 1, even if it has no markup. If markdown-it already reported a heading at line 0,
+we keep that one and do not add a second.
+
+Real example, bucket A `dsid_000dce03…customer-security-questionnaire…txt` (297 lines, 41 headings):
+```
+lines[0..3]:  'Customer Security Questionnaire Exceptions Policy', '', '## Purpose', 'This policy defines ...'
+find_headings -> [Heading(line=0, level=1, text='Customer Security Questionnaire Exceptions Policy'),   <- title rule
+                  Heading(line=2, level=2, text='Purpose'),
+                  Heading(line=11, level=2, text='Scope'),
+                  Heading(line=21, level=2, text='Definitions'), ...]
+```
+Bucket B `dsid_00111a3c…fallback-validation…txt` (145 lines, 16 headings):
+```
+lines[0..3]:  'Fallback validation and chaos test plan ...', '', 'Purpose', '-------'
+find_headings -> [Heading(line=0, level=1, text='Fallback validation and chaos test plan ...'),
+                  Heading(line=2, level=2, text='Purpose'),      <- line 3 '-------' is not reported
+                  Heading(line=6, level=2, text='Scope'), ...]
+```
+Golden check: `tests/golden/markdown_headings_fingerprint.json`, a sha256 over
+`<file> <heading count>` for all 5,189 clean files (44,996 headings; A 31,622 · B 10,502
+· C 2,860 · D 12). Computed once with the v0 logic. Bucket C/D files get only their title
+line plus any stray Markdown; the label rule fills the rest in PARSE-6.
+
+Module: `pipeline/headings.py`. Pure (no file IO).
+
+### PARSE-5a  Heading value and HeadingDetector interface  ⬜
 
 **Status:** To do
 
 **As a** chunker developer
-**I want to** call one `find_headings(lines)` method and get headings regardless of how they were written
-**So that** the chunker never knows about `#`, underlines, or the label rule
+**I want to** a `Heading` value type and a `HeadingDetector` protocol
+**So that** the chunker and both detectors agree on one data shape before any detector exists
 
 **Acceptance Criteria (Gherkin)**
-- Given lines with `## Scope` at index 4, When I call `MarkdownHeadings().find_headings(lines)`, Then I get `[Heading(line=4, level=2, text="Scope")]`
-- Given `Scope` over `-----` at index 4, Then `[Heading(line=4, level=2, text="Scope")]` and the underline line is not a heading
-- Given a `#` inside a fenced code block, Then it is not reported
-- Given any detector, When I call it on `[]`, Then I get `[]`
+- Given `Heading(line=2, level=2, text="Scope")`, When I read its fields, Then I get `2`, `2`, `"Scope"`, and it is frozen (assigning raises) and comparable by value
+- Given `HeadingDetector`, When I define a class with `find_headings(self, lines: list[str]) -> list[Heading]`, Then it satisfies the protocol without inheriting from it
+- Given `pipeline/headings.py`, When I read it, Then it holds only `Heading`, `HeadingDetector` and nothing else yet
+
+**Example with real data**
+`Heading(line=2, level=2, text="Purpose")` is the second heading of the bucket A file above.
 
 **Non-functional Requirements**
-- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+- Shared NFRs. Pure. `Heading` is a frozen dataclass; `HeadingDetector` is a `typing.Protocol`.
 
 **Dependencies**
-- APIs: `Heading(line: int, level: int, text: str)`; `HeadingDetector` protocol with `find_headings(lines: list[str]) -> list[Heading]`
+- APIs: `Heading(line: int, level: int, text: str)`; `HeadingDetector` with `find_headings(lines: list[str]) -> list[Heading]`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-5b  MarkdownHeadings  ⬜
+
+**Status:** To do
+
+**As a** chunker developer
+**I want to** `MarkdownHeadings().find_headings(lines)` to return the Markdown headings plus the title line
+**So that** bucket A and B files get their structure from the parser, not from our rule
+
+**Acceptance Criteria (Gherkin)**
+- Given `["Title", "", "## Scope", "text"]`, When I call `find_headings`, Then `[Heading(0, 1, "Title"), Heading(2, 2, "Scope")]`
+- Given `["Title", "", "Scope", "-----", "text"]` (setext), Then `[Heading(0, 1, "Title"), Heading(2, 2, "Scope")]` and line 3 is not reported
+- Given `["# Title", "", "text"]`, Then `[Heading(0, 1, "Title")]` only once, not a duplicate from the title rule
+- Given `["Title", "", "```", "# not a heading", "```"]`, Then `[Heading(0, 1, "Title")]`
+- Given `["Title", "", "> # quoted"]` (nested), Then `[Heading(0, 1, "Title")]`
+- Given `[]` or `[""]`, Then `[]`
+- Given the result for any input, Then it is sorted by `line`
+- Given every clean file, When I count headings per file and fingerprint them, Then it equals `tests/golden/markdown_headings_fingerprint.json`; skipped if the data folder is missing
+
+**Example with real data**
+The two listings in the PARSE-5 background are `MarkdownHeadings().find_headings(lines)` on those files: 41 and 16 headings.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. markdown-it is created once at module level (`MarkdownIt("commonmark").enable("table")`).
+
+**Dependencies**
+- APIs: `MarkdownHeadings` implementing `HeadingDetector`
+- Uses: PARSE-5a; library `markdown-it-py`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
