@@ -11,6 +11,10 @@ Pure module: it is handed lines and returns booleans.
 """
 import re
 
+MAX_LABEL_CHARS = 80
+MAX_LABEL_WORDS = 12
+BLOCK_MARKER = re.compile(r"^(\||>|```|#|---|\*\*\*|___|[{}\[\]])")  # table, quote, fence, heading, rule, json
+HAS_A_WORD = re.compile(r"[A-Za-z]{2}")
 SENTENCE_STARTER = re.compile(r"^(We|This|The|It|If|You|Use|All) ")
 KEY_COLON_VALUE = re.compile(r"^[^:]{1,40}: (.+)$")                    # "Owner: Identity team ..."
 LABEL_LIKE_KEY = re.compile(                                            # "Stage 4:", "Q:", "Appendix B:"
@@ -70,3 +74,52 @@ def is_key_with_long_value(line: str) -> bool:
     if match is None:
         return False
     return len(match.group(1).split()) >= 6
+
+
+def is_label_shaped(line: str) -> bool:
+    """Does this one stripped line have the shape of a section label?
+
+    No accept rule: a chain of reject checks, in this order; True if none fires.
+    Shape is necessary, not sufficient: label_flags (4d) also checks the neighbours.
+
+    Input -> output:
+        >>> is_label_shaped("Rollout & Risk Controls")
+        True
+        >>> is_label_shaped("Phase 1: Data-source plumbing (Week 1-3)")   # label-like key
+        True
+        >>> is_label_shaped("Testing, canaries and chaos simulation:")    # trailing colon, short
+        True
+
+    Rejected, one example per reason:
+        >>> is_label_shaped("x" * 81)                                  # too long
+        False
+        >>> is_label_shaped("| a | b |")                               # block marker
+        False
+        >>> is_label_shaped("Ends with a period.")                     # closing punctuation
+        False
+        >>> is_label_shaped("We should not treat this as a heading")   # sentence (4a)
+        False
+        >>> is_label_shaped("Owner: Identity and Access team second approver required")  # field (4a)
+        False
+        >>> is_label_shaped("--kvcache-async")                         # no real word, flag-like
+        False
+
+    Edge cases:
+        >>> is_label_shaped("")
+        False
+    """
+    if not line:
+        return False
+    if len(line) > MAX_LABEL_CHARS or len(line.split()) > MAX_LABEL_WORDS:
+        return False
+    if BLOCK_MARKER.match(line):
+        return False
+    if line[-1] in ".;,":
+        return False
+    if looks_like_a_sentence(line):
+        return False
+    if is_key_with_long_value(line):
+        return False
+    if not HAS_A_WORD.search(line) or line.startswith(("-", "/")):
+        return False
+    return True
