@@ -920,3 +920,46 @@ under a caps heading). Ties to the open item "30-file hand-labelled precision sa
 **Dependencies**
 - Uses: PARSE-4, PARSE-6a
 - Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## PARSE-13  Document type from the title  ⬜
+
+**Status:** Backlog (found 2026-09-14 while reviewing the dataset card: Confluence = "wikis, runbooks, and structured documentation")
+
+**As a** RAG developer
+**I want to** every node to carry a `doc_type` such as `playbook`, `runbook`, `policy`, taken from the page title
+**So that** the retriever can filter or boost by kind (a "how do I roll back" question prefers runbooks over ADRs) and evaluation can be sliced by kind
+
+**Background**
+The dataset ships no type field (`data/confluence/manifest.json` is only a version
+string). The first line of each clean file, the title, usually names the kind. Counted
+over all 5,189 files, first matching keyword wins:
+
+| Title contains | Files |
+|---|---|
+| playbook | 1,514 |
+| runbook | 354 |
+| guide | 305 |
+| contract / spec | 353 |
+| incident / postmortem | 135 |
+| policy | 133 |
+| checklist, ADR, onboarding, template, plan | 428 |
+| no keyword | 1,652 (32%) |
+
+This is retrieval metadata, not a parsing rule: it changes nothing in how a file is
+cleaned, bucketed or chunked. It attaches in PARSE-9 when `TextNode`s are built.
+
+**Acceptance Criteria (Gherkin)**
+- Given `"Scheduler Health Oracle and Self-Heal Procedures"`, When I call `doc_type(title)`, Then `"procedure"`; given `"Postmortem: SEV-2 Dedicated autoscaler ..."`, Then `"postmortem"`; given a title with no keyword, Then `"unknown"`
+- Given the keyword list, When I read it, Then it is one ordered tuple at the top of the module, first match wins
+- Given a `TextNode` from PARSE-9, Then `metadata["doc_type"]` is set and excluded from embedding
+- Given the corpus, Then the counts above are reproduced (skipped if the data folder is missing)
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. To be split into one-function sub-stories when reached.
+
+**Dependencies**
+- APIs: `doc_type(title: str) -> str` in `pipeline/doc_type.py`
+- Uses: PARSE-9
+- Service Bus: N/A · Database: N/A · UI: N/A
