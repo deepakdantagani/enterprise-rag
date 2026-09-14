@@ -1,7 +1,8 @@
-"""PARSE-2a: clean_one_file(src, dst) reads one raw file, cleans it, writes one clean file.
+"""PARSE-2d: save_text and save_manifest, one job each (pipeline/corpus.py).
 
 Run: uv run python -m unittest discover tests
 """
+import json
 import sys
 import tempfile
 import unittest
@@ -9,33 +10,30 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from pipeline.cleaning import clean_text  # noqa: E402
-from pipeline.corpus import clean_one_file  # noqa: E402
-
-ESCAPED_RAW = "Title\n\nSummary:\\n\\n- one\\n- two\\n- three\\n- four\\n"
+from pipeline.corpus import save_manifest, save_text  # noqa: E402
 
 
-class CleanOneFile(unittest.TestCase):
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
-        self.src = self.tmp / "raw" / "page.txt"
-        self.src.parent.mkdir()
-        self.src.write_text(ESCAPED_RAW)
+class SaveText(unittest.TestCase):
+    def test_creates_missing_folder_and_writes_exactly_the_text(self):
+        path = Path(tempfile.mkdtemp()) / "does" / "not" / "exist" / "page.txt"
+        save_text(path, "x\n")
+        self.assertEqual(path.read_text(encoding="utf-8"), "x\n")
 
-    def test_dst_contains_clean_text_of_src(self):
-        dst = self.tmp / "clean" / "page.txt"
-        dst.parent.mkdir()
-        clean_one_file(self.src, dst)
-        self.assertEqual(dst.read_text(), clean_text(ESCAPED_RAW).text)
 
-    def test_return_value_reports_was_escaped(self):
-        result = clean_one_file(self.src, self.tmp / "page.txt")
-        self.assertTrue(result.was_escaped)
+class SaveManifest(unittest.TestCase):
+    def test_rows_round_trip_through_manifest_json(self):
+        clean_dir = Path(tempfile.mkdtemp())
+        rows = [{"file": "a.txt", "clean_sha256": "1"}, {"file": "b.txt", "clean_sha256": "2"}]
+        save_manifest(clean_dir, rows)
+        self.assertEqual(json.loads((clean_dir / "_manifest.json").read_text()), rows)
 
-    def test_missing_dst_folder_is_created(self):
-        dst = self.tmp / "does" / "not" / "exist" / "page.txt"
-        clean_one_file(self.src, dst)
-        self.assertTrue(dst.exists())
+
+class OneJobPerFunction(unittest.TestCase):
+    def test_clean_one_file_is_gone_and_loop_has_no_json(self):
+        source = (ROOT / "pipeline/corpus.py").read_text()
+        self.assertNotIn("clean_one_file", source)
+        loop = source[source.index("def write_clean_corpus"):]
+        self.assertNotIn("json.", loop)
 
 
 if __name__ == "__main__":
