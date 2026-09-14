@@ -421,6 +421,7 @@ every function has input -> output doctests.
 - Given `"Manual triage is slow, remediation must be conservative, safe, and audited"` (comma and more than 8 words), Then `True`
 - Given `"Testing, canaries and chaos simulation:"` (comma but short), Then `False`
 - Given `"Owner: Identity and Access team second approver required"`, When I call `is_key_with_long_value`, Then `True`
+- Given `"Owner: one two three four five"` (5-word value), Then `False`; given a 6-word value, Then `True` (the threshold is 6 or more words)
 - Given `"Goals:"` (trailing colon), `"Appendix: Example Mappings"` (short value), `"Stage 4: Expand to Dedicated deployments today"` (label-like key), `"Q: Can we extend a lease mid-window?"`, Then `False` for each
 - Given `"Why SHO: problem statement"` (from the real example), Then `False`
 
