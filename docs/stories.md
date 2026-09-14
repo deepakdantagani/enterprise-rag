@@ -8,6 +8,8 @@ it can be built and merged without the others, because the existing modules keep
 working until a later story switches the caller over. TDD on every story: write the
 acceptance tests first (red), then the code (green), then the PR.
 
+Heading icons: ✅ Done · ⬜ To do (mirror the Status line).
+
 Template for every story, in this order: Status · As a · I want to · So that ·
 Acceptance Criteria (Gherkin) · Example with real data · Non-functional Requirements ·
 Dependencies (APIs data contracts · Service Bus · Database updates · UI).
@@ -34,7 +36,7 @@ Glossary (terms used across the stories; a story should make sense without chat 
 
 ---
 
-## PARSE-1  Text cleaning rules as a pure module
+## PARSE-1  Text cleaning rules as a pure module  ✅
 
 **Status:** Done (merged eee9ef3)
 
@@ -58,7 +60,7 @@ Glossary (terms used across the stories; a story should make sense without chat 
 
 ## PARSE-2  Corpus writer  (split into one function per PR)
 
-### PARSE-2a  clean_one_file
+### PARSE-2a  clean_one_file  ✅
 
 **Status:** Done (merged ef9e404)
 
@@ -90,7 +92,7 @@ Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 - APIs: `clean_one_file(src: Path, dst: Path) -> CleanResult`  (uses PARSE-1 `clean_text`)
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-2b  manifest_row
+### PARSE-2b  manifest_row  ✅
 
 **Status:** Done (merged 4937390)
 
@@ -156,7 +158,7 @@ golden fingerprint depends only on `clean_sha256`, so they stay as they are.
 - APIs: `manifest_row(name: str, raw: str, result: CleanResult) -> dict` in `pipeline/manifest.py`; uses PARSE-1 `CleanResult`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-2c  write_clean_corpus
+### PARSE-2c  write_clean_corpus  ⬜
 
 **Status:** To do
 
@@ -217,7 +219,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-3  Bucket classifier
+## PARSE-3  Bucket classifier  ⬜
 
 **Status:** To do
 
@@ -241,7 +243,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-4  Label rule as its own module
+## PARSE-4  Label rule as its own module  ⬜
 
 **Status:** To do
 
@@ -263,7 +265,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-5  Heading detector interface + Markdown implementation
+## PARSE-5  Heading detector interface + Markdown implementation  ⬜
 
 **Status:** To do
 
@@ -286,7 +288,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-6  Label heading detector + selector
+## PARSE-6  Label heading detector + selector  ⬜
 
 **Status:** To do
 
@@ -310,7 +312,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-7  Blocks from markdown-it
+## PARSE-7  Blocks from markdown-it  ⬜
 
 **Status:** To do
 
@@ -334,7 +336,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-8  Chunker
+## PARSE-8  Chunker  ⬜
 
 **Status:** To do
 
@@ -359,7 +361,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-9  LlamaIndex adapter
+## PARSE-9  LlamaIndex adapter  ⬜
 
 **Status:** To do
 
@@ -382,7 +384,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-10  Triage gate on the new modules
+## PARSE-10  Triage gate on the new modules  ⬜
 
 **Status:** To do
 
@@ -403,7 +405,7 @@ sha256(lines.encode("utf-8")).hexdigest() == golden["fingerprint_sha256"]
 
 ---
 
-## PARSE-11  Debug and measurement tools out of the pipeline
+## PARSE-11  Debug and measurement tools out of the pipeline  ⬜
 
 **Status:** To do
 
