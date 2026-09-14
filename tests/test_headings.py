@@ -3,6 +3,7 @@
 5a: Heading value and HeadingDetector interface.
 5b: MarkdownHeadings (plus the corpus golden fingerprint).
 6a: LabelHeadings (plus the label golden fingerprint).
+6b: detector_for.
 
 Run: uv run python -m unittest discover tests
 """
@@ -17,7 +18,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline import headings  # noqa: E402
-from pipeline.headings import Heading, HeadingDetector, LabelHeadings, MarkdownHeadings  # noqa: E402
+from pipeline.headings import (  # noqa: E402
+    Heading,
+    HeadingDetector,
+    LabelHeadings,
+    MarkdownHeadings,
+    detector_for,
+)
 
 CLEAN_DIR = ROOT / "data/confluence/clean"
 GOLDEN = ROOT / "tests/golden/markdown_headings_fingerprint.json"
@@ -124,6 +131,26 @@ class LabelHeadingsDetector(unittest.TestCase):
         lines = "\n".join(f"{name} {n}" for name, n in counts)
         self.assertEqual(sum(n for _, n in counts), golden["total_labels"])
         self.assertEqual(hashlib.sha256(lines.encode("utf-8")).hexdigest(), golden["fingerprint_sha256"])
+
+
+class DetectorFor(unittest.TestCase):
+    def test_bucket_a_and_b_get_markdown(self):
+        self.assertIsInstance(detector_for("# Title\n\ntext"), MarkdownHeadings)
+        self.assertIsInstance(detector_for("Title\n-----\n\ntext"), MarkdownHeadings)
+
+    def test_bucket_c_and_d_get_labels(self):
+        self.assertIsInstance(detector_for("Overview\n\n- item"), LabelHeadings)
+        self.assertIsInstance(detector_for("Just prose."), LabelHeadings)
+        self.assertIsInstance(detector_for(""), LabelHeadings)
+
+    def test_result_is_a_heading_detector(self):
+        self.assertIsInstance(detector_for("# Title"), HeadingDetector)
+
+    @unittest.skipUnless(CLEAN_DIR.is_dir(), "clean corpus not present (data/ is gitignored)")
+    def test_real_corpus_split(self):
+        kinds = [type(detector_for(p.read_text(encoding="utf-8"))).__name__ for p in CLEAN_DIR.glob("*.txt")]
+        self.assertEqual(kinds.count("MarkdownHeadings"), 1645 + 781)
+        self.assertEqual(kinds.count("LabelHeadings"), 2751 + 12)
 
 
 class ModuleShape(unittest.TestCase):
