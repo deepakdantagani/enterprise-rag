@@ -738,9 +738,9 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 - Uses: PARSE-4d `label_flags`, PARSE-5a `Heading`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-6b  detector_for  ⬜
+### PARSE-6b  detector_for  ✅
 
-**Status:** To do
+**Status:** Done (merged ea73de1)
 
 **As a** chunker developer
 **I want to** `detector_for(text)` to return the right detector for a file
