@@ -8,6 +8,10 @@ it can be built and merged without the others, because the existing modules keep
 working until a later story switches the caller over. TDD on every story: write the
 acceptance tests first (red), then the code (green), then the PR.
 
+Template for every story, in this order: Status · As a · I want to · So that ·
+Acceptance Criteria (Gherkin) · Example with real data · Non-functional Requirements ·
+Dependencies (APIs data contracts · Service Bus · Database updates · UI).
+
 Shared non-functional requirements (apply to every story):
 - Deterministic: same input, same output, no network, no model calls.
 - Behaviour-preserving: after the story, `uv run python -m unittest discover tests` is
@@ -17,7 +21,9 @@ Shared non-functional requirements (apply to every story):
 
 ---
 
-## PARSE-1  Text cleaning rules as a pure module  ✅ DONE (merged eee9ef3)
+## PARSE-1  Text cleaning rules as a pure module
+
+**Status:** Done (merged eee9ef3)
 
 **As a** pipeline developer
 **I want to** call the three cleaning rules (unescape, fix_structure, normalize) from a module that touches no files
@@ -28,6 +34,9 @@ Shared non-functional requirements (apply to every story):
 - Given a normal string, When I call `clean_text(raw)`, Then the text is unchanged except whitespace tidy-up and `was_escaped=False`
 - Given the module `pipeline/cleaning.py`, When I read its imports, Then it imports nothing that reads or writes files
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `clean_text(raw: str) -> CleanResult(text: str, was_escaped: bool)`; existing `is_escaped`, `unescape`, `fix_structure`, `normalize` keep their signatures
 - Service Bus: N/A · Database: N/A · UI: N/A
@@ -37,6 +46,8 @@ Shared non-functional requirements (apply to every story):
 ## PARSE-2  Corpus writer  (split into one function per PR)
 
 ### PARSE-2a  clean_one_file
+
+**Status:** To do
 
 **As a** pipeline developer
 **I want to** `clean_one_file(src, dst)` to read one raw file, clean it, and write one clean file
@@ -59,10 +70,16 @@ After, the clean file. Real lines:
 ```
 Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `clean_one_file(src: Path, dst: Path) -> CleanResult`  (uses PARSE-1 `clean_text`)
+- Service Bus: N/A · Database: N/A · UI: N/A
 
 ### PARSE-2b  manifest_row
+
+**Status:** To do
 
 **As a** pipeline developer
 **I want to** `manifest_row(name, raw, result)` to build one manifest entry
@@ -87,10 +104,16 @@ Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 ```
 `raw_lines` 3 -> `clean_lines` 149: that is the unescape doing its work. `was_escaped` true. The two sha256 values let you prove later which raw bytes produced which clean bytes.
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `manifest_row(name: str, raw: str, result: CleanResult) -> dict`
+- Service Bus: N/A · Database: N/A · UI: N/A
 
 ### PARSE-2c  write_clean_corpus
+
+**Status:** To do
 
 **As a** pipeline developer
 **I want to** `write_clean_corpus(raw_dir, clean_dir)` to run 2a over every `.txt` and save the rows from 2b as `_manifest.json`
@@ -114,12 +137,18 @@ Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 ```
 Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `tests/golden/corpus_fingerprint.json`.
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `write_clean_corpus(raw_dir: Path, clean_dir: Path) -> list[dict]`  (uses 2a, 2b)
+- Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
 ## PARSE-3  Bucket classifier
+
+**Status:** To do
 
 **As a** pipeline developer
 **I want to** ask one function which markup style a clean file uses
@@ -132,6 +161,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given prose only or empty text, Then `D_prose`
 - Given `pipeline/buckets.py`, When I read it, Then it contains `bucket` and its regexes and nothing else
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `bucket(text: str) -> str` (values above)
 - Service Bus: N/A · Database: N/A · UI: N/A
@@ -139,6 +171,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 ---
 
 ## PARSE-4  Label rule as its own module
+
+**Status:** To do
 
 **As a** pipeline developer
 **I want to** the plain-label heading rule in `pipeline/label_rule.py` with only the rule and its helpers
@@ -149,6 +183,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given `pipeline/label_rule.py`, When I read it, Then it has no `explain`, no recall check, no corpus loop, no `__main__`
 - Given a line with no blank line above and a non-label above, When I call `label_flags`, Then that line is not a heading
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `label_flags(lines: list[str]) -> list[bool]`
 - Service Bus: N/A · Database: N/A · UI: N/A
@@ -156,6 +193,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 ---
 
 ## PARSE-5  Heading detector interface + Markdown implementation
+
+**Status:** To do
 
 **As a** chunker developer
 **I want to** call one `find_headings(lines)` method and get headings regardless of how they were written
@@ -167,6 +206,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given a `#` inside a fenced code block, Then it is not reported
 - Given any detector, When I call it on `[]`, Then I get `[]`
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `Heading(line: int, level: int, text: str)`; `HeadingDetector` protocol with `find_headings(lines: list[str]) -> list[Heading]`
 - Service Bus: N/A · Database: N/A · UI: N/A
@@ -174,6 +216,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 ---
 
 ## PARSE-6  Label heading detector + selector
+
+**Status:** To do
 
 **As a** chunker developer
 **I want to** a second detector that wraps the label rule, and one function that picks the detector for a file
@@ -185,6 +229,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given a bucket-C text, Then a `LabelHeadings`
 - Given both detectors, When I run them on the same lines, Then both return `list[Heading]` sorted by line
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `LabelHeadings`, `detector_for(text) -> HeadingDetector`
 - Uses: PARSE-3, PARSE-4, PARSE-5
@@ -193,6 +240,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 ---
 
 ## PARSE-7  Blocks from markdown-it
+
+**Status:** To do
 
 **As a** chunker developer
 **I want to** the file as a list of top-level blocks with line ranges and a kind (text / list / table / code / quote)
@@ -205,6 +254,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given two paragraphs separated by a blank line, Then two `kind="text"` blocks
 - Given the blocks for any fixture file, When I take the union of their line ranges, Then every non-blank line is covered exactly once
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `Block(kind: str, start: int, end: int)`; `blocks(text: str) -> list[Block]`
 - Service Bus: N/A · Database: N/A · UI: N/A
@@ -212,6 +264,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 ---
 
 ## PARSE-8  Chunker
+
+**Status:** To do
 
 **As a** RAG developer
 **I want to** turn blocks + headings into section-aware chunks, with no LlamaIndex in the module
@@ -224,6 +278,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given a heading followed directly by another heading, Then the second one's path includes the first
 - Given every fixture file, Then every non-blank non-heading line is in exactly one chunk
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `Chunk(start: int, end: int, heading_path: list[str], block_kinds: list[str])`; `chunk(...) -> list[Chunk]`
 - Uses: PARSE-5, PARSE-7
@@ -232,6 +289,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 ---
 
 ## PARSE-9  LlamaIndex adapter
+
+**Status:** To do
 
 **As a** RAG developer
 **I want to** a `NodeParser` that wraps the chunker and produces `TextNode`s
@@ -242,6 +301,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given `nodes.py`, When I read it, Then it contains no chunking rules, only the mapping `Chunk -> TextNode`
 - Given the current `test_nodes.py`, Then it passes unchanged
 
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+
 **Dependencies**
 - APIs: `ConfluenceNodeParser(max_chars=1600)`
 - Uses: PARSE-6, PARSE-7, PARSE-8
@@ -251,6 +313,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 
 ## PARSE-10  Triage gate on the new modules
 
+**Status:** To do
+
 **As a** data owner
 **I want to** the triage gate to use the new modules and keep its current flags
 **So that** new exports are checked the same way after the refactor
@@ -258,6 +322,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 **Acceptance Criteria (Gherkin)**
 - Given the raw corpus, When I run `python -m pipeline.triage`, Then `_triage.json` lists the same 117 files with the same flags as before the refactor
 - Given a folder with one escaped and one normal file, When I run triage on it, Then it exits 0 and flags nothing
+
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
 
 **Dependencies**
 - Uses: PARSE-2, PARSE-3, PARSE-4
@@ -267,6 +334,8 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 
 ## PARSE-11  Debug and measurement tools out of the pipeline
 
+**Status:** To do
+
 **As a** pipeline developer
 **I want to** `explain` and the recall self-check under `tools/`, not `pipeline/`
 **So that** `pipeline/` contains only code that data flows through
@@ -275,6 +344,9 @@ Golden check: hash the lines `<file> <clean_sha256>` in order; it must equal `te
 - Given `tools/explain.py <file>`, When I run it, Then I get the per-line HEADING / reason table
 - Given `tools/measure.py`, When I run it, Then I get the bucket counts and the recall number
 - Given `pipeline/`, When I grep for `explain` or `recall_against`, Then there are no matches
+
+**Non-functional Requirements**
+- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
 
 **Dependencies**
 - Uses: PARSE-3, PARSE-4
