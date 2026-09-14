@@ -817,9 +817,9 @@ for all 5,189 files (281,283 blocks). Computed once with the v0 token walk.
 
 Module: `pipeline/blocks.py`. Pure.
 
-### PARSE-7a  Block value and the token-to-kind table  ⬜
+### PARSE-7a  Block value and the token-to-kind table  ✅
 
-**Status:** To do
+**Status:** Done (merged 4f7c7f5)
 
 **As a** chunker developer
 **I want to** a `Block(kind, start, end)` value and one table `KIND_OF_TOKEN` from markdown-it token type to kind
