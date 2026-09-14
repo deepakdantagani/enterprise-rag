@@ -92,7 +92,7 @@ Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 
 ### PARSE-2b  manifest_row
 
-**Status:** To do
+**Status:** Done (merged 4937390)
 
 **As a** pipeline developer
 **I want to** `manifest_row(name, raw, result)` to build one manifest entry
