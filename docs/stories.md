@@ -865,11 +865,11 @@ Module: `pipeline/blocks.py`. Pure.
 The 12-block listing in the PARSE-7 background is `blocks(text)` on the scheduler file.
 
 **Non-functional Requirements**
-- Shared NFRs. Pure. markdown-it instance shared with `headings.py` (import `MARKDOWN` from there, do not create a second one).
+- Shared NFRs. Pure. One markdown-it instance for the whole pipeline, in `pipeline/markdown.py`; `headings.py` and `blocks.py` both import it and neither depends on the other. Review finding: an earlier draft imported it from `headings.py`, a dependency for the wrong reason (a config object), fixed before merge.
 
 **Dependencies**
 - APIs: `blocks(text: str) -> list[Block]`
-- Uses: PARSE-7a; `pipeline.headings.MARKDOWN`
+- Uses: PARSE-7a; `pipeline.markdown.MARKDOWN`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---

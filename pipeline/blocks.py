@@ -19,6 +19,8 @@ Pure module.
 """
 from dataclasses import dataclass
 
+from pipeline.markdown import MARKDOWN
+
 
 @dataclass(frozen=True)
 class Block:
@@ -50,3 +52,30 @@ KIND_OF_TOKEN = {
     "blockquote_open": "quote",
     "html_block": "html",
 }
+
+
+def blocks(text: str) -> list[Block]:
+    """Every top-level block of a clean file, in line order.
+
+    A block is a markdown-it token at nesting level 0 with a line map whose type does
+    not end in "_close". Content nested inside a fence, list or quote is level > 0 and
+    never becomes its own block. An unknown token type raises KeyError: we would rather
+    fail loudly than silently drop lines.
+
+    Input -> output:
+        >>> blocks("One.\\n\\nTwo.")
+        [Block(kind='text', start=0, end=1), Block(kind='text', start=2, end=3)]
+        >>> blocks("Intro:\\n- a\\n- b\\n\\nAfter.")      # the list keeps its trailing blank
+        [Block(kind='text', start=0, end=1), Block(kind='list', start=1, end=4), Block(kind='text', start=4, end=5)]
+
+    Edge cases:
+        >>> blocks("")
+        []
+        >>> blocks("```\\n# code\\n```")                  # nothing inside the fence
+        [Block(kind='code', start=0, end=3)]
+    """
+    return [
+        Block(kind=KIND_OF_TOKEN[token.type], start=token.map[0], end=token.map[1])
+        for token in MARKDOWN.parse(text)
+        if token.level == 0 and token.map and not token.type.endswith("_close")
+    ]
