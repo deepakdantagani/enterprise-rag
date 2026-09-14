@@ -362,24 +362,178 @@ Input is the whole clean text as one string; output is one of the four strings.
 
 ---
 
-## PARSE-4  Label rule as its own module  ⬜
+## PARSE-4  Label rule as its own module  (split into one function per PR)
+
+**Background for all of PARSE-4**
+53% of the clean files (bucket C) have headings with no markup at all: a short bare line
+such as `Overview:` or `High-level design`, usually with a blank line above it. Markdown
+parsers see plain paragraphs there. The **label rule** is our own rule that flags those
+lines as headings. It has two halves:
+
+1. **Shape**: does this one line, on its own, look like a label? (short, no block marker,
+   no closing punctuation, not a sentence, not a `key: long value` field, has a real word)
+2. **Neighbours**: is it in a place where a label can be? (line 1 is always the title;
+   not inside a code fence; not indented; blank line above, or the line above is itself a
+   label; a numbered line only if blank above and below)
+
+Real example, `dsid_0012a01f…scheduler-health-oracle…txt` (bucket C, 143 lines, 20 labels).
+First 24 lines, `HEADING` where the rule fires:
+```
+  0 HEADING 'Scheduler Health Oracle and Self‑Heal Procedures'      <- line 1 is the title
+  1         ''
+  2 HEADING 'Overview:'                                             <- short, blank above
+  3         ''
+  4         'This playbook defines the Scheduler Health Oracle (SHO) — ...'   <- sentence
+  5         ''
+  6 HEADING 'Audience:'
+  7         '- Oncall SREs and runtime engineers'                    <- list item
+  8         '- Kernel and scheduler owners'
+  9         '- Runtime observability and automation engineers'
+ 10         ''
+ 11 HEADING 'Why SHO: problem statement'                            <- key: short value, ok
+ 12         '- Scheduler-level regressions (priority inversion, ...'
+ 13         '- Manual triage is slow; highly-automated remediation ...'
+ 14         '- The SHO provides a standard decision contract and ...'
+ 15         ''
+ 16 HEADING 'High-level design'
+ 17         '1) Signal ingestion: aggregated telemetry from ...'      <- numbered, tight list
+ 18         '2) Feature synthesis: rolling-error rates, ...'
+ ...
+ 23 HEADING 'Detection signals and thresholds (baseline)'
+```
+Golden check for the whole rule: `tests/golden/label_fingerprint.json`, a sha256 over
+`<file> <label count>` for all 5,189 clean files (104,537 labels in total), computed
+from the archived v0 code. Matching it proves the rewrite flags exactly the same lines.
+
+Module: `pipeline/label_rule.py`. Pure (no file IO). Public names have no underscore;
+every function has input -> output doctests.
+
+### PARSE-4a  Reject helpers: looks_like_a_sentence, is_key_with_long_value  ⬜
 
 **Status:** To do
 
 **As a** pipeline developer
-**I want to** the plain-label heading rule in `pipeline/label_rule.py` with only the rule and its helpers
-**So that** the rule can be read, tested, and tuned without the debug and measurement code around it
+**I want to** two small predicates that say "this line is prose" and "this line is a field"
+**So that** the shape test in 4b can reject them with one call each
 
 **Acceptance Criteria (Gherkin)**
-- Given the current `label_flags` tests, When I point them at `pipeline.label_rule`, Then they pass unchanged
-- Given `pipeline/label_rule.py`, When I read it, Then it has no `explain`, no recall check, no corpus loop, no `__main__`
-- Given a line with no blank line above and a non-label above, When I call `label_flags`, Then that line is not a heading
+- Given `"The service restarts on failure"`, When I call `looks_like_a_sentence`, Then `True` (starts with a sentence word: We, This, The, It, If, You, Use, All)
+- Given `"Manual triage is slow, remediation must be conservative, safe, and audited"` (comma and more than 8 words), Then `True`
+- Given `"Testing, canaries and chaos simulation:"` (comma but short), Then `False`
+- Given `"Owner: Identity and Access team second approver required"`, When I call `is_key_with_long_value`, Then `True`
+- Given `"Goals:"` (trailing colon), `"Appendix: Example Mappings"` (short value), `"Stage 4: Expand to Dedicated deployments today"` (label-like key), `"Q: Can we extend a lease mid-window?"`, Then `False` for each
+- Given `"Why SHO: problem statement"` (from the real example), Then `False`
+
+**Example with real data**  (lines from the file above)
+| line | looks_like_a_sentence | is_key_with_long_value |
+|---|---|---|
+| `This playbook defines the Scheduler Health Oracle (SHO) — an auditable...` | True | False |
+| `Why SHO: problem statement` | False | False |
+| `Overview:` | False | False |
 
 **Non-functional Requirements**
-- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+- Shared NFRs at the top of this file. Pure module.
 
 **Dependencies**
-- APIs: `label_flags(lines: list[str]) -> list[bool]`
+- APIs: `looks_like_a_sentence(line: str) -> bool`; `is_key_with_long_value(line: str) -> bool`; regexes `SENTENCE_STARTER`, `KEY_COLON_VALUE`, `LABEL_LIKE_KEY`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-4b  is_label_shaped  ⬜
+
+**Status:** To do
+
+**As a** pipeline developer
+**I want to** one predicate that says whether a single stripped line has the shape of a label
+**So that** the shape half of the rule is testable with no neighbours involved
+
+**Acceptance Criteria (Gherkin)**
+- Given `"Rollout & Risk Controls"`, `"Phase 1: Data-source plumbing (Week 1-3)"`, `"Testing, canaries and chaos simulation:"`, When I call `is_label_shaped`, Then `True`
+- Given a line over 80 characters, or over 12 words, Then `False`
+- Given a line starting with a block marker (`|`, `>`, three backticks, `#`, `---`, `***`, `___`, `{`, `}`, `[`, `]`), Then `False`
+- Given a line ending in `.`, `;` or `,`, Then `False`
+- Given a line where `looks_like_a_sentence` or `is_key_with_long_value` is True (4a), Then `False`
+- Given a line with no two letters in a row (e.g. `--kvcache-async`, `123`), or starting with `-` or `/`, Then `False`
+- Given `""`, Then `False`
+
+**Example with real data**  (first non-blank lines of the file above, shape only)
+```
+'Scheduler Health Oracle and Self‑Heal Procedures'   True
+'Overview:'                                          True
+'This playbook defines the Scheduler Health ...'     False   (sentence)
+'Audience:'                                          True
+'- Oncall SREs and runtime engineers'                False   (starts with -)
+'Why SHO: problem statement'                         True
+'High-level design'                                  True
+```
+Note: shape alone says `Audience:` and `Overview:` are labels; whether they are headings
+also depends on the neighbours (4d). Shape is necessary, not sufficient.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. One early return per reject reason, in the order listed above.
+
+**Dependencies**
+- APIs: `is_label_shaped(line: str) -> bool`; constants `MAX_LABEL_CHARS = 80`, `MAX_LABEL_WORDS = 12`; regexes `BLOCK_MARKER`, `HAS_A_WORD`
+- Uses: PARSE-4a
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-4c  is_numbered_heading  ⬜
+
+**Status:** To do
+
+**As a** pipeline developer
+**I want to** a predicate that tells a numbered heading (`3) Escalation`, alone) from a numbered list item (`1) first` / `2) second`, tight)
+**So that** numbered section titles become headings and numbered lists stay lists
+
+**Acceptance Criteria (Gherkin)**
+- Given lines `["T", "", "3) Escalation", "", "Body."]` and index 2, When I call `is_numbered_heading(lines, 2)`, Then `True` (blank above and below)
+- Given `["T", "", "1) first", "2) second"]` and index 2, Then `False` (line below is not blank)
+- Given `["T", "", "- bullet", "", "Body."]` and index 2, Then `False` (only digits count)
+- Given the numbered line is the last line, Then "below" counts as blank
+- Given `"10.1 Sub-section"` style numbers, Then they count as numbered
+
+**Example with real data**  (file above)
+```
+ 16 HEADING 'High-level design'
+ 17         '1) Signal ingestion: ...'    <- index 17: above is a heading not blank, below is '2) ...' -> False, stays a list
+```
+and from `dsid_a99282d9…service-catalog…txt` a lone `3) Escalation` with blank lines
+around it -> True, it is a section heading.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure.
+
+**Dependencies**
+- APIs: `is_numbered_heading(lines: list[str], i: int) -> bool`; regex `NUMBERED_LINE`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-4d  label_flags  ⬜
+
+**Status:** To do
+
+**As a** pipeline developer
+**I want to** `label_flags(lines)` to return one True/False per line, using 4b for shape and the neighbour rules for position
+**So that** the heading detector for bucket C (PARSE-6) is a single call
+
+**Acceptance Criteria (Gherkin)**
+- Given `["Title", "", "Overview", "", "Body text.", "", "Goals:", "- a"]`, When I call `label_flags`, Then `[True, False, True, False, False, False, True, False]`
+- Given `["Title", "", "Parent", "Child label", "", "Body."]` (stacked labels), Then `[True, False, True, True, False, False]`
+- Given `["Title", "", "Body text.", "Not a label"]` (no blank above), Then `[True, False, False, False]`
+- Given lines inside a code fence, Then all `False`, and the fence lines themselves are `False`
+- Given an indented label-shaped line, Then `False`
+- Given a list item or numbered line, Then the flag is `is_numbered_heading(lines, i)` (4c)
+- Given `[]`, Then `[]`; given a first line that is empty or opens a fence, Then line 1 is not the title
+- Given every clean file, When I count True flags per file and fingerprint them, Then it equals `tests/golden/label_fingerprint.json` (5,189 files, 104,537 labels); skipped if the data folder is missing
+
+**Example with real data**
+The 24-line listing in the PARSE-4 background is exactly `label_flags` on that file:
+20 headings out of 143 lines.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. Output length always equals input length.
+
+**Dependencies**
+- APIs: `label_flags(lines: list[str]) -> list[bool]`; helpers `is_title_line`, `is_fence_marker`, `is_indented`; regex `LIST_ITEM`
+- Uses: PARSE-4b, PARSE-4c
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---

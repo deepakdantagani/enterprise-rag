@@ -1,0 +1,6 @@
+{
+ "files": 5189,
+ "total_labels": 104537,
+ "fingerprint_sha256": "b844a85b336a985780c934b2d086231f79ed00861f9ca0d480fc298d38d23af8",
+ "how": "sha256 over lines '<file> <number of True flags from label_flags(clean lines)>' for every clean file in name order; computed once from archive/v0 structure.label_flags"
+}
