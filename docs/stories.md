@@ -17,7 +17,7 @@ Shared non-functional requirements (apply to every story):
 
 ---
 
-## PARSE-1  Text cleaning rules as a pure module
+## PARSE-1  Text cleaning rules as a pure module  ✅ DONE (merged eee9ef3)
 
 **As a** pipeline developer
 **I want to** call the three cleaning rules (unescape, fix_structure, normalize) from a module that touches no files
