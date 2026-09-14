@@ -280,9 +280,9 @@ code, it does not change output; the golden test is what proves that.
 
 ---
 
-## PARSE-3  Bucket classifier  ⬜
+## PARSE-3  Bucket classifier  ✅
 
-**Status:** To do
+**Status:** Done (merged f1937e3)
 
 **As a** pipeline developer
 **I want to** ask one function which markup style a clean file uses
