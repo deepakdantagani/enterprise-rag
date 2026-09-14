@@ -439,9 +439,9 @@ every function has input -> output doctests.
 - APIs: `looks_like_a_sentence(line: str) -> bool`; `is_key_with_long_value(line: str) -> bool`; regexes `SENTENCE_STARTER`, `KEY_COLON_VALUE`, `LABEL_LIKE_KEY`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-4b  is_label_shaped  ⬜
+### PARSE-4b  is_label_shaped  ✅
 
-**Status:** To do
+**Status:** Done (merged 92bd790)
 
 **As a** pipeline developer
 **I want to** one predicate that says whether a single stripped line has the shape of a label
