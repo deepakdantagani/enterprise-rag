@@ -19,6 +19,19 @@ Shared non-functional requirements (apply to every story):
 - Readable: top-of-file story, one idea per function, input -> output doctests, early returns.
 - No Service Bus, database, or UI in any story below (marked N/A).
 
+Glossary (terms used across the stories; a story should make sense without chat history):
+- **Raw file**: one Confluence page exported as `.txt`, exactly as received, under `data/confluence/raw/`. 5,189 files.
+- **Clean file**: the same page after the cleaning rules, under `data/confluence/clean/`, same file name.
+- **JSON-escaped**: the export wrote the page body as a JSON string, so a line break is the two characters `\n`
+  and a quote is `\"`. 910 of the raw files are like this. "Unescape" turns them back into real characters.
+- **sha256**: a 64-character hex fingerprint of some bytes. Same bytes, same fingerprint; one byte changed, a completely different one. Used to prove which raw bytes produced which clean bytes.
+- **Manifest**: `data/confluence/clean/_manifest.json`, one row per file (see PARSE-2b for the row). It is the audit trail of the cleaning step and the input to the triage gate (PARSE-10).
+- **Golden fingerprint**: `tests/golden/corpus_fingerprint.json`, one sha256 over every clean file's sha256 in manifest order. If a refactor changes any clean file by one byte, this test fails. It is how we know a story preserved behaviour.
+- **Bucket**: which markup style a clean file uses (A `#` headings, B underlined headings, C plain labels, D prose). See PARSE-3.
+- **Label rule**: our own rule that finds headings written as bare lines such as `Overview` with no `#`. See PARSE-4.
+- **markdown-it**: the Markdown parser library (`markdown-it-py`) we use for headings, lists, tables and code fences.
+- **LlamaIndex**: the RAG framework the pipeline must plug into; our chunks become its `TextNode`s. See PARSE-9.
+
 ---
 
 ## PARSE-1  Text cleaning rules as a pure module
@@ -85,9 +98,19 @@ Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 **I want to** `manifest_row(name, raw, result)` to build one manifest entry
 **So that** the row shape is defined in exactly one place
 
+**Background**
+The manifest is a JSON list with one row per file, written next to the clean files as
+`_manifest.json`. Two things read it: the golden-fingerprint test (uses `file` and
+`clean_sha256`) and the triage gate in PARSE-10 (uses `was_escaped` and the line and byte
+counts to spot files that look wrong). This story builds one row from three inputs it is
+handed: the file name, the raw text, and the `CleanResult` from PARSE-1. It reads no files
+and computes no cleaning, so it is a pure function like `clean_text`.
+
 **Acceptance Criteria (Gherkin)**
 - Given a name, raw text and a CleanResult, When I call it, Then I get a dict with keys `file, raw_sha256, clean_sha256, was_escaped, raw_lines, clean_lines, raw_bytes, clean_bytes`
 - Given the same inputs twice, Then the two dicts are equal
+- Given `raw="a\nb"` (no trailing newline) and clean text `"a\nb\n"`, Then `raw_lines=2`, `clean_lines=2`, `raw_bytes=3`, `clean_bytes=4`
+- Given `pipeline/manifest.py`, When I read its imports, Then it imports nothing that reads or writes files (same rule as PARSE-1)
 
 **Example with real data**  (same file)
 ```json
@@ -119,11 +142,18 @@ Return value: `CleanResult(text=<the clean text>, was_escaped=True)`
 
 In the example: `raw_lines` 3 vs `clean_lines` 149 shows the unescape; `raw_bytes` 8555 vs `clean_bytes` 8401 is only the two-character `\n` becoming one real newline, so nothing was lost.
 
+Why `raw_lines` has `+ 1` and `clean_lines` does not: a raw export may or may not end
+with a newline, so counting newlines under-counts by one for a file whose last line has
+no newline; `+ 1` gives the number of lines for the common case. Clean text always ends
+with exactly one newline (PARSE-1 `normalize` guarantees it), so the newline count is
+exactly the line count. These are the formulas the reference implementation used, and the
+golden fingerprint depends only on `clean_sha256`, so they stay as they are.
+
 **Non-functional Requirements**
 - Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
 
 **Dependencies**
-- APIs: `manifest_row(name: str, raw: str, result: CleanResult) -> dict`
+- APIs: `manifest_row(name: str, raw: str, result: CleanResult) -> dict` in `pipeline/manifest.py`; uses PARSE-1 `CleanResult`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ### PARSE-2c  write_clean_corpus
