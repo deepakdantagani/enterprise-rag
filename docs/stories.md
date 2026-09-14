@@ -47,7 +47,7 @@ Shared non-functional requirements (apply to every story):
 
 ### PARSE-2a  clean_one_file
 
-**Status:** To do
+**Status:** Done (merged ef9e404)
 
 **As a** pipeline developer
 **I want to** `clean_one_file(src, dst)` to read one raw file, clean it, and write one clean file
