@@ -288,18 +288,76 @@ code, it does not change output; the golden test is what proves that.
 **I want to** ask one function which markup style a clean file uses
 **So that** the chunker can pick the right heading detector
 
+**Background**
+The clean files are not written one way. Some authors used Markdown `#` headings, some
+underlined their headings with `-----`, most wrote bare labels like `Overview:` with no
+markup at all, and a few wrote plain prose. Each style needs a different heading
+detector (PARSE-5, PARSE-6), so we first need one small, deterministic function that
+says which style a file is: its **bucket**.
+
+The rule is "strongest signal wins", checked in this order, first match returns:
+
+| Bucket | Test (regex, multiline) | Files | Meaning |
+|---|---|---|---|
+| `A_hash` | `^#{1,6} ` anywhere | 1,645 (31.7%) | at least one `# Heading` line |
+| `B_setext` | `^[^\n]{1,80}\n(=+\|-{3,})\s*$` | 781 (15.1%) | a short line over `=====` or `-----` |
+| `C_plain_labels` | `^\s*([-*+]\|\d+[.)]) \|^\|\|^```` | 2,751 (53.0%) | no headings, but lists, tables or code fences |
+| `D_prose` | none of the above | 12 (0.2%) | paragraphs only, or empty |
+
+Order matters: a file with one `#` heading and ten underlined ones is `A_hash`, because
+`#` is the more reliable signal and markdown-it handles both anyway.
+
 **Acceptance Criteria (Gherkin)**
-- Given text with `# ` headings, When I call `bucket(text)`, Then I get `A_hash`
-- Given text with underlined headings only, Then `B_setext`
-- Given text with lists/tables/fences but no headings, Then `C_plain_labels`
-- Given prose only or empty text, Then `D_prose`
-- Given `pipeline/buckets.py`, When I read it, Then it contains `bucket` and its regexes and nothing else
+- Given `"# Title\n\ntext"`, When I call `bucket(text)`, Then I get `"A_hash"`
+- Given `"Title\n-----\n\ntext"`, Then `"B_setext"`
+- Given `"Overview\n\n- item"`, Then `"C_plain_labels"`
+- Given `"Just prose.\n\nMore prose."` or `""`, Then `"D_prose"`
+- Given `"Intro\n-----\n\n# Real\n\n- item"` (both signals), Then `"A_hash"`
+- Given `pipeline/buckets.py`, When I read it, Then it holds `bucket`, its three regexes and nothing else, and no file IO
+- Given every file in `data/confluence/clean/`, When I bucket them all, Then the counts are exactly A 1,645 · B 781 · C 2,751 · D 12 (the v0 result in `_buckets.json`); skipped if the data folder is missing
+
+**Example with real data**  (first 200 characters of one clean file per bucket)
+
+`A_hash` · `dsid_000dce03…customer-security-questionnaire…txt`
+```
+Customer Security Questionnaire Exceptions Policy
+
+## Purpose
+This policy defines how Redwood Inference responds when a customer security questionnaire ...
+```
+`B_setext` · `dsid_00111a3c…fallback-validation…txt`
+```
+Fallback validation and chaos test plan for graceful runtime fallbacks
+
+Purpose
+-------
+This document defines a repeatable validation and chaos-testing plan ...
+```
+`C_plain_labels` · `dsid_0012a01f…scheduler-health-oracle…txt`
+```
+Scheduler Health Oracle and Self‑Heal Procedures
+
+Overview:
+
+This playbook defines the Scheduler Health Oracle (SHO) — an auditable, real‑time decision layer ...
+```
+`D_prose` · `dsid_5e65a1cb…sev2-dedicated-autoscaler…txt`
+```
+Postmortem: SEV-2 Dedicated autoscaler stuck at min capacity (2026-02-09)
+
+The Dedicated autoscaler stopped scaling above min due to a metrics query change ...
+Two Dedicat...
+```
+Input is the whole clean text as one string; output is one of the four strings.
+`bucket(<A text>) == "A_hash"`, and so on for the other three.
 
 **Non-functional Requirements**
 - Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+- Pure: no file IO in `buckets.py` (same rule as PARSE-1 and 2b).
 
 **Dependencies**
-- APIs: `bucket(text: str) -> str` (values above)
+- APIs: `bucket(text: str) -> str`, one of `"A_hash" | "B_setext" | "C_plain_labels" | "D_prose"`, in `pipeline/buckets.py`
+- Uses: nothing from earlier stories (reads the clean text it is handed)
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
