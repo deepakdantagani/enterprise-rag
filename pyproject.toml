@@ -1,0 +1,16 @@
+[project]
+name = "enterprise-rag"
+version = "0.1.0"
+description = "Enterprise knowledge-base RAG on EnterpriseRAG-Bench"
+requires-python = ">=3.11"
+dependencies = [
+  "llama-index-core==0.14.24",
+  "markdown-it-py==4.2.0",
+  "python-dotenv>=1,<2",
+]
+
+[tool.uv]
+cache-dir = ".cache/uv"
+
+[tool.setuptools]
+packages = ["pipeline"]

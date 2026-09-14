@@ -143,7 +143,7 @@ Proposed layout, to create only as implementation reaches each need:
 
 | Artifact | Proposed location/purpose |
 |---|---|
-| Existing originals | `data/confluence/raw/` and `records.jsonl`; retained unchanged. |
+| Existing originals | `data/confluence/raw/`; retained unchanged. Cleaned copies in `data/confluence/clean/` with `_manifest.json`. |
 | Parsed artifacts | `data/confluence/parsed/`; immutable results addressed by document and processing identity. |
 | Run reports | `data/confluence/parsing_runs/`; outcomes and measurements. |
 | Release manifest | Identifies exactly which artifact is active for each document in a corpus snapshot. |
