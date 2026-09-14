@@ -408,9 +408,9 @@ from the archived v0 code. Matching it proves the rewrite flags exactly the same
 Module: `pipeline/label_rule.py`. Pure (no file IO). Public names have no underscore;
 every function has input -> output doctests.
 
-### PARSE-4a  Reject helpers: looks_like_a_sentence, is_key_with_long_value  ⬜
+### PARSE-4a  Reject helpers: looks_like_a_sentence, is_key_with_long_value  ✅
 
-**Status:** To do
+**Status:** Done (merged 087dcda)
 
 **As a** pipeline developer
 **I want to** two small predicates that say "this line is prose" and "this line is a field"
