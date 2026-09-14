@@ -646,6 +646,19 @@ Module: `pipeline/headings.py`. Pure (no file IO).
 **Example with real data**
 The two listings in the PARSE-5 background are `MarkdownHeadings().find_headings(lines)` on those files: 41 and 16 headings.
 
+Why the title rule is needed: markdown-it only finds headings with markup, and the
+export writes the page title as a plain first line in every file.
+
+| Line 0 in the 5,189 clean files | Files |
+|---|---|
+| Markdown heading (`# Title` or underlined) | 0 |
+| Plain text | 5,189 |
+| Blank | 0 |
+
+So without `with_title`, every breadcrumb would lose the page name. Line 0 is always the
+level-1 title unless it is blank; the "already reported" branch only guards a future
+export that writes `# Title`.
+
 **Non-functional Requirements**
 - Shared NFRs. Pure. markdown-it is created once at module level (`MarkdownIt("commonmark").enable("table")`).
 
