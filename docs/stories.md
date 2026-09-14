@@ -841,9 +841,9 @@ Module: `pipeline/blocks.py`. Pure.
 - APIs: `Block(kind: str, start: int, end: int)` with property `lines`; `KIND_OF_TOKEN: dict[str, str]`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-7b  blocks  ⬜
+### PARSE-7b  blocks  ✅
 
-**Status:** To do
+**Status:** Done (merged aff5d17)
 
 **As a** chunker developer
 **I want to** `blocks(text)` to return every top-level block of a clean file, in line order
