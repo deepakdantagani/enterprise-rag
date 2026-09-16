@@ -677,7 +677,7 @@ procedure` (L28) is a parent and `Phase A … Phase D` (L30–L56) are its child
 reported as level 2. Depth signals present in C+D label headings: numbered/Step/Phase/Stage
 prefix 3,741 headings in 2,281 files; a label stacked directly under a label (`FAQ` then
 `Q: …`) 1,513 in 748 files; dotted numbers 16 in 2 files. Chunk boundaries are unaffected;
-only the middle of the breadcrumb is lost. Tracked as PARSE-12.
+only the middle of the breadcrumb is lost. Handled by the stacked-label rule in `to_markdown` (PARSE-8b).
 
 Module: `pipeline/headings.py` (same file as PARSE-5). Pure.
 
