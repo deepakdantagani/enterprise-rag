@@ -880,7 +880,10 @@ The 12-block listing in the PARSE-7 background is `blocks(text)` on the schedule
 Everything so far produces two lists for a file: `blocks(text)` (what must stay whole)
 and `detector_for(text).find_headings(lines)` (where sections start). The chunker turns
 those into chunks: line ranges that never cross a heading, never cut a block, and pack
-up to `max_chars` (1,600, about 400 tokens). No LlamaIndex here; PARSE-9 wraps it.
+up to `max_chars` (2,048, about 512 tokens; PARSE-9 swaps the measure for the embedder's
+tokenizer). No LlamaIndex here; PARSE-9 wraps it. The reasoning behind every number and
+rule is in the [chunker design](design/chunker-system-design.md); this background is the
+short form.
 
 The rules, in the order the code applies them:
 
@@ -894,12 +897,26 @@ The rules, in the order the code applies them:
    structure; e.g. it flags a pipe-less table header row. 58 + 73 cases in the corpus.)
 3. **A heading cuts.** Every honoured heading starts a new section; no chunk spans one.
 4. **Pack, never split.** Blocks in the same section are packed greedily until the next
-   block would push the chunk over `max_chars`. A block bigger than `max_chars` becomes
-   a chunk on its own (2,537 such chunks in the corpus, the largest 10,831 chars: long
-   lists and tables). Size of a block = sum of `len(line) + 1` over its lines.
+   block would push the chunk over `max_chars`. Size of a block = sum of `len(line) + 1`
+   over its lines. A block bigger than `max_chars` goes through rule 6 first.
+   - **4b. A lead-in sticks to what follows.** A one-line block immediately followed by
+     a list is never the last block of a chunk; it moves to the next chunk with its
+     list. (Runbooks write `8) Pin a model version` and then `-` bullets at column 0;
+     markdown-it makes them two blocks, and the naive packer cut between them.)
 5. **Breadcrumb from levels.** Each chunk carries `heading_path`, the stack of heading
    texts above it: push the heading, popping any heading of equal or deeper level first.
    Level 1 is the title, so the path always starts with it.
+6. **Oversized blocks split by shape.** A `list` bigger than `max_chars` is split at
+   top-level item boundaries only, so nested bullets stay with their step; a `table` is
+   split at row boundaries and every piece repeats the header row and separator. `code`,
+   `text` and `quote` are never split; they become a chunk on their own. At 2,048 chars
+   the corpus has 271 such blocks: 221 lists, 34 tables, 9 paragraphs, 7 code fences,
+   largest 10,722 chars.
+7. **Never merge; carry the parent.** Each chunk records `section_line` (the honoured
+   heading it sits under) and `parent_line` (that heading's parent, by level). PARSE-9
+   turns those into ids and `PARENT`/`CHILD` relationships so retrieval can return a
+   whole parent section when several of its children match. Sections are never merged
+   at chunk time.
 
 Where this differs from the archived v0 chunker (v0 fingerprint `570582ca…cb06`,
 96,360 chunks, median 19 per file, median 479 chars, p95 1,453):
@@ -908,13 +925,17 @@ Where this differs from the archived v0 chunker (v0 fingerprint `570582ca…cb06
 |---|---|---|
 | Headings at the start of a `list` block are honoured (rule 1) | v0 only split labels out of paragraphs, so a lone `3) Escalation` (a one-item list to markdown-it) never became a heading; the 4c rule was measured but never reached a chunk | 1,011 headings in 246 files |
 | Stacked-label nesting moves into `LabelHeadings` (PARSE-12a) | v0 did it inside the chunker with a "native" flag on each heading; levels belong to the detector | same paths as v0 |
+| `max_chars` 1,600 → 2,048 | 512 tokens is the industry default band and every hosted embedder accepts far more; 97% → 98% of sections fit whole | about 3,500 fewer split pieces |
+| Oversized lists and tables are split (rule 6) | 221 of the oversized blocks are runbooks written as one numbered list where each step is the unit a question targets | 271 blocks, 0.3% of chunks |
+| Lead-in sticks (rule 4b) | found by dry run on a PRD: a step title ended chunk 1 and its bullets started chunk 2 | every runbook with `N) title` + bullets |
+| `section_line` / `parent_line` on every chunk (rule 7) | parent-child retrieval is the standard answer to "small chunks lack context"; the chunker's cost is two ints | none on chunk boundaries |
 
 The PARSE-8e golden is generated from the new code after 8a–8d merge, and the story
 records the exact diff against v0 (files identical, files changed, and why).
 
 Real example, `dsid_0012a01f…scheduler-health-oracle…txt` (143 lines, 20 headings, 22 chunks in v0). First six:
 ```
-Chunk(start=4,  end=5,  heading_path=['Scheduler Health Oracle and Self‑Heal Procedures', 'Overview:'],  block_kinds=['text'])   441 chars
+Chunk(start=4,  end=5,  heading_path=['Scheduler Health Oracle and Self‑Heal Procedures', 'Overview:'],  block_kinds=['text'], section_line=2, parent_line=0)   441 chars
 Chunk(start=7,  end=11, heading_path=[..., 'Audience:'],                                   block_kinds=['list'])   176 chars
 Chunk(start=12, end=16, heading_path=[..., 'Why SHO: problem statement'],                  block_kinds=['list'])   457 chars
 Chunk(start=17, end=23, heading_path=[..., 'High-level design'],                           block_kinds=['list'])   780 chars
@@ -932,11 +953,12 @@ Module: `pipeline/chunker.py`. Pure. Chunk text is assembled in PARSE-9, not her
 **Status:** To do
 
 **As a** RAG developer
-**I want to** a `Chunk(start, end, heading_path, block_kinds)` value and `block_size(lines, block)`
+**I want to** a `Chunk(start, end, heading_path, block_kinds, section_line, parent_line)` value and `block_size(lines, block)`
 **So that** the output shape and the one size measure are fixed before any packing logic
 
 **Acceptance Criteria (Gherkin)**
-- Given `Chunk(start=7, end=11, heading_path=["T", "Audience:"], block_kinds=["list"])`, When I read it, Then the fields come back; it is frozen and compared by value
+- Given `Chunk(start=7, end=11, heading_path=["T", "Audience:"], block_kinds=["list"], section_line=6, parent_line=0)`, When I read it, Then the fields come back; it is frozen and compared by value
+- Given a file whose line 0 is not a heading, Then `section_line` and `parent_line` may be `None`
 - Given lines `["ab", "", "cde"]` and `Block("text", 0, 3)`, When I call `block_size`, Then `3 + 1 + 4 = 8` (each line counts `len + 1` for its newline)
 - Given a block of zero lines, Then `0`
 
@@ -947,7 +969,7 @@ The `Audience:` list, `Block("list", 7, 11)` in the scheduler file: `block_size`
 - Shared NFRs. Pure. `heading_path` is stored as a tuple so the value stays hashable.
 
 **Dependencies**
-- APIs: `Chunk(start: int, end: int, heading_path: tuple[str, ...], block_kinds: tuple[str, ...])`; `block_size(lines: list[str], block: Block) -> int`
+- APIs: `Chunk(start: int, end: int, heading_path: tuple[str, ...], block_kinds: tuple[str, ...], section_line: int | None, parent_line: int | None)`; `block_size(lines: list[str], block: Block) -> int`
 - Uses: PARSE-7a `Block`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
@@ -1014,18 +1036,19 @@ Scheduler file, heading 2 `Overview:` (level 2) -> `('Scheduler Health Oracle an
 **So that** the packing rule is testable with hand-made blocks and a set of cut lines
 
 **Acceptance Criteria (Gherkin)**
-- Given three blocks of sizes 500, 500, 500 and `max_chars=1600`, no cuts, Then one run of three
-- Given sizes 900, 900, Then two runs (the second would push over 1,600)
+- Given three blocks of sizes 500, 500, 500 and `max_chars=2048`, no cuts, Then one run of three
+- Given sizes 1100, 1100, Then two runs (the second would push over 2,048)
+- Given sizes 1900, 30 (one line), 400 (a list), Then two runs and the 30-char lead-in is in the second run with its list (rule 4b)
 - Given one block of size 5,000, Then one run of one; given 100 then 5,000 then 100, Then three runs
 - Given blocks at lines 0-2 and 3-5 and a cut at line 3, Then two runs even though both fit
 - Given `[]`, Then `[]`
-- Given every fixture file, Then every content block is in exactly one run, runs are in order, and no run contains a cut line strictly inside it
+- Given every fixture file, Then every content block is in exactly one run, runs are in order, no run contains a cut line strictly inside it, and no run ends with a one-line block that is followed by a list
 
 **Example with real data**
 Scheduler file, section `Runbook: automated remediation decision flow` (lines 39-53): blocks `list` (39-46), `list` (46-51), `text` (51-53) total 1,118 chars, so one run. The next heading at line 54 is a cut, so the run ends there.
 
 **Non-functional Requirements**
-- Shared NFRs. Pure. `cuts` is a set of line numbers (the honoured heading lines); a block starts a new run if any cut lies in `(previous block end - 1, block.start]`.
+- Shared NFRs. Pure. `cuts` is a set of line numbers (the honoured heading lines); a block starts a new run if any cut lies in `(previous block end - 1, block.start]`. Rule 4b: when a run would end on a one-line block whose next block is a `list`, that block opens the next run instead.
 
 **Dependencies**
 - APIs: `pack(lines: list[str], blocks: list[Block], cuts: set[int], max_chars: int) -> list[list[Block]]`
@@ -1037,7 +1060,7 @@ Scheduler file, section `Runbook: automated remediation decision flow` (lines 39
 **Status:** To do
 
 **As a** RAG developer
-**I want to** `chunk(lines, blocks, headings, max_chars=1600)` to compose 8b, 8c, 8d into `Chunk` values
+**I want to** `chunk(lines, blocks, headings, max_chars=2048)` to compose 8b, 8f, 8g, 8c, 8h, 8d into `Chunk` values
 **So that** PARSE-9 has one call to make
 
 **Acceptance Criteria (Gherkin)**
@@ -1051,11 +1074,88 @@ Scheduler file, section `Runbook: automated remediation decision flow` (lines 39
 The PARSE-8 background listing. `block_kinds` is the sorted set of kinds in the run, e.g. `('list', 'text')` for chunk 7.
 
 **Non-functional Requirements**
-- Shared NFRs. Pure. About 15 lines: the composition only, no rule of its own.
+- Shared NFRs. Pure. About 20 lines: the composition only, no rule of its own. Order: content_blocks → split_oversized → pack → Chunk values with paths and parent lines.
 
 **Dependencies**
-- APIs: `chunk(lines: list[str], blocks: list[Block], headings: list[Heading], max_chars: int = 1600) -> list[Chunk]`
-- Uses: PARSE-8a-d, PARSE-12a
+- APIs: `chunk(lines: list[str], blocks: list[Block], headings: list[Heading], max_chars: int = 2048) -> list[Chunk]`
+- Uses: PARSE-8a-h, PARSE-12a
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-8f  split_list  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** `split_list(lines, block, max_chars)` to cut an oversized `list` block at top-level item boundaries (rule 6)
+**So that** a runbook written as one numbered list becomes one chunk per step, and a nested bullet never leaves its step
+
+**Acceptance Criteria (Gherkin)**
+- Given a `list` block of 2,618 chars with top-level items `1.`, `2.`, `3.` and nested `-` bullets under each, and `max_chars=2048`, Then three blocks, each starting at a top-level item line and containing its nested lines
+- Given a `list` block that fits in `max_chars`, Then `[block]` unchanged
+- Given a `list` block whose single top-level item is itself bigger than `max_chars`, Then `[block]` unchanged (never cut inside an item)
+- Given top-level items of sizes 900, 900, 900 and `max_chars=2048`, Then two blocks: items 1-2 and item 3 (items are packed, not one per block)
+- Given every oversized `list` block in the corpus (221 at 2,048), Then the pieces cover the block's lines exactly, in order, and every piece starts on a top-level item line
+
+**Example with real data**
+`dsid_ad85c50d…` line 29, a 36-line, 2,618-char list: `1. Detection and triage`, `2. Immediate containment`, `3. Controlled healing`, each with 3-4 nested bullets. Result: three blocks at the three numbered lines.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. A top-level item line is a line whose list marker starts at the block's own indent.
+
+**Dependencies**
+- APIs: `split_list(lines: list[str], block: Block, max_chars: int) -> list[Block]`
+- Uses: PARSE-7a `Block`, PARSE-8a `block_size`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-8g  split_table  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** `split_table(lines, block, max_chars)` to cut an oversized `table` block at row boundaries, repeating the header on every piece (rule 6)
+**So that** a value in row 40 still sits under its column names in the chunk that carries it
+
+**Acceptance Criteria (Gherkin)**
+- Given a `table` block of 60 rows, 4,000 chars, and `max_chars=2048`, Then two or more pieces; each piece after the first is a `TableSlice(block, header_lines=(h, sep), start, end)` so the chunk can render the header again without the lines existing twice in the file
+- Given a `table` that fits, Then `[block]` unchanged
+- Given a `table` whose header plus one row exceeds `max_chars`, Then one row per piece, never a cut inside a row
+- Given every oversized `table` in the corpus (34 at 2,048), Then the pieces cover the body rows exactly, in order
+
+**Example with real data**
+The largest corpus table, `dsid_…` (to be named when the story is picked up): 58 rows, 5,100 chars, header `| Parameter | Description | Default |`. Result: three pieces, each with the header row and separator, rows 1-22, 23-44, 45-58.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. The repeated header is a reference to the header lines, not copied text: `Chunk.start/end` stay honest line ranges and PARSE-9 renders the header when it builds node text.
+
+**Dependencies**
+- APIs: `split_table(lines: list[str], block: Block, max_chars: int) -> list[Block | TableSlice]`
+- Uses: PARSE-7a `Block`, PARSE-8a `block_size`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### PARSE-8h  parent_lines  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** `parent_lines(headings)` to give each heading the line of its parent heading (rule 7)
+**So that** a chunk can name its parent section by line, and PARSE-9 can build parent nodes and `PARENT`/`CHILD` links without re-deriving levels
+
+**Acceptance Criteria (Gherkin)**
+- Given `[Heading(0,1,"T"), Heading(2,2,"A"), Heading(8,2,"B")]`, Then `[None, 0, 0]`
+- Given levels 1, 2, 3, 2, Then the level-3 heading's parent is the first level-2 line, and the last level-2's parent is line 0
+- Given levels 1, 3 (a jump), Then the level-3 heading's parent is line 0: parent is by stack, not by level arithmetic
+- Given `[]`, Then `[]`
+- Given every clean file, Then every non-title heading has a parent, and the parent's line is smaller than its own
+
+**Example with real data**
+Playbook file: `### A. Confirm you are targeting…` (level 3) → parent is the line of `## Preconditions / Setup checklist`; that heading's parent is line 0, the title.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. Same stack walk as PARSE-8c; the two functions may share a helper.
+
+**Dependencies**
+- APIs: `parent_lines(headings: list[Heading]) -> list[int | None]`, same length as the input
+- Uses: PARSE-5a
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
@@ -1064,21 +1164,80 @@ The PARSE-8 background listing. `block_kinds` is the sorted set of kinds in the 
 
 **Status:** To do
 
+**Background**
+PARSE-8 ends with `list[Chunk]`: line ranges plus a `heading_path`, no framework types.
+This story is the only place the pipeline touches LlamaIndex. It maps one `Chunk` to one
+`TextNode` and nothing else — no chunking rules, no size logic.
+
+Two things the framework already does that the archived v0 adapter did by hand, and that
+we do its way this time:
+
+1. **The breadcrumb is metadata, not text.** v0 built `"<title> > <section>\n\n" + body`
+   and stored that in `node.text`. LlamaIndex instead injects metadata into the text at
+   read time: `node.get_content(MetadataMode.EMBED)` and `MetadataMode.LLM` render
+   `text_template` with the metadata that is not excluded, while `node.text` stays the
+   exact source lines. Doing it v0's way means the breadcrumb is welded into the stored
+   text, cannot be excluded from the LLM but kept for the embedder, and is counted twice
+   once metadata rendering is on. So: `text` is the body, `heading_path` and `title` are
+   metadata, and `text_template` puts them back in front for the embedder.
+
+2. **Nodes come from `build_nodes_from_splits`.** `llama_index.core.node_parser.node_utils.build_nodes_from_splits(splits, doc, id_func=self.id_func)`
+   wires the `SOURCE` relationship back to the `Document`, the `PREVIOUS`/`NEXT` links
+   between neighbours, metadata inheritance and node ids. v0 constructed `TextNode(...)`
+   directly and set only `SOURCE`, so prev/next were missing. We keep the per-chunk
+   metadata by setting it on the returned nodes.
+
+Both are settings on `TextNode`, which is `Document`'s base class — the same
+`excluded_embed_metadata_keys` / `excluded_llm_metadata_keys` the loader already uses.
+
+Three more things the [chunker design](design/chunker-system-design.md) puts here:
+
+3. **Ids are stable.** LlamaIndex's default `id_func` is `uuid4()`, so a rerun gives
+   new ids and the vector store cannot tell "unchanged" from "new". We pass
+   `id_func = sha256(f"{doc sha256}:{start}:{end}")`. Same bytes, same range, same id.
+4. **Parent nodes.** Every chunk carries `section_line` and `parent_line`. For each
+   section that has children, the adapter builds one parent `TextNode`, id
+   `sha256(f"{doc sha256}:section:{line}")`, text = its own body plus its children in
+   order, stored in the docstore only and never embedded. Each chunk gets a `PARENT`
+   relationship to it and the parent a `CHILD` to each chunk. `AutoMergingRetriever`
+   uses these to return a whole section when most of its children match.
+5. **Relationships are for retrieval, not embedding.** `SOURCE`, `PREVIOUS`, `NEXT`
+   come from `build_nodes_from_splits`; `PARENT`/`CHILD` from point 4. None of them is
+   in the embed text. Only `title` and `heading_path` are.
+
 **As a** RAG developer
 **I want to** a `NodeParser` that wraps the chunker and produces `TextNode`s
 **So that** the pipeline plugs into LlamaIndex without the chunker depending on it
 
 **Acceptance Criteria (Gherkin)**
-- Given a `Document`, When I call `ConfluenceNodeParser().get_nodes_from_documents([doc])`, Then each node's text starts with `"<title> > <section>\n\n"` and metadata has `line_start`, `line_end`, `heading_path`
+- Given a `Document`, When I call `ConfluenceNodeParser().get_nodes_from_documents([doc])`, Then each node's `text` is the chunk's source lines only, with no breadcrumb prefix
+- Given the same nodes, When I call `node.get_content(MetadataMode.EMBED)`, Then it starts with `"<title> > <section>\n\n"`
+- Given the same nodes, Then metadata has `line_start`, `line_end`, `heading_path`, and `line_start`/`line_end` are in both exclusion lists so neither the embedder nor the LLM reads line numbers
+- Given two consecutive nodes from one `Document`, Then each has a `SOURCE` relationship to that document, and the first has `NEXT` to the second and the second `PREVIOUS` to the first
+- Given the same `Document` parsed twice, Then every node id is identical between the two runs; given one changed line, Then only the chunks whose `[start, end)` moved or changed get new ids
+- Given the playbook fixture, When I parse it, Then the three `### A/B/C` chunks each have a `PARENT` relationship to one node whose text is their three bodies in order, that node has three `CHILD` relationships, and it is in the returned docstore nodes but excluded from the embed list
+- Given any node, When I call `node.get_content(MetadataMode.EMBED)`, Then it contains no ids, line numbers or relationship fields, only the path and the text
 - Given `nodes.py`, When I read it, Then it contains no chunking rules, only the mapping `Chunk -> TextNode`
-- Given the current `test_nodes.py`, Then it passes unchanged
+- Given the archived `test_nodes.py`, Then it passes with its two breadcrumb assertions re-pointed from `node.text` to `node.get_content(MetadataMode.EMBED)`; every other assertion unchanged
+
+**Example with real data**
+The `Goals` chunk of `typical.md`, which v0 asserted on:
+```
+node.text                              "- Provide a repeatable acceptance checklist\n- ..."
+node.metadata["title"]                 "Telemetry Normalization and Fidelity Acceptance Playbook for Enterprise Tenants"
+node.metadata["heading_path"]          ["Telemetry Normalization ...", "Goals"]
+node.get_content(MetadataMode.EMBED)   "Telemetry Normalization ... > Goals\n\n- Provide a repeatable ..."
+```
+The last line is byte-for-byte what v0 stored in `text`; only where it lives changed.
 
 **Non-functional Requirements**
 - Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
+- `nodes.py` is the only module in `pipeline/` allowed to import `llama_index`.
+- Node ids come from the parser's `id_func`, so a rerun over unchanged input gives the same ids.
 
 **Dependencies**
-- APIs: `ConfluenceNodeParser(max_chars=1600)`
-- Uses: PARSE-6, PARSE-7, PARSE-8
+- APIs: `ConfluenceNodeParser(max_chars=2048)`; `parse_nodes(...) -> (leaf_nodes, parent_nodes)` so the caller embeds leaves and stores both
+- Uses: PARSE-6, PARSE-7, PARSE-8 (incl. 8h `parent_lines`); `llama_index.core.node_parser.NodeParser`, `build_nodes_from_splits`, `llama_index.core.schema.MetadataMode`, `NodeRelationship.PARENT/CHILD`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
@@ -1235,3 +1394,122 @@ cleaned, bucketed or chunked. It attaches in PARSE-9 when `TextNode`s are built.
 - APIs: `doc_type(title: str) -> str` in `pipeline/doc_type.py`
 - Uses: PARSE-9
 - Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## PARSE-14  Assumption audit: every chunking assumption as a corpus count  ⬜
+
+**Status:** To do
+
+**Background**
+The chunker design ([design doc](design/chunker-system-design.md)) rests on assumptions
+about the parser's output, and dry runs on single pages keep finding cases where the
+parser breaks one: a stray `#` flipping a label file to bucket A, a label with the colon
+in the middle, a step title separated from its bullets. Reading pages one at a time
+finds these by luck. This story turns each assumption into a function that scans the
+corpus and reports how often it fails, with examples, so the design is checked by
+numbers and re-checked after every parser change.
+
+**As a** pipeline developer
+**I want to** `tools/audit.py` to print one row per assumption: name, failing files, share of corpus, three example files with line numbers
+**So that** a parser change can be judged by which rows it moves, and no assumption in the design is unmeasured
+
+**Acceptance Criteria (Gherkin)**
+- Given the clean corpus, When I run `uv run python tools/audit.py`, Then I get a table with at least these rows, each a pure function `audit_<name>(text) -> list[Finding]` in `tools/audits/`:
+  - `bucket_flip`: bucket A with ≤ 2 `#` headings and ≥ 5 `Label:` lines (design: 256 files today)
+  - `mid_colon_label`: a line `Xxx: Yyy` directly followed by a list or numbered block and not detected as a heading
+  - `false_heading`: a label-rule heading that looks like code, YAML or a table row (`=`, `|`, `key: value` with lowercase key)
+  - `heading_in_block`: a detected heading inside a `table`, `code` or `quote` block (rule 2 cases)
+  - `heading_only_section`: a heading with no body (design: 11,343 today)
+  - `section_over_budget`: sections over `max_chars` (design: 1,698 at 2,048)
+  - `block_over_budget`: single blocks over `max_chars` by kind (design: 271)
+  - `lead_in_block`: a one-line block directly followed by a list (rule 4b population)
+  - `colon_section`: a section whose body ends with `:` and has no list, table or code (design: 133)
+- Given a row, When I read it, Then the count matches the number quoted in the design doc for that assumption on the current parser, or the design doc is updated in the same PR
+- Given `pipeline/`, When I grep for `audit`, Then there are no matches (tools only)
+- Given `--json`, Then the same table as JSON, so a later story can diff two runs
+
+**Example with real data**
+`bucket_flip` on `…runbook-authoring-and-maintenance-guidelines…`: one `## - 2026-01-12` line inside a template; 3 headings found, 20 `Label:` lines present. `mid_colon_label` on `…privilege-approval-safeguards…` line 77: `Operational Runbook: Approving a Level 3 Grant (step-by-step)` followed by `1)`.
+
+**Non-functional Requirements**
+- Shared NFRs. Each audit is one pure function over one file's text, about 15 lines, with doctests; the runner only loops and prints. Full corpus under 60 s.
+- Every new assumption added to the design doc gets an audit row in the same PR.
+
+**Dependencies**
+- Uses: PARSE-3, PARSE-6, PARSE-7, PARSE-8a
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## PARSE-15  Bucket by the dominant signal  ⬜
+
+**Status:** To do
+
+**Background**
+`bucket()` returns `A_hash` on the first `#` heading it sees. The chunk dry run on
+"Runbook authoring and maintenance guidelines" showed the cost: one `## - 2026-01-12`
+line inside a pasted template made the whole page a `#` file, the label rule never ran,
+and 20 `Label:` headings were missed, so the page's first 1,500 chars became one chunk
+and the last three chunks were filed under "- 2026-01-12: Minor wording updates". The
+corpus has 256 such files (bucket A, ≤ 2 `#` lines, ≥ 5 `Label:` lines), about 5%.
+
+**As a** pipeline developer
+**I want to** `bucket()` to pick the style with the most headings, not the first style that matches
+**So that** a stray `#` or `---` inside a template or code sample cannot hide a page's real headings
+
+**Acceptance Criteria (Gherkin)**
+- Given a file with one `#` heading and twenty `Label:` lines, When I call `bucket`, Then `C_plain_labels`
+- Given a file with twelve `#` headings and two `Label:` lines, Then `A_hash`
+- Given the current 13 fixtures, Then every bucket is unchanged
+- Given every clean file, Then the number of files whose bucket changes is reported in the PR, with the PARSE-14 `bucket_flip` row before and after (expected: 256 → under 20)
+- Given the corpus golden for headings, Then it changes only for files whose bucket changed, and the PR lists them
+
+**Example with real data**
+`…runbook-authoring-and-maintenance-guidelines…`: 1 `#` line, 1 setext `---`, 20 labels. Before: 3 headings. After: 21 headings, and `Summary:` is chunk 1.
+
+**Non-functional Requirements**
+- Shared NFRs. The count is over heading-shaped lines only; a `#` inside a fenced code block does not count.
+
+**Dependencies**
+- APIs: `bucket(text: str) -> str`, same signature
+- Uses: PARSE-3, PARSE-14 `bucket_flip`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## PARSE-16  Chunking validation: recall@20 on the benchmark questions  ⬜
+
+**Status:** To do
+
+**Background**
+The chunker design bets that small section chunks (median ≈ 90 tokens) with a heading
+path retrieve better than larger ones, and hedges with parent-child. Section 9 of the
+[design doc](design/chunker-system-design.md) lays out the evidence for and against.
+Only a measurement settles it. EnterpriseRAG-Bench ships 500 questions in
+`questions.jsonl`, each with ground-truth documents; 5,189 of the documents are our
+Confluence pages. This story is the measurement, restricted to questions whose
+ground-truth documents are Confluence pages.
+
+**As a** RAG developer
+**I want to** one script that builds three indexes from the same embedder and reports recall@20 per index and per question category
+**So that** the chunk size and the parent-child choice are decided by numbers on the benchmark's own questions
+
+**Acceptance Criteria (Gherkin)**
+- Given the three variants (A: this design, small chunks; B: A plus `AutoMergingRetriever`; C: `SentenceSplitter(chunk_size=512)` over whole pages as the baseline), When I run `tools/validate_chunking.py`, Then I get one table: variant × category → recall@20, plus the overall number
+- Given a question, Then recall@20 is 1 if any of the top 20 retrieved nodes has `doc_id` in the question's ground-truth documents, else 0
+- Given the run, Then the embedder, its version, the dimension, and the chunk parameters are printed at the top, and the same run twice gives the same table
+- Given the result, Then the design doc's section 9 is updated with the table and the chosen default in the same PR
+- Given "Info Not Found" and "High Level" questions (no ground truth), Then they are excluded and the count of excluded questions is printed
+
+**Example with real data**
+To be filled from the first run; the story records the table verbatim.
+
+**Non-functional Requirements**
+- One embed per variant, under $2 each on OpenAI text-embedding-3-large at list price; cache embeddings on disk so a rerun with a different `k` is free.
+- Deterministic given the cached embeddings.
+
+**Dependencies**
+- Uses: PARSE-9, the benchmark's `questions.jsonl`, one hosted embedder, an in-process vector store (`SimpleVectorStore` is enough at 95k vectors)
+- Service Bus: N/A · Database: N/A · UI: N/A
+
