@@ -4,6 +4,21 @@ The chunker, PARSE-8: `Heading` and `Block` lists in, `Chunk` values out. Design
 
 Shared rules, the story template and the glossary are in [stories.md](../stories.md); every story here follows them.
 
+## Build order and one-liners
+
+Build in this order; each row is one PR. The heading of every sub-story below carries its order number.
+
+| # | Story | One line |
+|---|---|---|
+| 1 | PARSE-8a Chunk value and block_size | the output shape and the one size measure: `Chunk(start, end, heading_path, block_kinds, section_line, parent_line)` and `block_size` = sum of `len(line)+1` |
+| 2 | PARSE-8c heading_paths | each heading gets its breadcrumb by walking a level stack; level 1 is the title |
+| 3 | PARSE-8h parent_lines | each heading gets the line of its parent heading from the same stack, so a chunk can name its parent section |
+| 4 | PARSE-8b content_blocks | drop heading blocks and heading lines at the top of a block; a heading inside a table or code stays content (rules 1 and 2) |
+| 5 | PARSE-8f split_list | an oversized list is cut only at top-level items, packed up to the budget, nested bullets never leave their step (rule 6) |
+| 6 | PARSE-8g split_table | an oversized table is cut at rows and every piece re-renders the header row (rule 6) |
+| 7 | PARSE-8d pack | blocks in one section are packed greedily to the budget, never across a heading; a one-line lead-in never ends a chunk (rules 3, 4, 4b) |
+| 8 | PARSE-8e chunk | the composition: content_blocks → split → pack → Chunk values with paths and parent lines; one call for PARSE-9 |
+
 ---
 
 ## PARSE-8  Chunker  (split into one function per PR)
@@ -80,7 +95,7 @@ in any chunk's lines. Chunk 7 (lines 39-53, 1,118 chars) packs three blocks, `li
 
 Module: `pipeline/chunker.py`. Pure. Chunk text is assembled in PARSE-9, not here.
 
-### PARSE-8a  Chunk value and block_size  ⬜
+### 1. PARSE-8a  Chunk value and block_size  ⬜
 
 **Status:** To do
 
@@ -105,7 +120,59 @@ The `Audience:` list, `Block("list", 7, 11)` in the scheduler file: `block_size`
 - Uses: PARSE-7a `Block`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-8b  content_blocks  ⬜
+### 2. PARSE-8c  heading_paths  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** `heading_paths(headings)` to give each heading its breadcrumb (rule 5)
+**So that** the chunk's `heading_path` is one lookup, and the stack logic is testable on headings alone
+
+**Acceptance Criteria (Gherkin)**
+- Given `[Heading(0,1,"T"), Heading(2,2,"A"), Heading(8,2,"B")]`, Then `[("T",), ("T","A"), ("T","B")]`
+- Given levels 1, 2, 3, 2, Then the level-3 heading's path has three entries and the last level-2 heading's path has two (the level 3 was popped)
+- Given levels 1, 3 (a jump), Then `("T", "X")`: depth is by stack, not by level number
+- Given `[]`, Then `[]`
+- Given every clean file, Then every path starts with the title when line 0 is a heading
+
+**Example with real data**
+Scheduler file, heading 2 `Overview:` (level 2) -> `('Scheduler Health Oracle and Self‑Heal Procedures', 'Overview:')`. A bucket A file with `## Scope` then `### Details`: `('Title', 'Scope', 'Details')`.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure.
+
+**Dependencies**
+- APIs: `heading_paths(headings: list[Heading]) -> list[tuple[str, ...]]`, same length as the input
+- Uses: PARSE-5a
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### 3. PARSE-8h  parent_lines  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** `parent_lines(headings)` to give each heading the line of its parent heading (rule 7)
+**So that** a chunk can name its parent section by line, and PARSE-9 can build parent nodes and `PARENT`/`CHILD` links without re-deriving levels
+
+**Acceptance Criteria (Gherkin)**
+- Given `[Heading(0,1,"T"), Heading(2,2,"A"), Heading(8,2,"B")]`, Then `[None, 0, 0]`
+- Given levels 1, 2, 3, 2, Then the level-3 heading's parent is the first level-2 line, and the last level-2's parent is line 0
+- Given levels 1, 3 (a jump), Then the level-3 heading's parent is line 0: parent is by stack, not by level arithmetic
+- Given `[]`, Then `[]`
+- Given every clean file, Then every non-title heading has a parent, and the parent's line is smaller than its own
+
+**Example with real data**
+Playbook file: `### A. Confirm you are targeting…` (level 3) → parent is the line of `## Preconditions / Setup checklist`; that heading's parent is line 0, the title.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. Same stack walk as PARSE-8c; the two functions may share a helper.
+
+**Dependencies**
+- APIs: `parent_lines(headings: list[Heading]) -> list[int | None]`, same length as the input
+- Uses: PARSE-5a
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### 4. PARSE-8b  content_blocks  ⬜
 
 **Status:** To do
 
@@ -133,33 +200,58 @@ Scheduler file: `Block("text", 2, 3)` (`Overview:`) is dropped, `Block("list", 7
 - Uses: PARSE-7a, PARSE-5a
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-8c  heading_paths  ⬜
+### 5. PARSE-8f  split_list  ⬜
 
 **Status:** To do
 
 **As a** RAG developer
-**I want to** `heading_paths(headings)` to give each heading its breadcrumb (rule 5)
-**So that** the chunk's `heading_path` is one lookup, and the stack logic is testable on headings alone
+**I want to** `split_list(lines, block, max_chars)` to cut an oversized `list` block at top-level item boundaries (rule 6)
+**So that** a runbook written as one numbered list becomes one chunk per step, and a nested bullet never leaves its step
 
 **Acceptance Criteria (Gherkin)**
-- Given `[Heading(0,1,"T"), Heading(2,2,"A"), Heading(8,2,"B")]`, Then `[("T",), ("T","A"), ("T","B")]`
-- Given levels 1, 2, 3, 2, Then the level-3 heading's path has three entries and the last level-2 heading's path has two (the level 3 was popped)
-- Given levels 1, 3 (a jump), Then `("T", "X")`: depth is by stack, not by level number
-- Given `[]`, Then `[]`
-- Given every clean file, Then every path starts with the title when line 0 is a heading
+- Given a `list` block of 2,618 chars with top-level items `1.`, `2.`, `3.` and nested `-` bullets under each, and `max_chars=2048`, Then three blocks, each starting at a top-level item line and containing its nested lines
+- Given a `list` block that fits in `max_chars`, Then `[block]` unchanged
+- Given a `list` block whose single top-level item is itself bigger than `max_chars`, Then `[block]` unchanged (never cut inside an item)
+- Given top-level items of sizes 900, 900, 900 and `max_chars=2048`, Then two blocks: items 1-2 and item 3 (items are packed, not one per block)
+- Given every oversized `list` block in the corpus (221 at 2,048), Then the pieces cover the block's lines exactly, in order, and every piece starts on a top-level item line
 
 **Example with real data**
-Scheduler file, heading 2 `Overview:` (level 2) -> `('Scheduler Health Oracle and Self‑Heal Procedures', 'Overview:')`. A bucket A file with `## Scope` then `### Details`: `('Title', 'Scope', 'Details')`.
+`dsid_ad85c50d…` line 29, a 36-line, 2,618-char list: `1. Detection and triage`, `2. Immediate containment`, `3. Controlled healing`, each with 3-4 nested bullets. Result: three blocks at the three numbered lines.
 
 **Non-functional Requirements**
-- Shared NFRs. Pure.
+- Shared NFRs. Pure. A top-level item line is a line whose list marker starts at the block's own indent.
 
 **Dependencies**
-- APIs: `heading_paths(headings: list[Heading]) -> list[tuple[str, ...]]`, same length as the input
-- Uses: PARSE-5a
+- APIs: `split_list(lines: list[str], block: Block, max_chars: int) -> list[Block]`
+- Uses: PARSE-7a `Block`, PARSE-8a `block_size`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-8d  pack  ⬜
+### 6. PARSE-8g  split_table  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** `split_table(lines, block, max_chars)` to cut an oversized `table` block at row boundaries, repeating the header on every piece (rule 6)
+**So that** a value in row 40 still sits under its column names in the chunk that carries it
+
+**Acceptance Criteria (Gherkin)**
+- Given a `table` block of 60 rows, 4,000 chars, and `max_chars=2048`, Then two or more pieces; each piece after the first is a `TableSlice(block, header_lines=(h, sep), start, end)` so the chunk can render the header again without the lines existing twice in the file
+- Given a `table` that fits, Then `[block]` unchanged
+- Given a `table` whose header plus one row exceeds `max_chars`, Then one row per piece, never a cut inside a row
+- Given every oversized `table` in the corpus (34 at 2,048), Then the pieces cover the body rows exactly, in order
+
+**Example with real data**
+The largest corpus table, `dsid_…` (to be named when the story is picked up): 58 rows, 5,100 chars, header `| Parameter | Description | Default |`. Result: three pieces, each with the header row and separator, rows 1-22, 23-44, 45-58.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. The repeated header is a reference to the header lines, not copied text: `Chunk.start/end` stay honest line ranges and PARSE-9 renders the header when it builds node text.
+
+**Dependencies**
+- APIs: `split_table(lines: list[str], block: Block, max_chars: int) -> list[Block | TableSlice]`
+- Uses: PARSE-7a `Block`, PARSE-8a `block_size`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### 7. PARSE-8d  pack  ⬜
 
 **Status:** To do
 
@@ -187,7 +279,7 @@ Scheduler file, section `Runbook: automated remediation decision flow` (lines 39
 - Uses: PARSE-8a `block_size`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### PARSE-8e  chunk  ⬜
+### 8. PARSE-8e  chunk  ⬜
 
 **Status:** To do
 
@@ -211,81 +303,4 @@ The PARSE-8 background listing. `block_kinds` is the sorted set of kinds in the 
 **Dependencies**
 - APIs: `chunk(lines: list[str], blocks: list[Block], headings: list[Heading], max_chars: int = 2048) -> list[Chunk]`
 - Uses: PARSE-8a-h, PARSE-12a
-- Service Bus: N/A · Database: N/A · UI: N/A
-
-### PARSE-8f  split_list  ⬜
-
-**Status:** To do
-
-**As a** RAG developer
-**I want to** `split_list(lines, block, max_chars)` to cut an oversized `list` block at top-level item boundaries (rule 6)
-**So that** a runbook written as one numbered list becomes one chunk per step, and a nested bullet never leaves its step
-
-**Acceptance Criteria (Gherkin)**
-- Given a `list` block of 2,618 chars with top-level items `1.`, `2.`, `3.` and nested `-` bullets under each, and `max_chars=2048`, Then three blocks, each starting at a top-level item line and containing its nested lines
-- Given a `list` block that fits in `max_chars`, Then `[block]` unchanged
-- Given a `list` block whose single top-level item is itself bigger than `max_chars`, Then `[block]` unchanged (never cut inside an item)
-- Given top-level items of sizes 900, 900, 900 and `max_chars=2048`, Then two blocks: items 1-2 and item 3 (items are packed, not one per block)
-- Given every oversized `list` block in the corpus (221 at 2,048), Then the pieces cover the block's lines exactly, in order, and every piece starts on a top-level item line
-
-**Example with real data**
-`dsid_ad85c50d…` line 29, a 36-line, 2,618-char list: `1. Detection and triage`, `2. Immediate containment`, `3. Controlled healing`, each with 3-4 nested bullets. Result: three blocks at the three numbered lines.
-
-**Non-functional Requirements**
-- Shared NFRs. Pure. A top-level item line is a line whose list marker starts at the block's own indent.
-
-**Dependencies**
-- APIs: `split_list(lines: list[str], block: Block, max_chars: int) -> list[Block]`
-- Uses: PARSE-7a `Block`, PARSE-8a `block_size`
-- Service Bus: N/A · Database: N/A · UI: N/A
-
-### PARSE-8g  split_table  ⬜
-
-**Status:** To do
-
-**As a** RAG developer
-**I want to** `split_table(lines, block, max_chars)` to cut an oversized `table` block at row boundaries, repeating the header on every piece (rule 6)
-**So that** a value in row 40 still sits under its column names in the chunk that carries it
-
-**Acceptance Criteria (Gherkin)**
-- Given a `table` block of 60 rows, 4,000 chars, and `max_chars=2048`, Then two or more pieces; each piece after the first is a `TableSlice(block, header_lines=(h, sep), start, end)` so the chunk can render the header again without the lines existing twice in the file
-- Given a `table` that fits, Then `[block]` unchanged
-- Given a `table` whose header plus one row exceeds `max_chars`, Then one row per piece, never a cut inside a row
-- Given every oversized `table` in the corpus (34 at 2,048), Then the pieces cover the body rows exactly, in order
-
-**Example with real data**
-The largest corpus table, `dsid_…` (to be named when the story is picked up): 58 rows, 5,100 chars, header `| Parameter | Description | Default |`. Result: three pieces, each with the header row and separator, rows 1-22, 23-44, 45-58.
-
-**Non-functional Requirements**
-- Shared NFRs. Pure. The repeated header is a reference to the header lines, not copied text: `Chunk.start/end` stay honest line ranges and PARSE-9 renders the header when it builds node text.
-
-**Dependencies**
-- APIs: `split_table(lines: list[str], block: Block, max_chars: int) -> list[Block | TableSlice]`
-- Uses: PARSE-7a `Block`, PARSE-8a `block_size`
-- Service Bus: N/A · Database: N/A · UI: N/A
-
-### PARSE-8h  parent_lines  ⬜
-
-**Status:** To do
-
-**As a** RAG developer
-**I want to** `parent_lines(headings)` to give each heading the line of its parent heading (rule 7)
-**So that** a chunk can name its parent section by line, and PARSE-9 can build parent nodes and `PARENT`/`CHILD` links without re-deriving levels
-
-**Acceptance Criteria (Gherkin)**
-- Given `[Heading(0,1,"T"), Heading(2,2,"A"), Heading(8,2,"B")]`, Then `[None, 0, 0]`
-- Given levels 1, 2, 3, 2, Then the level-3 heading's parent is the first level-2 line, and the last level-2's parent is line 0
-- Given levels 1, 3 (a jump), Then the level-3 heading's parent is line 0: parent is by stack, not by level arithmetic
-- Given `[]`, Then `[]`
-- Given every clean file, Then every non-title heading has a parent, and the parent's line is smaller than its own
-
-**Example with real data**
-Playbook file: `### A. Confirm you are targeting…` (level 3) → parent is the line of `## Preconditions / Setup checklist`; that heading's parent is line 0, the title.
-
-**Non-functional Requirements**
-- Shared NFRs. Pure. Same stack walk as PARSE-8c; the two functions may share a helper.
-
-**Dependencies**
-- APIs: `parent_lines(headings: list[Heading]) -> list[int | None]`, same length as the input
-- Uses: PARSE-5a
 - Service Bus: N/A · Database: N/A · UI: N/A
