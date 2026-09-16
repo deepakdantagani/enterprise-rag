@@ -1,89 +1,133 @@
 # LlamaIndex adoption stories
 
-The one place the pipeline touches the framework: chunks become `TextNode`s, plus the retrieval experiment that validates the chunk design.
+The one place the pipeline touches the framework: the chunking itself (two library node parsers plus our ids and line ranges), and the retrieval experiment that validates the design.
 
 Shared rules, the story template and the glossary are in [stories.md](../stories.md); every story here follows them.
 
 ---
 
-## PARSE-9  LlamaIndex adapter  ⬜
+## PARSE-9  LlamaIndex adapter: the chunker is library code  (split into one function per PR)
+
+**Background for all of PARSE-9**
+After PARSE-8 every page is Markdown. This story chains two LlamaIndex node parsers
+and adds the three things the framework does not know about our corpus: stable ids,
+line ranges, and the breadcrumb as metadata rather than text.
+
+```
+markdown file → MarkdownNodeParser → SentenceSplitter(512, overlap 0) → our post-step → TextNodes
+                 one node per section     windows the ~2% over budget    id, start/end line,
+                 header_path metadata     and heading-less pages         drop heading-only nodes
+```
+
+What the framework gives for free and we use as is:
+- `MarkdownNodeParser`: cuts at `#` lines, ignores `#` inside ``` fences, sets
+  `header_path` like `/Title/Section/`.
+- `SentenceSplitter(chunk_size=512, chunk_overlap=0)`: passes small nodes through
+  untouched, windows big ones at sentence boundaries. Given the embedder's tokenizer
+  it counts the way the embedder does.
+- `build_nodes_from_splits`: `SOURCE`, `PREVIOUS`, `NEXT` relationships, metadata
+  inheritance from the `Document`.
+- `MetadataMode.EMBED` / `text_template`: the breadcrumb goes in front of the text for
+  the embedder while `node.text` stays the source lines.
+
+What we add (each its own sub-story):
+1. **Stable ids.** Default `id_func` is `uuid4()`. We pass
+   `sha256(f"{doc sha256}:{start_line}:{end_line}")`, so an unchanged page gives the
+   same ids on every run and the vector store can upsert instead of reload.
+2. **Line ranges.** A node's text is contiguous lines of the markdown view, so
+   `start_line` = number of newlines before the node's first line in the view, and
+   `end_line` = start + lines in the node. Measured 20/20 recovered on every test page.
+3. **Heading-only nodes dropped.** A section with no body (11,343 in the corpus) comes
+   out as a node whose text is one `#` line. It carries nothing to retrieve; the heading
+   still appears in its children's `header_path`.
+4. **Metadata contract.** `doc_id`, `title`, `heading_path` (from `header_path`, as a
+   list), `start_line`, `end_line`, `sha256`. Line numbers and sha are in both
+   exclusion lists so neither embedder nor LLM reads them.
+
+Parent-child ("small to big") is not in this story. `header_path` names each node's
+parent section, so a later story can build one parent node per section and
+`PARENT`/`CHILD` links without touching chunking. PARSE-16 decides whether it is worth it.
+
+### 1. PARSE-9a  ConfluenceNodeParser chains the two library parsers  ⬜
 
 **Status:** To do
 
-**Background**
-PARSE-8 ends with `list[Chunk]`: line ranges plus a `heading_path`, no framework types.
-This story is the only place the pipeline touches LlamaIndex. It maps one `Chunk` to one
-`TextNode` and nothing else — no chunking rules, no size logic.
-
-Two things the framework already does that the archived v0 adapter did by hand, and that
-we do its way this time:
-
-1. **The breadcrumb is metadata, not text.** v0 built `"<title> > <section>\n\n" + body`
-   and stored that in `node.text`. LlamaIndex instead injects metadata into the text at
-   read time: `node.get_content(MetadataMode.EMBED)` and `MetadataMode.LLM` render
-   `text_template` with the metadata that is not excluded, while `node.text` stays the
-   exact source lines. Doing it v0's way means the breadcrumb is welded into the stored
-   text, cannot be excluded from the LLM but kept for the embedder, and is counted twice
-   once metadata rendering is on. So: `text` is the body, `heading_path` and `title` are
-   metadata, and `text_template` puts them back in front for the embedder.
-
-2. **Nodes come from `build_nodes_from_splits`.** `llama_index.core.node_parser.node_utils.build_nodes_from_splits(splits, doc, id_func=self.id_func)`
-   wires the `SOURCE` relationship back to the `Document`, the `PREVIOUS`/`NEXT` links
-   between neighbours, metadata inheritance and node ids. v0 constructed `TextNode(...)`
-   directly and set only `SOURCE`, so prev/next were missing. We keep the per-chunk
-   metadata by setting it on the returned nodes.
-
-Both are settings on `TextNode`, which is `Document`'s base class — the same
-`excluded_embed_metadata_keys` / `excluded_llm_metadata_keys` the loader already uses.
-
-Three more things the [chunker design](../design/2-chunker-system-design.md) puts here:
-
-3. **Ids are stable.** LlamaIndex's default `id_func` is `uuid4()`, so a rerun gives
-   new ids and the vector store cannot tell "unchanged" from "new". We pass
-   `id_func = sha256(f"{doc sha256}:{start}:{end}")`. Same bytes, same range, same id.
-4. **Parent nodes.** Every chunk carries `section_line` and `parent_line`. For each
-   section that has children, the adapter builds one parent `TextNode`, id
-   `sha256(f"{doc sha256}:section:{line}")`, text = its own body plus its children in
-   order, stored in the docstore only and never embedded. Each chunk gets a `PARENT`
-   relationship to it and the parent a `CHILD` to each chunk. `AutoMergingRetriever`
-   uses these to return a whole section when most of its children match.
-5. **Relationships are for retrieval, not embedding.** `SOURCE`, `PREVIOUS`, `NEXT`
-   come from `build_nodes_from_splits`; `PARENT`/`CHILD` from point 4. None of them is
-   in the embed text. Only `title` and `heading_path` are.
-
 **As a** RAG developer
-**I want to** a `NodeParser` that wraps the chunker and produces `TextNode`s
-**So that** the pipeline plugs into LlamaIndex without the chunker depending on it
+**I want to** `ConfluenceNodeParser().get_nodes_from_documents([doc])` to return `MarkdownNodeParser` sections trimmed by `SentenceSplitter`, in order
+**So that** the pipeline chunks with library code and one call
 
 **Acceptance Criteria (Gherkin)**
-- Given a `Document`, When I call `ConfluenceNodeParser().get_nodes_from_documents([doc])`, Then each node's `text` is the chunk's source lines only, with no breadcrumb prefix
-- Given the same nodes, When I call `node.get_content(MetadataMode.EMBED)`, Then it starts with `"<title> > <section>\n\n"`
-- Given the same nodes, Then metadata has `line_start`, `line_end`, `heading_path`, and `line_start`/`line_end` are in both exclusion lists so neither the embedder nor the LLM reads line numbers
-- Given two consecutive nodes from one `Document`, Then each has a `SOURCE` relationship to that document, and the first has `NEXT` to the second and the second `PREVIOUS` to the first
-- Given the same `Document` parsed twice, Then every node id is identical between the two runs; given one changed line, Then only the chunks whose `[start, end)` moved or changed get new ids
-- Given the playbook fixture, When I parse it, Then the three `### A/B/C` chunks each have a `PARENT` relationship to one node whose text is their three bodies in order, that node has three `CHILD` relationships, and it is in the returned docstore nodes but excluded from the embed list
-- Given any node, When I call `node.get_content(MetadataMode.EMBED)`, Then it contains no ids, line numbers or relationship fields, only the path and the text
-- Given `nodes.py`, When I read it, Then it contains no chunking rules, only the mapping `Chunk -> TextNode`
-- Given the archived `test_nodes.py`, Then it passes with its two breadcrumb assertions re-pointed from `node.text` to `node.get_content(MetadataMode.EMBED)`; every other assertion unchanged
+- Given the scheduler markdown file as a `Document`, When I call the parser, Then 19 nodes (20 sections minus the heading-only title node), in line order, each `text` starting with its `## ` heading line
+- Given a `Document` with one section of 3,000 chars, Then that section yields two or more nodes, each ≤ 512 tokens by the parser's tokenizer, all with the same `header_path`
+- Given a `Document` with no `#` at all, Then the nodes are `SentenceSplitter` windows of the whole text
+- Given any node, Then `metadata["heading_path"]` is a list starting with the title
+- Given `nodes.py`, When I read it, Then it contains no splitting logic, only the two library parsers, the post-step and the metadata mapping
 
 **Example with real data**
-The `Goals` chunk of `typical.md`, which v0 asserted on:
-```
-node.text                              "- Provide a repeatable acceptance checklist\n- ..."
-node.metadata["title"]                 "Telemetry Normalization and Fidelity Acceptance Playbook for Enterprise Tenants"
-node.metadata["heading_path"]          ["Telemetry Normalization ...", "Goals"]
-node.get_content(MetadataMode.EMBED)   "Telemetry Normalization ... > Goals\n\n- Provide a repeatable ..."
-```
-The last line is byte-for-byte what v0 stored in `text`; only where it lives changed.
+Scheduler page, node 1: `text = "## Overview:\n\nThis playbook defines…"`, `heading_path = ["Scheduler Health Oracle and Self‑Heal Procedures", "Overview:"]`.
 
 **Non-functional Requirements**
-- Shared NFRs at the top of this file (deterministic, behaviour-preserving, readable).
-- `nodes.py` is the only module in `pipeline/` allowed to import `llama_index`.
-- Node ids come from the parser's `id_func`, so a rerun over unchanged input gives the same ids.
+- Shared NFRs. `nodes.py` is the only module in `pipeline/` allowed to import `llama_index`. About 40 lines.
 
 **Dependencies**
-- APIs: `ConfluenceNodeParser(max_chars=2048)`; `parse_nodes(...) -> (leaf_nodes, parent_nodes)` so the caller embeds leaves and stores both
-- Uses: PARSE-6, PARSE-7, PARSE-8 (incl. 8h `parent_lines`); `llama_index.core.node_parser.NodeParser`, `build_nodes_from_splits`, `llama_index.core.schema.MetadataMode`, `NodeRelationship.PARENT/CHILD`
+- APIs: `ConfluenceNodeParser(chunk_size: int = 512, tokenizer=None)`; `NodeParser` subclass
+- Uses: PARSE-8, `llama_index.core.node_parser.MarkdownNodeParser`, `SentenceSplitter`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### 2. PARSE-9b  Stable ids and line ranges  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** every node to carry `start_line`, `end_line` and an id derived from the file's sha256 and that range
+**So that** a rerun over an unchanged page produces identical ids, and a citation names exact lines
+
+**Acceptance Criteria (Gherkin)**
+- Given the scheduler markdown file, Then node 1 has `start_line = 2`, `end_line = 6` (exclusive) and `node_id = sha256("<doc sha256>:2:6")`
+- Given the same `Document` parsed twice, Then every id is identical
+- Given one changed line in the middle of the page, Then only nodes whose text or range changed get new ids
+- Given every clean file, Then every node's `[start_line, end_line)` maps back to text equal to the node's text, and the corpus fingerprints to `tests/golden/nodes_fingerprint.json` (id, start, end, path per node)
+- Given `start_line`/`end_line`/`sha256`, Then they are in both `excluded_embed_metadata_keys` and `excluded_llm_metadata_keys`
+
+**Example with real data**
+Scheduler page: `sha256("dsid_0012a01f…:2:6")` for `Overview:`; `…:6:11` for `Audience:`.
+
+**Non-functional Requirements**
+- Shared NFRs. Line lookup is `view.find(first line)` from the previous node's end, so it is linear and unambiguous even when two sections share a first line.
+
+**Dependencies**
+- APIs: `id_func(i, doc) -> str` passed to the parser; `line_range(view: str, node_text: str, search_from: int) -> tuple[int, int]`
+- Uses: PARSE-9a, PARSE-2b (manifest sha256)
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### 3. PARSE-9c  Breadcrumb as metadata, embed template, heading-only nodes dropped  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** `node.text` to be the source lines only, `title` and `heading_path` in metadata, and `get_content(MetadataMode.EMBED)` to start with `"<title> > <section>\n\n"`
+**So that** the embedder sees the breadcrumb, the citation shows the author's lines, and nothing is stored twice
+
+**Acceptance Criteria (Gherkin)**
+- Given any node, When I call `node.get_content(MetadataMode.EMBED)`, Then it starts with the joined `heading_path` and a blank line, followed by `node.text`
+- Given `MetadataMode.LLM`, Then the same prefix; given `MetadataMode.NONE`, Then `node.text` alone
+- Given a section with no body, Then no node is produced for it, and its heading still appears in the `heading_path` of the nodes under it
+- Given the archived `test_nodes.py`, Then it passes with its breadcrumb assertions pointed at `get_content(MetadataMode.EMBED)`
+
+**Example with real data**
+The `Goals` chunk of `typical.md`:
+```
+node.text                              "## Goals\n- Provide a repeatable acceptance checklist\n- ..."
+node.metadata["heading_path"]          ["Telemetry Normalization ...", "Goals"]
+node.get_content(MetadataMode.EMBED)   "Telemetry Normalization ... > Goals\n\n## Goals\n- Provide a repeatable ..."
+```
+
+**Non-functional Requirements**
+- Shared NFRs. `text_template = "{metadata_str}\n\n{content}"`, `metadata_template = "{value}"` on the breadcrumb key only.
+
+**Dependencies**
+- APIs: none new; settings on the nodes returned by PARSE-9a
+- Uses: PARSE-9a, `llama_index.core.schema.MetadataMode`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
@@ -94,7 +138,8 @@ The last line is byte-for-byte what v0 stored in `text`; only where it lives cha
 
 **Background**
 The chunker design bets that small section chunks (median ≈ 90 tokens) with a heading
-path retrieve better than larger ones, and hedges with parent-child. Section 9 of the
+path retrieve better than larger ones, and that sentence-boundary cuts on the 2% of
+oversized sections cost nothing measurable; parent-child is the hedge for broad questions. Section 9 of the
 [design doc](../design/2-chunker-system-design.md) lays out the evidence for and against.
 Only a measurement settles it. EnterpriseRAG-Bench ships 500 questions in
 `questions.jsonl`, each with ground-truth documents; 5,189 of the documents are our
@@ -106,7 +151,7 @@ ground-truth documents are Confluence pages.
 **So that** the chunk size and the parent-child choice are decided by numbers on the benchmark's own questions
 
 **Acceptance Criteria (Gherkin)**
-- Given the three variants (A: this design, small chunks; B: A plus `AutoMergingRetriever`; C: `SentenceSplitter(chunk_size=512)` over whole pages as the baseline), When I run `tools/validate_chunking.py`, Then I get one table: variant × category → recall@20, plus the overall number
+- Given the three variants (A: this design, `markdown_view` → `MarkdownNodeParser` → `SentenceSplitter`; B: A plus a parent node per section from `header_path` and `AutoMergingRetriever`; C: `SentenceSplitter(chunk_size=512)` over the clean text with no headings, the baseline), When I run `tools/validate_chunking.py`, Then I get one table: variant × category → recall@20, plus the overall number
 - Given a question, Then recall@20 is 1 if any of the top 20 retrieved nodes has `doc_id` in the question's ground-truth documents, else 0
 - Given the run, Then the embedder, its version, the dimension, and the chunk parameters are printed at the top, and the same run twice gives the same table
 - Given the result, Then the design doc's section 9 is updated with the table and the chosen default in the same PR

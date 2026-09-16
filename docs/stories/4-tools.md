@@ -57,7 +57,7 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 The chunker design ([design doc](../design/2-chunker-system-design.md)) rests on assumptions
 about the parser's output, and dry runs on single pages keep finding cases where the
 parser breaks one: a stray `#` flipping a label file to bucket A, a label with the colon
-in the middle, a step title separated from its bullets. Reading pages one at a time
+in the middle, a `#` about to be written inside a table row. Reading pages one at a time
 finds these by luck. This story turns each assumption into a function that scans the
 corpus and reports how often it fails, with examples, so the design is checked by
 numbers and re-checked after every parser change.
@@ -71,11 +71,11 @@ numbers and re-checked after every parser change.
   - `bucket_flip`: bucket A with ≤ 2 `#` headings and ≥ 5 `Label:` lines (design: 256 files today)
   - `mid_colon_label`: a line `Xxx: Yyy` directly followed by a list or numbered block and not detected as a heading
   - `false_heading`: a label-rule heading that looks like code, YAML or a table row (`=`, `|`, `key: value` with lowercase key)
-  - `heading_in_block`: a detected heading inside a `table`, `code` or `quote` block (rule 2 cases)
+  - `heading_in_block`: a detected heading inside a `table`, `code` or `quote` block; these must not be rewritten by `markdown_view`
   - `heading_only_section`: a heading with no body (design: 11,343 today)
-  - `section_over_budget`: sections over `max_chars` (design: 1,698 at 2,048)
-  - `block_over_budget`: single blocks over `max_chars` by kind (design: 271)
-  - `lead_in_block`: a one-line block directly followed by a list (rule 4b population)
+  - `section_over_budget`: sections over 512 tokens, the population `SentenceSplitter` windows (design: 1,698 at 2,048 chars)
+  - `view_line_count`: markdown view line count ≠ clean line count (must be 0)
+  - `view_sections`: `MarkdownNodeParser` section count on the view ≠ detector headings with a body (must be 0)
   - `colon_section`: a section whose body ends with `:` and has no list, table or code (design: 133)
 - Given a row, When I read it, Then the count matches the number quoted in the design doc for that assumption on the current parser, or the design doc is updated in the same PR
 - Given `pipeline/`, When I grep for `audit`, Then there are no matches (tools only)
@@ -89,5 +89,5 @@ numbers and re-checked after every parser change.
 - Every new assumption added to the design doc gets an audit row in the same PR.
 
 **Dependencies**
-- Uses: PARSE-3, PARSE-6, PARSE-7, PARSE-8a
+- Uses: PARSE-3, PARSE-6, PARSE-7, PARSE-8a, PARSE-9a
 - Service Bus: N/A · Database: N/A · UI: N/A

@@ -4,20 +4,21 @@
 |---|---|
 | **Status** | Draft, under review |
 | **Owner** | Deepak Dantagani |
-| **Scope** | Chunking stage of the Enterprise RAG ingestion pipeline: PARSE-8 (chunker) and the id rule PARSE-9 must follow. Embedding, vector storage and retrieval are out of scope; their numbers appear here only where they constrain the chunker. |
-| **Inputs** | Per clean file: `blocks(text)` (line ranges that must stay whole) and `detector_for(text).find_headings(lines)` (where sections start). See the [parser design](1-parser-system-design.md). |
+| **Scope** | Chunking stage of the Enterprise RAG ingestion pipeline: the Markdown view (PARSE-8) and the LlamaIndex adapter that chunks it (PARSE-9). Embedding, vector storage and retrieval are out of scope; their numbers appear here only where they constrain chunking. |
+| **Inputs** | Per clean file: `detector_for(text).find_headings(lines)` (where sections start, all three heading styles) and `blocks(text)` (which lines are tables and code, so no heading is written inside one). See the [parser design](1-parser-system-design.md). |
 | **Related** | [Stories](../stories/2-chunking.md) · [Story rules](../stories.md) · [Parser design](1-parser-system-design.md) |
-| **Last updated** | 2026-09-15 |
+| **Last updated** | 2026-09-16 |
+| **Decision** | 2026-09-16: no custom chunker. Our code writes `#` on the headings it finds; LlamaIndex's `MarkdownNodeParser` and `SentenceSplitter` do the chunking. Section 6 has the pipeline, section 7 the evidence. |
 
 ---
 
 ## 1. Requirement
 
 > Cut each of the 5,189 clean Confluence pages into chunks that are the retrieval unit
-> for EnterpriseRAG-Bench: each chunk sits inside one section, never cuts a list, table
-> or code block, fits the embedder's budget, and carries its breadcrumb and exact line
-> range so an answer can cite it. Every non-blank line lands in exactly one chunk.
-> Same input, same chunks, same ids, every run.
+> for EnterpriseRAG-Bench: each chunk sits inside one section, fits the embedder's
+> budget, and carries its breadcrumb and exact line range so an answer can cite it.
+> Every non-blank line lands in exactly one chunk. Same input, same chunks, same ids,
+> every run. Use library code for everything a library already does.
 
 Why this shape: one embedding call returns **one vector per chunk**, not one per token.
 A chunk that mixes five topics gets one blurred vector and matches a question about any
@@ -32,18 +33,20 @@ answer generation, any network or model call inside the chunker.
 
 ```mermaid
 flowchart LR
-    P["clean file<br/>143 lines · 9,600 chars"] --> H["headings<br/>20 cuts"]
-    P --> B["blocks<br/>lists, tables, code, text"]
-    H --> C["chunker<br/>22 chunks"]
-    B --> C
-    C --> N["PARSE-9<br/>22 TextNodes<br/>id · text · metadata"]
-    N --> E["embedder<br/>1 call per chunk"]
-    E --> V[("vector store<br/>22 rows · 1 vector each")]
+    P["clean file<br/>143 lines"] --> H["find_headings (ours)<br/>20 headings, line + level"]
+    P --> M["markdown view (ours, new)<br/>'Overview:' → '## Overview:'<br/>143 lines, same numbers"]
+    H --> M
+    M --> N["MarkdownNodeParser (LlamaIndex)<br/>20 sections with header_path"]
+    N --> S["SentenceSplitter 512 (LlamaIndex)<br/>splits only sections over budget"]
+    S --> I["ids + line ranges (ours)<br/>sha256(file:start:end)"]
+    I --> E["embedder<br/>1 call per node"]
+    E --> V[("vector store<br/>20 rows · 1 vector each")]
 ```
 
-One chunk becomes one vector. Inside the embedder every token gets its own vector for a
-moment, then they are pooled into one; only the pooled vector is stored. That is why a
-chunk should hold one topic.
+Ours: cleaning, heading detection, the `#` rewrite, ids. Library: the cutting. One chunk
+becomes one vector; inside the embedder every token gets a vector for a moment, then
+they are pooled into one, and only that one is stored. That is why a chunk should hold
+one topic, and the author's section is the topic boundary.
 
 ## 2. The data
 
@@ -81,7 +84,7 @@ Only 28 pages fit in one chunk. Every page gets split.
   is the step.
 
 **Structure**: 32% `#` headings, 15% underlined, 53% bare labels, 12 pages pure prose.
-254 pages have 0 or 1 heading; for those the page is one section and rule 4 packs it.
+254 pages have 0 or 1 heading; for those the page is one section and step 5 windows it.
 
 ## 3. Scope decisions
 
@@ -89,15 +92,15 @@ Only 28 pages fit in one chunk. Every page gets split.
 |---|---|---|
 | Batch only, or pages change later? | Design for change now | The goal deploys on AWS; one page edit must re-embed ~20 vectors, not 95,000. Cost of deciding now: one id function. |
 | Chunk id | `sha256(file sha256 + ":" + start + ":" + end)` | Same bytes and same range give the same id on every run. LlamaIndex's default is `uuid4()`; PARSE-9 passes this as `id_func`. |
-| Metadata on every chunk | `doc_id`, `title`, `heading_path`, `start_line`, `end_line`, `sha256`, `parent_id` | Enough to cite the exact lines of the exact version, and to walk up to the parent section. Nothing else exists in the raw export today. |
-| Node relationships | `SOURCE`, `PREVIOUS`, `NEXT` set by LlamaIndex automatically; `PARENT` / `CHILD` set by PARSE-9 from `parent_id` | Relationships are ids in metadata. They are used after vector search (auto-merge, neighbours, citation), never fed to the embedder. The vector sees only `heading_path` + text. |
+| Metadata on every chunk | `doc_id`, `title`, `heading_path`, `start_line`, `end_line`, `sha256` | Enough to cite the exact lines of the exact version, and to walk up to the parent section. Nothing else exists in the raw export today. |
+| Node relationships | `SOURCE`, `PREVIOUS`, `NEXT` set by LlamaIndex automatically; `PARENT` / `CHILD` by a later parent-child story from `header_path` | Relationships are ids in metadata. They are used after vector search (auto-merge, neighbours, citation), never fed to the embedder. The vector sees only `heading_path` + text. |
 | Embedder | Hosted (OpenAI or Voyage); pick by MTEB at the time | Cheapest to iterate. All candidates accept ≥ 8k tokens, so the chunk size is a quality choice, not a limit. |
 
 ## 4. Back-of-envelope
 
 | Quantity | Estimate | How |
 |---|---|---|
-| chunks | ≈ 95,000 (18 per page) | 89,687 sections ≤ 2,048 chars → 1 each; 1,698 big ones → 5,384 pieces. v0 produced 96,360, same ballpark. |
+| chunks | ≈ 95,000 (18 per page) | 89,687 sections ≤ 2,048 chars → 1 node each; 1,698 big ones → about 5,400 windows. v0 produced 96,360, same ballpark. |
 | tokens to embed | ≈ 14M | 12.7M text + ~15 tokens of breadcrumb × 95k chunks |
 | average chunk | ≈ 150 tokens (median ≈ 90) | well under the 512 budget; the cap bites only on the tail |
 | one full embed | ≈ $1.80 (OpenAI 3-large), $0.85 (Voyage 3.5), $0.30 (OpenAI 3-small) | list prices, verify before committing |
@@ -119,179 +122,114 @@ chosen. That decision does not touch the chunker.
 
 | SLO | Target | Budget | Checked by |
 |---|---|---|---|
-| Coverage: every non-blank line is an honoured heading or inside exactly one chunk | 100% | zero; one lost line fails the build | test over all 5,189 files |
-| Size: chunk ≤ 512 tokens (embedder's tokenizer) | 99% of chunks | 1%, ≈ 950 chunks; today's tail is 16 (7 code, 9 paragraphs) | test over all files |
-| Determinism: same input, same chunks, same ids | 100% | zero | `tests/golden/chunks_fingerprint.json` |
+| Coverage: every non-blank line of the markdown view is inside exactly one node | 100% | zero; one lost line fails the build | test over all 5,189 files |
+| Line count: markdown view has exactly the clean file's line count | 100% | zero | manifest check per file |
+| Size: node ≤ 512 tokens (embedder's tokenizer) | 100% | zero; `SentenceSplitter` guarantees it | test over all files |
+| Determinism: same input, same nodes, same ids | 100% | zero | `tests/golden/nodes_fingerprint.json` (id, start, end, path per node) |
 | Throughput: full corpus, one process, laptop | < 60 s | soft, warning only | timed test |
 
-## 6. Chunking rules
+## 6. The pipeline
 
+Six steps. Four exist or are library code; two are new and small.
 
-**Worked example**, the first lines of the scheduler page. Left: the file with its
-headings (H) and blocks. Right: what the rules make of it.
+| # | Step | Owner | Size | What it does |
+|---|---|---|---|---|
+| 1 | `clean_text` | ours, exists | PARSE-1 | raw export → clean text. Unescape, whitespace, structure fixes. Line count from here on is the citation line count. |
+| 2 | `find_headings` | ours, exists | PARSE-5/6 | `#`, underlined, and bare-label headings → `(line, level, text)`. The label rule is the part no library has (section 7). |
+| 3 | `markdown_view` | **ours, new** | ~20 lines, PARSE-8 | write `#`×level in front of each heading line; blank a setext underline; never touch a line inside a `table` or `code` block (markdown-it says which). Same line count in and out. Written to `data/confluence/markdown/` and fingerprinted in the manifest. |
+| 4 | `MarkdownNodeParser` | LlamaIndex | 0 | cut at every `#` line → one node per section, `header_path` metadata, `#` inside ``` fences ignored. A page with no headings comes out as one node. |
+| 5 | `SentenceSplitter(chunk_size=512, chunk_overlap=0)` | LlamaIndex | 0 | leaves the 98% of sections that fit untouched; windows the rest, and windows heading-less pages. |
+| 6 | ids, line ranges, metadata | **ours, new** | ~15 lines, PARSE-9 | `id_func = sha256(file sha256:start:end)`; `start_line` from the node text's position in the view; drop nodes that are only a heading line; `title` + `heading_path` in the embed text, nothing else. |
 
-```mermaid
-flowchart LR
-    subgraph file [clean file, line numbers]
-        L0["0  H1  Scheduler Health Oracle …"]
-        L2["2  H2  Overview:"]
-        L4["4-5  text  441 chars"]
-        L6["6  H2  Audience:"]
-        L7["7-11  list  176 chars"]
-        L39["39  H2  Runbook: automated remediation…"]
-        L40["39-46  list"]
-        L46["46-51  list"]
-        L51["51-53  text"]
-    end
-    subgraph chunks [chunks]
-        C1["chunk 1  lines 4-5<br/>path: Scheduler… › Overview:"]
-        C2["chunk 2  lines 7-11<br/>path: Scheduler… › Audience:"]
-        C7["chunk 7  lines 39-53  1,118 chars<br/>path: Scheduler… › Runbook: …<br/>three blocks packed, rule 4"]
-    end
-    L4 --> C1
-    L7 --> C2
-    L40 --> C7
-    L46 --> C7
-    L51 --> C7
-    L0 -. "breadcrumb only, rule 1" .-> C1
-    L2 -. "cuts, rule 3" .-> C1
-    L6 -. "cuts, rule 3" .-> C2
-    L39 -. "cuts, rule 3" .-> C7
+**Worked example**, first lines of the scheduler page:
+
+```
+clean (step 1)            markdown view (step 3)        nodes (steps 4-6)
+ 0 Scheduler Health…       0 # Scheduler Health…         node 1  lines 2-5   path /Scheduler…/   "## Overview:\n\nThis playbook…"
+ 2 Overview:               2 ## Overview:                node 2  lines 6-10  path /Scheduler…/   "## Audience:\n- Oncall SREs…"
+ 4 This playbook…          4 This playbook…              node 3  lines 11-15 …
+ 6 Audience:               6 ## Audience:
+ 7 - Oncall SREs…          7 - Oncall SREs…
 ```
 
-Heading lines never appear in a chunk's lines; they appear in every chunk's
-`heading_path`. Chunk 7 shows packing: three blocks under one heading, 1,118 chars,
-fits the budget, so one chunk.
+Line numbers are identical in all three columns, so a citation is the same lines in
+raw, clean and markdown. Measured on three pages of each style (section 7): 20/20,
+20/20, 20/20 sections, line ranges recovered for every node.
 
-In the order the code applies them. Rules 1 to 5 are unchanged from the PARSE-8
-background in the stories; 6 and 7 come from this design. Rule 7 is where the small-chunk
-bet is hedged: chunks stay small for precise matching, and `parent_id` lets retrieval
-return the larger parent when a question needs context (see section 9).
+**Budget** is 512 tokens, counted by `SentenceSplitter` with the tokenizer it is given;
+PARSE-9 passes the embedder's. Until then the default tokenizer stands in.
 
-1. **Heading lines are not content.** A `heading` block is dropped; a `text` or `list`
-   block whose first lines are headings loses those lines.
-2. **The block wins inside tables, code, quotes.** A heading line inside a `table`,
-   `code`, `quote`, `rule` or `html` block, or after content inside any block, stays
-   content and does not cut.
-3. **A heading cuts.** No chunk spans an honoured heading. Sections are never merged.
-4. **Pack, never split.** Blocks in one section are packed greedily until the next block
-   would exceed the budget.
-   - **4b. A lead-in sticks to what follows.** A one-line block immediately followed by a
-     list is never the last block of a chunk; it moves to the next chunk with its list.
-     Found by dry run on the onboarding PRD: `8) Pin a model version` (a one-item
-     numbered list to markdown-it) landed at the end of chunk 1 and its unindented
-     `-` bullets at the start of chunk 2. Most runbooks in the corpus are written this
-     way, `N) title` then bullets at column 0, so the packer must treat the pair as one.
-5. **Breadcrumb from levels.** `heading_path` is the stack of heading texts above the
-   chunk; level 1 is the title.
-6. **Oversized blocks split by shape, not by count.**
-   - `list` bigger than the budget: split at top-level item boundaries only, so nested
-     bullets stay with their step. Each piece keeps the same `heading_path`.
-   - `table`: split at row boundaries; every piece repeats the header row and separator.
-   - `code`, `text`, `quote`: never split. They are the size-SLO tail.
-
-   How rule 6 cuts a runbook list that is 2,618 chars, one `list` block of 36 lines:
-
-   ```mermaid
-   flowchart TB
-       subgraph before [one list block, 2,618 chars, over budget]
-           direction TB
-           A1["1. Detection and triage<br/>  - Confirm scope…<br/>  - Tag incident…"]
-           A2["2. Immediate containment<br/>  - Roll forward…<br/>  - Isolate…"]
-           A3["3. Controlled healing<br/>  - Step A…<br/>  - Step B…"]
-       end
-       subgraph after [three chunks, same heading_path]
-           direction TB
-           B1["chunk a: item 1 with its bullets"]
-           B2["chunk b: item 2 with its bullets"]
-           B3["chunk c: item 3 with its bullets"]
-       end
-       A1 --> B1
-       A2 --> B2
-       A3 --> B3
-   ```
-
-   The cut is only ever between `1.`, `2.`, `3.`; a nested bullet never leaves its step.
-   A table splits the same way at rows, and each piece starts with the header row again.
-7. **Never merge at chunk time; carry `parent_id` instead.** Every chunk records the id
-   of its parent **section**: `sha256(file sha256 : parent heading line)`, whether or not
-   that section has a body of its own; the title section is the root. PARSE-9 creates one
-   parent node per section that has children, held in the docstore only, never embedded,
-   with text = its own body plus its children in order. Merging, when a question needs
-   the whole parent, happens at retrieval time (parent-child, "small to big": match on
-   the small chunk, return the parent). Measured alternative, merging
-   subtrees that fit at chunk time: 91,385 → 83,618 chunks, 10,124 children absorbed
-   into 2,357 parents. Rejected because it fixes the choice forever; a question aimed
-   at one child then always gets its siblings too.
-
-   ```mermaid
-   flowchart LR
-       subgraph store [stored, always small]
-           P["Preconditions<br/>no body → parent node only,<br/>docstore, not embedded"]
-           A["A. Confirm baseline<br/>parent_id: P"]
-           B["B. Reduce variance<br/>parent_id: P"]
-           C["C. Warmup standard<br/>parent_id: P"]
-           R["Run labeling<br/>body chunk"]
-           R1["Run ID format<br/>parent_id: R"]
-           R2["Required tags<br/>parent_id: R"]
-       end
-       subgraph q1 [narrow question: 'how long is warmup?']
-           C1["return C"]
-       end
-       subgraph q2 [broad question: 'what do I set up before a baseline run?']
-           M["A, B, C all hit<br/>→ return P, the whole section"]
-       end
-       C --> C1
-       A --> M
-       B --> M
-       C --> M
-   ```
-
-   The chunker's whole cost for this is one field. The retriever (LlamaIndex
-   `AutoMergingRetriever`) does the swap.
-
-**Budget** is `max_tokens = 512`, counted with the chosen embedder's tokenizer. Until
-PARSE-9 wires a tokenizer, the chunker measures `len(line) + 1` per line against
-`max_chars = 2048` (4 chars per token); the parameter name and the test change together.
+**What the library does not do, and we accept:**
+- Inside the 2% of sections over budget, `SentenceSplitter` cuts at sentences, not at
+  list items or table rows. A runbook step can be split from its bullets there. PARSE-16
+  measures whether that costs recall; if it does, a list-aware splitter is one story.
+- The heading line stays inside the node text (`## Overview:` is line 1 of node 1). The
+  breadcrumb therefore appears once in the body and once in the prefix at embed time.
+  Harmless for retrieval; the citation renderer strips the leading `#`s.
+- Parent-child ("small to big") is not built in for Markdown. `header_path` names the
+  parent, so a parent node per section is a later story on top, not a chunker change.
 
 ## 7. Rejected on evidence
 
-| Idea | Dry run | Verdict |
-|---|---|---|
-| Merge tiny sections into a neighbour by size | 56% of sections are < 400 chars, yet samples read as complete facts with the breadcrumb | rejected; breadcrumb does the job |
-| Merge a section whose body ends with `:` into the next | 133 cases (0.15%). Most are a real parent followed by a real child ("…are true:" → "A) Inventory completeness"); the rest are unfenced code / YAML / pipe-less table rows the label rule promoted to headings | rejected; children stay chunks, false headings are a label-rule issue (about 50 cases, logged for PARSE-12) |
-| Keep every oversized block whole | 221 of 271 are runbook lists where each numbered step is the real unit | rejected for lists and tables; kept for code and paragraphs |
+**A custom chunker (the previous version of this document).** Eight pure functions,
+about 150 lines: content blocks, packing, lead-in rule, list and table splitting, parent
+lines. Rejected on 2026-09-16 because, once headings are written as `#`, LlamaIndex's
+`MarkdownNodeParser` produces the same sections:
 
-**Parser defects found by chunk dry runs** (not chunker rules; logged for the parser stories):
+| page | style | our custom design | `MarkdownNodeParser` after the `#` rewrite |
+|---|---|---|---|
+| scheduler | bare labels | 19 chunks | 20 sections, 20/20 line ranges |
+| privilege manual | bare labels | 19 chunks | 20 sections, 20/20 line ranges |
+| autotune playbook | underlined | 20 | 20 sections |
+| ADR sample | underlined | 6 | 6 sections |
+| onboarding PRD | `#` | 30 | 28 sections |
 
-Every assumption in this document has, or gets, a row in the corpus audit (PARSE-14):
-one pure function per assumption that counts failures and names examples, re-run after
-every parser change. Single-page dry runs find bugs by luck; the audit finds them by count.
+The 150 lines bought list-aware cuts on 2% of sections and one field for parent-child.
+Not worth a second chunker to maintain.
+
+**Off-the-shelf heading detection instead of our label rule.** `unstructured`'s
+`partition_text` is the strongest plain-text title heuristic available. On the same
+pages:
+
+| page | true headings | `unstructured` titles | ours |
+|---|---|---|---|
+| scheduler | 18 | 7, of which 4 are `curl` lines | 20, 2 false |
+| runbook guidelines | 21 | 0 | 3 today, 21 after PARSE-15 |
+| privilege manual | 21 | 1 | 20 |
+
+`MarkdownNodeParser` alone gives 1 node per page on the 68% of files without `#`. So
+the label rule is the one piece of the pipeline no library replaces; it stays, and
+everything downstream of it is library code.
+
+**Merge tiny sections by size.** 56% of sections are under 400 chars, but samples read
+as complete facts with the breadcrumb. Rejected; the breadcrumb does the job.
+
+**Merge a section ending with `:` into the next.** 133 cases (0.15%). Most are a real
+parent followed by a real child; the rest are false headings. Rejected.
+
+**Parser defects found by chunk dry runs** (logged for the parser stories; every one of
+them is also a row in the PARSE-14 audit, re-run after every parser change):
 
 Policy for heading misses: a missed heading never loses text, it only mislabels a chunk
 (coverage SLO), so misses are tolerated and measured, not chased one by one. The label
 rule is tuned against a hand-labelled sample (the 13 fixtures plus 50 random pages),
-each fix must move the sample's heading recall, and the retrieval experiment in section
-9 measures what mislabels actually cost.
+each fix must move the sample's heading recall, and PARSE-16 measures what mislabels
+actually cost.
 
 | Defect | Evidence | Where it is fixed |
 |---|---|---|
-| One stray `#` line flips a label file to bucket A, so the label rule never runs and every `Label:` heading is missed | "Runbook authoring and maintenance guidelines": one `## - 2026-01-12` line inside a template; 3 walls found instead of 21, the top 1,500 chars become one chunk, the last three chunks are filed under "- 2026-01-12: Minor wording updates". Corpus: 256 of 1,645 bucket-A files have ≤ 2 `#` lines and ≥ 5 `Label:` lines, about 5% of the corpus | PARSE-3 / PARSE-6: bucket by the dominant signal (count `#` headings against label lines), and treat a `#` inside a code or template region as content |
-| A label with the colon in the middle is not a heading to the label rule | "Privilege Approval Safeguards": `Operational Runbook: Approving a Level 3 Grant (step-by-step)` is missed, so its 6 steps pack into the previous section's chunk, labelled "Exception and Risk Handling". Nothing lost, wrong label | PARSE-12 label-rule tuning |
-| Unfenced code, YAML and pipe-less table rows promoted to headings by the label rule | `route_slo = sum_i(…)`, `job_name: quant-family-synthesis`, `Parameter \| Description \| Default`; about 50 cases | PARSE-12 label-rule tuning |
+| One stray `#` line flips a label file to bucket A, so the label rule never runs | "Runbook authoring and maintenance guidelines": one `## - 2026-01-12` line inside a template; 3 headings found instead of 21. Corpus: 256 of 1,645 bucket-A files have ≤ 2 `#` lines and ≥ 5 `Label:` lines, about 5% | PARSE-15: bucket by the dominant signal |
+| A label with the colon in the middle is not a heading to the label rule | "Privilege Approval Safeguards": `Operational Runbook: Approving a Level 3 Grant (step-by-step)` missed; its 6 steps land in the previous section | PARSE-12 label-rule tuning |
+| Unfenced code, YAML and pipe-less table rows promoted to headings | `route_slo = sum_i(…)`, `job_name: …`, `Parameter \| Description \| Default`; about 50 cases | PARSE-12 label-rule tuning |
 
 ## 8. What changes in the stories
 
-| Stories say (PARSE-8) | This design |
+| Before (custom chunker) | Now |
 |---|---|
-| `max_chars = 1600` | `max_chars = 2048` now, `max_tokens = 512` once PARSE-9 has a tokenizer |
-| a block bigger than the budget becomes one chunk | rule 6: lists split at top-level items, tables at rows with header repeated |
-| no merge option, no parent link | rule 7: `parent_id` on every chunk; PARSE-9 sets `PARENT`/`CHILD` relationships |
-| ids not specified | PARSE-9 passes `id_func = sha256(file sha256:start:end)` |
-
-New sub-stories needed: split of oversized lists, split of oversized tables, `parent_id`,
-and rule 4b (lead-in sticks) inside `pack`.
-PARSE-8e's golden is generated after those merge.
+| PARSE-8a–h: `Chunk` value, `content_blocks`, `heading_paths`, `pack`, `split_list`, `split_table`, `parent_lines`, `chunk` | PARSE-8a `markdown_view`, PARSE-8b write the markdown copy and the two manifest columns |
+| PARSE-9 wraps our chunker | PARSE-9 chains `MarkdownNodeParser` → `SentenceSplitter` → ids, line ranges, embed template |
+| rules 4b, 6, 7 | dropped; parent-child becomes a later story on `header_path` |
+| PARSE-14 audit rows `lead_in_block`, `block_over_budget` | replaced by `view_line_count` (markdown view has the same line count) and `heading_in_block` (no `#` written inside a table or code block) |
 
 ## 9. How we validate the bet
 
@@ -300,7 +238,7 @@ better than a larger one. Evidence for: Chroma's chunking study, where 200-token
 with no overlap beat 400 and 800 (88.1% recall, 7.0% precision, OpenAI 3-large), and the
 rule that the unit should be the smallest text that answers a question on its own, which
 for a wiki is the section. Evidence against: analytical questions want 1k+ tokens of
-context. `parent_id` is the hedge for those.
+context. Parent-child (variant B below) is the hedge for those.
 
 Nobody can settle it without questions. EnterpriseRAG-Bench ships 500 questions with
 ground-truth documents. After PARSE-9, one story runs the same questions against three
@@ -309,9 +247,9 @@ the top 20), per question category:
 
 | variant | median chunk |
 |---|---|
-| this design, small, no merge | ≈ 90 tokens |
-| this design + auto-merge to parent at retrieval | small match, parent returned |
-| fixed 512-token windows (`SentenceSplitter`), the baseline | ≈ 512 tokens |
+| A: this design, `markdown_view` → `MarkdownNodeParser` → `SentenceSplitter` | ≈ 90 tokens |
+| B: A plus parent-child (parent node per section from `header_path`, `AutoMergingRetriever`) | small match, parent returned |
+| C: `SentenceSplitter` alone on the clean text, no headings, the baseline | ≈ 512 tokens |
 
 Three embeds cost under $6. The winner becomes the default. Contextual retrieval (an
 LLM-written prefix per chunk) is a later experiment on top of the winner, not a chunker

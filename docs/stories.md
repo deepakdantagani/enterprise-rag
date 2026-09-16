@@ -47,8 +47,8 @@ Stories live in `docs/stories/`, one file per stage, numbered in pipeline order:
 | PARSE-5  Heading detector interface + Markdown implementation  (split into one function per PR) | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-6  Label heading detector + selector  (split into one function per PR) | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-7  Blocks from markdown-it  (split into one function per PR) | [1-parsing.md](stories/1-parsing.md) |
-| PARSE-8  Chunker  (split into one function per PR) | [2-chunking.md](stories/2-chunking.md) |
-| PARSE-9  LlamaIndex adapter  ⬜ | [3-llamaindex.md](stories/3-llamaindex.md) |
+| PARSE-8  Markdown view: make every clean file proper Markdown  (8a, 8b) | [2-chunking.md](stories/2-chunking.md) |
+| PARSE-9  LlamaIndex adapter: the chunker is library code  (9a, 9b, 9c) | [3-llamaindex.md](stories/3-llamaindex.md) |
 | PARSE-10  Triage gate on the new modules  ⬜ | [4-tools.md](stories/4-tools.md) |
 | PARSE-11  Debug and measurement tools out of the pipeline  ⬜ | [4-tools.md](stories/4-tools.md) |
 | PARSE-12  Depth for label headings  ⬜ | [1-parsing.md](stories/1-parsing.md) |
