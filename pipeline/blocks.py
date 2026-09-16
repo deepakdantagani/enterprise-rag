@@ -1,7 +1,9 @@
 """PARSE-7: the top-level blocks of a clean file, as markdown-it sees them.
 
-Headings say where a section starts; blocks say what must not be cut in half: a
-list, a table, a code fence. This module reads block boundaries out of markdown-it.
+Headings say where a section starts; blocks say which lines are a list, a table or a
+code fence, so markdown_view (PARSE-8) never writes a `#` inside a table or fence and
+the audits (PARSE-14) can count headings that fall inside one. This module reads block
+boundaries out of markdown-it.
 
 Real example, the "Audience:" list in the scheduler file:
 

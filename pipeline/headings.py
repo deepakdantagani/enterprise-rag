@@ -1,7 +1,7 @@
 """PARSE-5: one data shape for headings, whoever finds them.
 
-The chunker (PARSE-8) asks a HeadingDetector for the headings of a file and never
-learns whether they came from Markdown markup (MarkdownHeadings, 5b) or from the
+markdown_view (PARSE-8) asks a HeadingDetector for the headings of a file, writes a
+`#` on each, and never learns whether they came from Markdown markup (MarkdownHeadings, 5b) or from the
 plain-label rule (LabelHeadings, PARSE-6).
 
 Real example, the first lines of a bucket B file:
@@ -125,7 +125,7 @@ class LabelHeadings:
 def detector_for(text: str) -> HeadingDetector:
     """Pick the detector for one clean file: Markdown for buckets A/B, the label rule for C/D.
 
-    The chunker calls this and never sees bucket names.
+    markdown_view calls this and never sees bucket names.
 
     >>> type(detector_for("# Title\\n\\ntext")).__name__
     'MarkdownHeadings'

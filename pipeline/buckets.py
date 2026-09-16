@@ -7,7 +7,7 @@ Four buckets, strongest signal wins, checked in this order:
     C_plain_labels  no headings, but lists, tables or fences    2,751 files
     D_prose         none of the above, or empty                    12 files
 
-The chunker uses the bucket to pick a heading detector (PARSE-5, PARSE-6).
+detector_for uses the bucket to pick a heading detector (PARSE-5, PARSE-6).
 Pure module: it is handed the clean text and returns one string.
 """
 import re
