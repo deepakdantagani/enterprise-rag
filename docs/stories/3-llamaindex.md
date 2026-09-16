@@ -122,7 +122,6 @@ Scheduler page: `sha256("dsid_0012a01f…:2:6")` for `Overview:`; `…:6:11` for
 - Given any node, When I call `node.get_content(MetadataMode.EMBED)`, Then it starts with the joined `heading_path` and a blank line, followed by `node.text`
 - Given `MetadataMode.LLM`, Then the same prefix; given `MetadataMode.NONE`, Then `node.text` alone
 - Given a section with no body, Then no node is produced for it, and its heading still appears in the `heading_path` of the nodes under it
-- Given the archived `test_nodes.py`, Then it passes with its breadcrumb assertions pointed at `get_content(MetadataMode.EMBED)`
 
 **Example with real data**
 The `Goals` chunk of `typical.md`:

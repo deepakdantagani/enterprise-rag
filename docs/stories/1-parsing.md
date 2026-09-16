@@ -256,7 +256,7 @@ code, it does not change output; the golden test is what proves that.
 
 **As a** pipeline developer
 **I want to** ask one function which markup style a clean file uses
-**So that** the chunker can pick the right heading detector
+**So that** `detector_for` can pick the right heading detector
 
 **Background**
 The clean files are not written one way. Some authors used Markdown `#` headings, some
@@ -525,7 +525,7 @@ checks are extra ways to say no or yes on top of these two rules.
 ## PARSE-5  Heading detector interface + Markdown implementation  (split into one function per PR)
 
 **Background for all of PARSE-5**
-The chunker (PARSE-8) needs to know where the headings are, but it must not care *how*
+`markdown_view` (PARSE-8) needs to know where the headings are, but it must not care *how*
 they were written. Files in bucket A/B write headings in Markdown (`## Scope`, or
 `Scope` over `-----`); files in bucket C write bare labels that only our label rule
 (PARSE-4) can see. So we define one small interface and two implementations:
@@ -576,9 +576,9 @@ Module: `pipeline/headings.py`. Pure (no file IO).
 
 **Status:** Done (merged ebb2d0f)
 
-**As a** chunker developer
+**As a** pipeline developer
 **I want to** a `Heading` value type and a `HeadingDetector` protocol
-**So that** the chunker and both detectors agree on one data shape before any detector exists
+**So that** `markdown_view` and both detectors agree on one data shape before any detector exists
 
 **Acceptance Criteria (Gherkin)**
 - Given `Heading(line=2, level=2, text="Scope")`, When I read its fields, Then I get `2`, `2`, `"Scope"`, and it is frozen (assigning raises) and comparable by value
@@ -599,7 +599,7 @@ Module: `pipeline/headings.py`. Pure (no file IO).
 
 **Status:** Done (merged 9f367b0)
 
-**As a** chunker developer
+**As a** pipeline developer
 **I want to** `MarkdownHeadings().find_headings(lines)` to return the Markdown headings plus the title line
 **So that** bucket A and B files get their structure from the parser, not from our rule
 
@@ -645,7 +645,7 @@ export that writes `# Title`.
 PARSE-5 gave us the interface (`find_headings(lines) -> list[Heading]`) and the Markdown
 implementation. Bucket C files (53% of the corpus) have no Markdown headings, so they
 need the second implementation: one that wraps the label rule from PARSE-4. Then one
-tiny function decides, per file, which detector to use, so the chunker never looks at
+tiny function decides, per file, which detector to use, so `markdown_view` never looks at
 buckets itself.
 
 ```
@@ -685,7 +685,7 @@ Module: `pipeline/headings.py` (same file as PARSE-5). Pure.
 
 **Status:** Done (merged 00b61e9)
 
-**As a** chunker developer
+**As a** pipeline developer
 **I want to** `LabelHeadings().find_headings(lines)` to turn the label rule's flags into `Heading` values
 **So that** bucket C files get structure through the same interface as bucket A/B
 
@@ -712,9 +712,9 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 
 **Status:** Done (merged ea73de1)
 
-**As a** chunker developer
+**As a** pipeline developer
 **I want to** `detector_for(text)` to return the right detector for a file
-**So that** the chunker asks one question and never sees bucket names
+**So that** `markdown_view` asks one question and never sees bucket names
 
 **Acceptance Criteria (Gherkin)**
 - Given `"# Title\n\ntext"` (bucket A), When I call `detector_for(text)`, Then I get a `MarkdownHeadings`
@@ -739,7 +739,7 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 ## PARSE-7  Blocks from markdown-it  (split into one function per PR)
 
 **Background for all of PARSE-7**
-Headings (PARSE-5/6) tell the chunker where sections start. Blocks tell it what must
+Headings (PARSE-5/6) tell `markdown_view` where sections start. Blocks tell it what must
 not be cut in half: a list, a table, a code fence. markdown-it already knows the
 boundaries of every block, so this story only reads them out.
 
@@ -764,7 +764,7 @@ map). Coverage check over the whole corpus: every non-blank line falls in exactl
 block, in all 5,189 files.
 
 Bucket C note: a bare label such as `Overview:` is a one-line `text` block here.
-`blocks` does not know about the label rule; the chunker (PARSE-8) uses the headings
+`blocks` does not know about the label rule; `markdown_view` (PARSE-8) uses the headings
 list to treat that line as a heading. Line 0, the title, is likewise a `text` block.
 
 Real example, `dsid_0012a01f…scheduler-health-oracle…txt`, first 12 blocks:
@@ -791,7 +791,7 @@ Module: `pipeline/blocks.py`. Pure.
 
 **Status:** Done (merged 4f7c7f5)
 
-**As a** chunker developer
+**As a** pipeline developer
 **I want to** a `Block(kind, start, end)` value and one table `KIND_OF_TOKEN` from markdown-it token type to kind
 **So that** the eight kinds are defined in exactly one place before any parsing code exists
 
@@ -815,9 +815,9 @@ Module: `pipeline/blocks.py`. Pure.
 
 **Status:** Done (merged aff5d17)
 
-**As a** chunker developer
+**As a** pipeline developer
 **I want to** `blocks(text)` to return every top-level block of a clean file, in line order
-**So that** the chunker can keep lists, tables and code fences whole without knowing markdown-it tokens
+**So that** `markdown_view` never writes a `#` inside a table or code fence, and the audits can count them, without knowing markdown-it tokens
 
 **Acceptance Criteria (Gherkin)**
 - Given a fenced code block on lines 10-14, When I call `blocks(text)`, Then one block is `Block("code", 10, 15)`
@@ -883,7 +883,7 @@ under a caps heading). Ties to the open item "30-file hand-labelled precision sa
 
 **As a** RAG developer
 **I want to** `LabelHeadings` to give a label that has no content of its own (the next non-blank line is another label) a child: the next label gets `level + 1`
-**So that** `FAQ` / `Q: How does ...` becomes the path `Title > FAQ > Q: How does ...`, as the v0 chunker did
+**So that** `FAQ` / `Q: How does ...` becomes the path `Title > FAQ > Q: How does ...`, as v0 did
 
 **Acceptance Criteria (Gherkin)**
 - Given `["Title", "", "FAQ", "Q: Why?", "", "Because."]`, Then levels `1, 2, 3`

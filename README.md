@@ -19,8 +19,9 @@ tools/                    planned: audit and measurement scripts (PARSE-11, PARS
 docs/stories.md           story rules + index; stories in docs/stories/<n>-<stage>.md
 docs/design/              system designs: 1-parser, 2-chunker
 docs/decisions/           one short record per decision (why, evidence, rejected options)
-docs/research/            longer background notes and plans
-archive/v0/               the first, monolithic version; kept for its tests and fingerprints
+docs/research/            background notes (corpus review, parsing research)
+docs/archive/             superseded plans, kept for the record
+archive/v0/               the first, monolithic version; its corpus fingerprints seeded the goldens
 data/confluence/          gitignored: archives/ raw/ clean/ markdown/ validation/ (+ manifest)
 ```
 

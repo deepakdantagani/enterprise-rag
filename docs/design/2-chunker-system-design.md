@@ -171,12 +171,12 @@ PARSE-9 passes the embedder's. Until then the default tokenizer stands in.
 
 ## 7. Rejected on evidence
 
-**A custom chunker (the previous version of this document).** Eight pure functions,
-about 150 lines: content blocks, packing, lead-in rule, list and table splitting, parent
-lines. Rejected on 2026-09-16 because, once headings are written as `#`, LlamaIndex's
-`MarkdownNodeParser` produces the same sections:
+**A custom chunker.** Eight pure functions, about 150 lines: content blocks, packing,
+a lead-in rule, list and table splitting, parent lines. Prototyped and rejected on
+2026-09-16 because, once headings are written as `#`, LlamaIndex's `MarkdownNodeParser`
+produces the same sections:
 
-| page | style | our custom design | `MarkdownNodeParser` after the `#` rewrite |
+| page | style | custom chunker | `MarkdownNodeParser` after the `#` rewrite |
 |---|---|---|---|
 | scheduler | bare labels | 19 chunks | 20 sections, 20/20 line ranges |
 | privilege manual | bare labels | 19 chunks | 20 sections, 20/20 line ranges |
@@ -222,16 +222,7 @@ actually cost.
 | A label with the colon in the middle is not a heading to the label rule | "Privilege Approval Safeguards": `Operational Runbook: Approving a Level 3 Grant (step-by-step)` missed; its 6 steps land in the previous section | PARSE-12 label-rule tuning |
 | Unfenced code, YAML and pipe-less table rows promoted to headings | `route_slo = sum_i(…)`, `job_name: …`, `Parameter \| Description \| Default`; about 50 cases | PARSE-12 label-rule tuning |
 
-## 8. What changes in the stories
-
-| Before (custom chunker) | Now |
-|---|---|
-| PARSE-8a–h: `Chunk` value, `content_blocks`, `heading_paths`, `pack`, `split_list`, `split_table`, `parent_lines`, `chunk` | PARSE-8a `markdown_view`, PARSE-8b write the markdown copy and the two manifest columns |
-| PARSE-9 wraps our chunker | PARSE-9 chains `MarkdownNodeParser` → `SentenceSplitter` → ids, line ranges, embed template |
-| rules 4b, 6, 7 | dropped; parent-child becomes a later story on `header_path` |
-| PARSE-14 audit rows `lead_in_block`, `block_over_budget` | replaced by `view_line_count` (markdown view has the same line count) and `heading_in_block` (no `#` written inside a table or code block) |
-
-## 9. How we validate the bet
+## 8. How we validate the bet
 
 The design bets that a small chunk (median ≈ 90 tokens) with its heading path retrieves
 better than a larger one. Evidence for: Chroma's chunking study, where 200-token chunks
