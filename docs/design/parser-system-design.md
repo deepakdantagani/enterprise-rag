@@ -6,7 +6,7 @@
 | **Owner** | Deepak Dantagani |
 | **Scope** | Parsing stage of the Enterprise RAG ingestion pipeline: PARSE-1 to PARSE-7 (clean, manifest, bucket, label rule, headings, blocks). The chunker (PARSE-8) and the LlamaIndex adapter (PARSE-9) are out of scope and will get their own design once this one is approved. |
 | **Source corpus** | EnterpriseRAG-Bench, Confluence subset: 5,189 `.txt` exports (wikis, runbooks, structured documentation) |
-| **Related** | [Stories](../stories/parsing.md) · [Story rules](../stories.md) · [Decision 0001: parser choice](../decisions/0001-confluence-parser.md) |
+| **Related** | [Stories](../stories/1-parsing.md) · [Story rules](../stories.md) · [Decision 0001: parser choice](../decisions/0001-confluence-parser.md) |
 | **Last updated** | 2026-09-14 |
 
 ---
