@@ -138,7 +138,7 @@ Six steps. Four exist or are library code; two are new and small.
 | 2 | `find_headings` | ours, exists | PARSE-5/6 | `#`, underlined, and bare-label headings → `(line, level, text)`. The label rule is the part no library has (section 7). |
 | 3 | `markdown_view` | **ours, new** | ~20 lines, PARSE-8 | write `#`×level in front of each heading line; blank a setext underline; never touch a line inside a `table` or `code` block (markdown-it says which). Same line count in and out. Written to `data/confluence/markdown/` and fingerprinted in the manifest. |
 | 4 | `MarkdownNodeParser` | LlamaIndex | 0 | cut at every `#` line → one node per section, `header_path` metadata, `#` inside ``` fences ignored. A page with no headings comes out as one node. |
-| 5 | `SentenceSplitter(chunk_size=512, chunk_overlap=0)` | LlamaIndex | 0 | leaves the 98% of sections that fit untouched; windows the rest, and windows heading-less pages. |
+| 5 | `SentenceSplitter(chunk_size=512)` | LlamaIndex | 0 | leaves the 98% of sections that fit untouched; windows the rest with overlap 0. Pages where step 2 found no headings (~254, 5%) skip step 4 and are windowed with overlap 64 (12%), because blind windows lose boundary sentences and section cuts do not. Two `IngestionPipeline`s, one `if`. |
 | 6 | ids, line ranges, metadata | **ours, new** | ~15 lines, PARSE-9 | `id_func = sha256(file sha256:start:end)`; `start_line` from the node text's position in the view; drop nodes that are only a heading line; `title` + `heading_path` in the embed text, nothing else. |
 
 **Worked example**, first lines of the scheduler page:

@@ -25,6 +25,16 @@ What the framework gives for free and we use as is:
 - `SentenceSplitter(chunk_size=512, chunk_overlap=0)`: passes small nodes through
   untouched, windows big ones at sentence boundaries. Given the embedder's tokenizer
   it counts the way the embedder does.
+- `IngestionPipeline`: declares the chain once. Two pipelines, chosen per page by
+  whether the detector found headings (`rewritten_lines > 0` in the manifest, or any
+  `#` line in the view):
+  ```python
+  sectioned = IngestionPipeline(transformations=[MarkdownNodeParser(), SentenceSplitter(chunk_size=512, chunk_overlap=0)])
+  blind     = IngestionPipeline(transformations=[SentenceSplitter(chunk_size=512, chunk_overlap=64)])
+  ```
+  Overlap is 0 on section cuts (it would only duplicate text across two vectors) and
+  12% on the ~254 heading-less pages, where windows are blind and a sentence on the
+  boundary would otherwise be lost to both sides.
 - `build_nodes_from_splits`: `SOURCE`, `PREVIOUS`, `NEXT` relationships, metadata
   inheritance from the `Document`.
 - `MetadataMode.EMBED` / `text_template`: the breadcrumb goes in front of the text for
@@ -59,9 +69,9 @@ parent section, so a later story can build one parent node per section and
 **Acceptance Criteria (Gherkin)**
 - Given the scheduler markdown file as a `Document`, When I call the parser, Then 19 nodes (20 sections minus the heading-only title node), in line order, each `text` starting with its `## ` heading line
 - Given a `Document` with one section of 3,000 chars, Then that section yields two or more nodes, each ≤ 512 tokens by the parser's tokenizer, all with the same `header_path`
-- Given a `Document` with no `#` at all, Then the nodes are `SentenceSplitter` windows of the whole text
+- Given a `Document` with no `#` at all, Then it goes through the `blind` pipeline: `SentenceSplitter` windows of the whole text with 64-token overlap; given a `Document` with headings, Then overlap is 0 (no line appears in two nodes)
 - Given any node, Then `metadata["heading_path"]` is a list starting with the title
-- Given `nodes.py`, When I read it, Then it contains no splitting logic, only the two library parsers, the post-step and the metadata mapping
+- Given `nodes.py`, When I read it, Then it contains no splitting logic: two `IngestionPipeline` declarations, the one-line routing, the post-step and the metadata mapping
 
 **Example with real data**
 Scheduler page, node 1: `text = "## Overview:\n\nThis playbook defines…"`, `heading_path = ["Scheduler Health Oracle and Self‑Heal Procedures", "Overview:"]`.
@@ -70,8 +80,8 @@ Scheduler page, node 1: `text = "## Overview:\n\nThis playbook defines…"`, `he
 - Shared NFRs. `nodes.py` is the only module in `pipeline/` allowed to import `llama_index`. About 40 lines.
 
 **Dependencies**
-- APIs: `ConfluenceNodeParser(chunk_size: int = 512, tokenizer=None)`; `NodeParser` subclass
-- Uses: PARSE-8, `llama_index.core.node_parser.MarkdownNodeParser`, `SentenceSplitter`
+- APIs: `ConfluenceNodeParser(chunk_size: int = 512, blind_overlap: int = 64, tokenizer=None)`; `NodeParser` subclass wrapping the two `IngestionPipeline`s
+- Uses: PARSE-8, `llama_index.core.node_parser.MarkdownNodeParser`, `SentenceSplitter`, `llama_index.core.ingestion.IngestionPipeline`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ### 2. PARSE-9b  Stable ids and line ranges  ⬜
