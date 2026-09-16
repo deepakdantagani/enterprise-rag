@@ -1,6 +1,6 @@
 # Chunking stories
 
-The chunker, PARSE-8: `Heading` and `Block` lists in, `Chunk` values out. Design: [chunker design](../design/chunker-system-design.md).
+The chunker, PARSE-8: `Heading` and `Block` lists in, `Chunk` values out. Design: [chunker design](../design/2-chunker-system-design.md).
 
 Shared rules, the story template and the glossary are in [stories.md](../stories.md); every story here follows them.
 
@@ -29,7 +29,7 @@ and `detector_for(text).find_headings(lines)` (where sections start). The chunke
 those into chunks: line ranges that never cross a heading, never cut a block, and pack
 up to `max_chars` (2,048, about 512 tokens; PARSE-9 swaps the measure for the embedder's
 tokenizer). No LlamaIndex here; PARSE-9 wraps it. The reasoning behind every number and
-rule is in the [chunker design](../design/chunker-system-design.md); this background is the
+rule is in the [chunker design](../design/2-chunker-system-design.md); this background is the
 short form.
 
 The rules, in the order the code applies them:

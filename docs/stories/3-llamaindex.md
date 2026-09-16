@@ -36,7 +36,7 @@ we do its way this time:
 Both are settings on `TextNode`, which is `Document`'s base class — the same
 `excluded_embed_metadata_keys` / `excluded_llm_metadata_keys` the loader already uses.
 
-Three more things the [chunker design](../design/chunker-system-design.md) puts here:
+Three more things the [chunker design](../design/2-chunker-system-design.md) puts here:
 
 3. **Ids are stable.** LlamaIndex's default `id_func` is `uuid4()`, so a rerun gives
    new ids and the vector store cannot tell "unchanged" from "new". We pass
@@ -95,7 +95,7 @@ The last line is byte-for-byte what v0 stored in `text`; only where it lives cha
 **Background**
 The chunker design bets that small section chunks (median ≈ 90 tokens) with a heading
 path retrieve better than larger ones, and hedges with parent-child. Section 9 of the
-[design doc](../design/chunker-system-design.md) lays out the evidence for and against.
+[design doc](../design/2-chunker-system-design.md) lays out the evidence for and against.
 Only a measurement settles it. EnterpriseRAG-Bench ships 500 questions in
 `questions.jsonl`, each with ground-truth documents; 5,189 of the documents are our
 Confluence pages. This story is the measurement, restricted to questions whose

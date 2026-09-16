@@ -54,7 +54,7 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 **Status:** To do
 
 **Background**
-The chunker design ([design doc](../design/chunker-system-design.md)) rests on assumptions
+The chunker design ([design doc](../design/2-chunker-system-design.md)) rests on assumptions
 about the parser's output, and dry runs on single pages keep finding cases where the
 parser breaks one: a stray `#` flipping a label file to bucket A, a label with the colon
 in the middle, a step title separated from its bullets. Reading pages one at a time

@@ -5,8 +5,8 @@
 | **Status** | Draft, under review |
 | **Owner** | Deepak Dantagani |
 | **Scope** | Chunking stage of the Enterprise RAG ingestion pipeline: PARSE-8 (chunker) and the id rule PARSE-9 must follow. Embedding, vector storage and retrieval are out of scope; their numbers appear here only where they constrain the chunker. |
-| **Inputs** | Per clean file: `blocks(text)` (line ranges that must stay whole) and `detector_for(text).find_headings(lines)` (where sections start). See the [parser design](parser-system-design.md). |
-| **Related** | [Stories](../stories/2-chunking.md) · [Story rules](../stories.md) · [Parser design](parser-system-design.md) |
+| **Inputs** | Per clean file: `blocks(text)` (line ranges that must stay whole) and `detector_for(text).find_headings(lines)` (where sections start). See the [parser design](1-parser-system-design.md). |
+| **Related** | [Stories](../stories/2-chunking.md) · [Story rules](../stories.md) · [Parser design](1-parser-system-design.md) |
 | **Last updated** | 2026-09-15 |
 
 ---
