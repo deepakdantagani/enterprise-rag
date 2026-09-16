@@ -26,8 +26,8 @@ What the framework gives for free and we use as is:
   untouched, windows big ones at sentence boundaries. Given the embedder's tokenizer
   it counts the way the embedder does.
 - `IngestionPipeline`: declares the chain once. Two pipelines, chosen per page by
-  whether the detector found headings (`rewritten_lines > 0` in the manifest, or any
-  `#` line in the view):
+  whether the page has any heading below the title (`rewritten_lines > 1` in the
+  manifest):
   ```python
   sectioned = IngestionPipeline(transformations=[MarkdownNodeParser(), SentenceSplitter(chunk_size=512, chunk_overlap=0)])
   blind     = IngestionPipeline(transformations=[SentenceSplitter(chunk_size=512, chunk_overlap=64)])
@@ -160,7 +160,7 @@ ground-truth documents are Confluence pages.
 **So that** the chunk size and the parent-child choice are decided by numbers on the benchmark's own questions
 
 **Acceptance Criteria (Gherkin)**
-- Given the three variants (A: this design, `markdown_view` → `MarkdownNodeParser` → `SentenceSplitter`; B: A plus a parent node per section from `header_path` and `AutoMergingRetriever`; C: `SentenceSplitter(chunk_size=512)` over the clean text with no headings, the baseline), When I run `tools/validate_chunking.py`, Then I get one table: variant × category → recall@20, plus the overall number
+- Given the three variants (A: this design, `to_markdown` → `MarkdownNodeParser` → `SentenceSplitter`; B: A plus a parent node per section from `header_path` and `AutoMergingRetriever`; C: `SentenceSplitter(chunk_size=512)` over the clean text with no headings, the baseline), When I run `tools/validate_chunking.py`, Then I get one table: variant × category → recall@20, plus the overall number
 - Given a question, Then recall@20 is 1 if any of the top 20 retrieved nodes has `doc_id` in the question's ground-truth documents, else 0
 - Given the run, Then the embedder, its version, the dimension, and the chunk parameters are printed at the top, and the same run twice gives the same table
 - Given the result, Then the design doc's section 9 is updated with the table and the chosen default in the same PR

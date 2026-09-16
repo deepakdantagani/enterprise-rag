@@ -56,8 +56,7 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 **Background**
 The chunker design ([design doc](../design/2-chunker-system-design.md)) rests on assumptions
 about the parser's output, and dry runs on single pages keep finding cases where the
-parser breaks one: a stray `#` flipping a label file to bucket A, a label with the colon
-in the middle, a `#` about to be written inside a table row. Reading pages one at a time
+parser breaks one: a label with the colon in the middle, a `#` about to be written inside a table row. Reading pages one at a time
 finds these by luck. This story turns each assumption into a function that scans the
 corpus and reports how often it fails, with examples, so the design is checked by
 numbers and re-checked after every parser change.
@@ -68,26 +67,25 @@ numbers and re-checked after every parser change.
 
 **Acceptance Criteria (Gherkin)**
 - Given the clean corpus, When I run `uv run python tools/audit.py`, Then I get a table with at least these rows, each a pure function `audit_<name>(text) -> list[Finding]` in `tools/audits/`:
-  - `bucket_flip`: bucket A with ≤ 2 `#` headings and ≥ 5 `Label:` lines (design: 256 files today)
-  - `mid_colon_label`: a line `Xxx: Yyy` directly followed by a list or numbered block and not detected as a heading
-  - `false_heading`: a label-rule heading that looks like code, YAML or a table row (`=`, `|`, `key: value` with lowercase key)
-  - `heading_in_block`: a detected heading inside a `table`, `code` or `quote` block; these must not be rewritten by `markdown_view`
+  - `mid_colon_label`: a line `Xxx: Yyy` directly followed by a list or numbered block and not a heading in the markdown copy
+  - `false_heading`: a `##` written by the label rule that looks like code, YAML or a table row (`=`, `|`, `key: value` with lowercase key)
+  - `heading_in_protected`: a label-shaped line inside a fence or table (must be 0 headings written there)
   - `heading_only_section`: a heading with no body (design: 11,343 today)
   - `section_over_budget`: sections over 512 tokens, the population `SentenceSplitter` windows (design: 1,698 at 2,048 chars)
-  - `view_line_count`: markdown view line count ≠ clean line count (must be 0)
-  - `view_sections`: `MarkdownNodeParser` section count on the view ≠ detector headings with a body (must be 0)
+  - `md_line_count`: markdown copy line count ≠ clean line count (must be 0)
+  - `md_sections`: `MarkdownNodeParser` section count on the copy ≠ headings with a body (must be 0)
   - `colon_section`: a section whose body ends with `:` and has no list, table or code (design: 133)
 - Given a row, When I read it, Then the count matches the number quoted in the design doc for that assumption on the current parser, or the design doc is updated in the same PR
 - Given `pipeline/`, When I grep for `audit`, Then there are no matches (tools only)
 - Given `--json`, Then the same table as JSON, so a later story can diff two runs
 
 **Example with real data**
-`bucket_flip` on `…runbook-authoring-and-maintenance-guidelines…`: one `## - 2026-01-12` line inside a template; 3 headings found, 20 `Label:` lines present. `mid_colon_label` on `…privilege-approval-safeguards…` line 77: `Operational Runbook: Approving a Level 3 Grant (step-by-step)` followed by `1)`.
+`mid_colon_label` on `…privilege-approval-safeguards…` line 77: `Operational Runbook: Approving a Level 3 Grant (step-by-step)` followed by `1)`.
 
 **Non-functional Requirements**
 - Shared NFRs. Each audit is one pure function over one file's text, about 15 lines, with doctests; the runner only loops and prints. Full corpus under 60 s.
 - Every new assumption added to the design doc gets an audit row in the same PR.
 
 **Dependencies**
-- Uses: PARSE-3, PARSE-6, PARSE-7, PARSE-8a, PARSE-9a
+- Uses: PARSE-8b, PARSE-8c, PARSE-9a
 - Service Bus: N/A · Database: N/A · UI: N/A

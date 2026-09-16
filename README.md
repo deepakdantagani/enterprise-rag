@@ -8,11 +8,10 @@ Enterprise knowledge-base RAG on [EnterpriseRAG-Bench](https://github.com/onyx-d
 pipeline/                 active ingestion code (a Python package), pure functions, one idea per module
   cleaning.py             raw export -> clean text (unescape JSON-escaped bodies, fix wiki markup, tidy whitespace)
   corpus.py, manifest.py  write data/confluence/clean/ and one manifest row (raw/clean sha256) per file
-  buckets.py              which heading style a file uses: # / underlined / bare labels / prose
   label_rule.py           our rule for bare-label headings such as `Overview:` (no library finds these)
-  headings.py             one detector per style -> list[Heading(line, level, text)]
-  blocks.py, markdown.py  markdown-it block map: which lines are a list, table, code fence
-  markdown_view.py        planned (PARSE-8): write # on every detected heading, same line count
+  markdown.py             the one shared markdown-it instance
+  to_markdown.py          planned (PARSE-8): one pass per file, # on every heading (any style), same line count
+  buckets.py, headings.py, blocks.py   the previous heading detectors; retired by PARSE-8d once to_markdown matches the goldens
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
 tests/                    unit tests, 13 fixture documents, golden corpus fingerprints
 tools/                    planned: audit and measurement scripts (PARSE-11, PARSE-14), outside pipeline/
@@ -36,4 +35,4 @@ The corpus writer (PARSE-2) fills `data/confluence/clean/` and `_manifest.json` 
 
 ## Pipeline in one paragraph
 
-Raw Confluence exports are cleaned (`cleaning`), and their headings found whatever the style (`headings`: markdown-it for `#` and underlined headings, our label rule for bare lines like `Overview:`, which no library detects). Those headings are then written as `#` into a Markdown copy of each page with the same line count (`markdown_view`, planned), so LlamaIndex's own `MarkdownNodeParser` can cut every page into one node per section and `SentenceSplitter` can trim the few sections over 512 tokens (`nodes`, planned). Every node carries the title, the section breadcrumb, an id derived from the file hash and line range, and that exact line range for citation. No custom chunker. Why: [docs/design/2-chunker-system-design.md](docs/design/2-chunker-system-design.md); why this parser and not a hosted one: [docs/decisions/0001-confluence-parser.md](docs/decisions/0001-confluence-parser.md).
+Raw Confluence exports are cleaned (`cleaning`). Then one pass per page (`to_markdown`, planned) finds every heading whatever its style (markdown-it for `#` and underlined headings, our label rule for bare lines like `Overview:`, which no library detects) and writes it as `#` into a Markdown copy with the same line count, so LlamaIndex's own `MarkdownNodeParser` can cut every page into one node per section and `SentenceSplitter` can trim the few sections over 512 tokens (`nodes`, planned). Every node carries the title, the section breadcrumb, an id derived from the file hash and line range, and that exact line range for citation. No custom chunker. Why: [docs/design/2-chunker-system-design.md](docs/design/2-chunker-system-design.md); why this parser and not a hosted one: [docs/decisions/0001-confluence-parser.md](docs/decisions/0001-confluence-parser.md).

@@ -525,7 +525,7 @@ checks are extra ways to say no or yes on top of these two rules.
 ## PARSE-5  Heading detector interface + Markdown implementation  (split into one function per PR)
 
 **Background for all of PARSE-5**
-`markdown_view` (PARSE-8) needs to know where the headings are, but it must not care *how*
+`to_markdown` (PARSE-8) needs to know where the headings are, but it must not care *how*
 they were written. Files in bucket A/B write headings in Markdown (`## Scope`, or
 `Scope` over `-----`); files in bucket C write bare labels that only our label rule
 (PARSE-4) can see. So we define one small interface and two implementations:
@@ -578,7 +578,7 @@ Module: `pipeline/headings.py`. Pure (no file IO).
 
 **As a** pipeline developer
 **I want to** a `Heading` value type and a `HeadingDetector` protocol
-**So that** `markdown_view` and both detectors agree on one data shape before any detector exists
+**So that** `to_markdown` and both detectors agree on one data shape before any detector exists
 
 **Acceptance Criteria (Gherkin)**
 - Given `Heading(line=2, level=2, text="Scope")`, When I read its fields, Then I get `2`, `2`, `"Scope"`, and it is frozen (assigning raises) and comparable by value
@@ -645,7 +645,7 @@ export that writes `# Title`.
 PARSE-5 gave us the interface (`find_headings(lines) -> list[Heading]`) and the Markdown
 implementation. Bucket C files (53% of the corpus) have no Markdown headings, so they
 need the second implementation: one that wraps the label rule from PARSE-4. Then one
-tiny function decides, per file, which detector to use, so `markdown_view` never looks at
+tiny function decides, per file, which detector to use, so `to_markdown` never looks at
 buckets itself.
 
 ```
@@ -714,7 +714,7 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 
 **As a** pipeline developer
 **I want to** `detector_for(text)` to return the right detector for a file
-**So that** `markdown_view` asks one question and never sees bucket names
+**So that** `to_markdown` asks one question and never sees bucket names
 
 **Acceptance Criteria (Gherkin)**
 - Given `"# Title\n\ntext"` (bucket A), When I call `detector_for(text)`, Then I get a `MarkdownHeadings`
@@ -739,7 +739,7 @@ The listing in the PARSE-6 background: 20 headings for the scheduler file.
 ## PARSE-7  Blocks from markdown-it  (split into one function per PR)
 
 **Background for all of PARSE-7**
-Headings (PARSE-5/6) tell `markdown_view` where sections start. Blocks tell it what must
+Headings (PARSE-5/6) tell `to_markdown` where sections start. Blocks tell it what must
 not be cut in half: a list, a table, a code fence. markdown-it already knows the
 boundaries of every block, so this story only reads them out.
 
@@ -764,7 +764,7 @@ map). Coverage check over the whole corpus: every non-blank line falls in exactl
 block, in all 5,189 files.
 
 Bucket C note: a bare label such as `Overview:` is a one-line `text` block here.
-`blocks` does not know about the label rule; `markdown_view` (PARSE-8) uses the headings
+`blocks` does not know about the label rule; `to_markdown` (PARSE-8) uses the headings
 list to treat that line as a heading. Line 0, the title, is likewise a `text` block.
 
 Real example, `dsid_0012a01f…scheduler-health-oracle…txt`, first 12 blocks:
@@ -817,7 +817,7 @@ Module: `pipeline/blocks.py`. Pure.
 
 **As a** pipeline developer
 **I want to** `blocks(text)` to return every top-level block of a clean file, in line order
-**So that** `markdown_view` never writes a `#` inside a table or code fence, and the audits can count them, without knowing markdown-it tokens
+**So that** `to_markdown` never writes a `#` inside a table or code fence, and the audits can count them, without knowing markdown-it tokens
 
 **Acceptance Criteria (Gherkin)**
 - Given a fenced code block on lines 10-14, When I call `blocks(text)`, Then one block is `Block("code", 10, 15)`
@@ -840,75 +840,6 @@ The 12-block listing in the PARSE-7 background is `blocks(text)` on the schedule
 **Dependencies**
 - APIs: `blocks(text: str) -> list[Block]`
 - Uses: PARSE-7a; `pipeline.markdown.MARKDOWN`
-- Service Bus: N/A · Database: N/A · UI: N/A
-
----
-
-## PARSE-12  Depth for label headings  ⬜
-
-**Status:** Backlog (found while reviewing PARSE-6a on 2026-09-14)
-
-**As a** RAG developer
-**I want to** label headings to get a level from their depth signals (Step/Phase/numbered prefix, stacked labels, dotted numbers)
-**So that** bucket C breadcrumbs keep their middle, e.g. `SDK Patch Release Playbook > Step-by-step playbook > Phase A`
-
-**Acceptance Criteria (Gherkin)**
-- Given `dsid_021076ec…sdk-patch-release-playbook…txt`, When I call `LabelHeadings().find_headings`, Then `Phase A … Phase D` are level 3 under `Step-by-step playbook: detailed procedure` (level 2)
-- Given `dsid_006e117c…tenant-bootstrapping…txt`, Then `Pre-upgrade checks`, `Canary stages and validation gates`, `Ramped rollout`, `Rollback policy` are level 3 under `Step 3 — Immutable upgrade strategy`
-- Given a file with no depth signals, Then the result is unchanged from today (title level 1, rest level 2)
-- Given the corpus, Then the number of headings per file is unchanged (label golden still matches); only levels change
-
-**Spot check, 2026-09-14** (all 2,763 label files, `LabelHeadings` output)
-
-| Depth signal present in the file | Files |
-|---|---|
-| Stacked labels, child directly under parent (e.g. `FAQ` then `Q: How does ...`) | 748 |
-| Numbered headings (`3) Escalation` style) | 208 |
-| Dotted numbers (`1.2. Request and approval flow`) | 2 |
-
-Random file `dsid_9679c592…slot-abort-contract…txt` shows the clearest case: ALL-CAPS
-sections (`GOALS AND NON-GOALS`, `SIGNALING AND CONTRACT`) with Title-case sub-labels
-directly under them (`Goals:`, `Non-goals:`, `Default timeouts (configurable):`). Today
-all 26 are level 2; the caps/mixed-case switch is a fourth depth signal to consider.
-
-Precision note from the same spot check, out of scope here but worth its own story: a few
-flagged lines are not headings: `telemetry:` (a YAML key on the line after a heading),
-`Artifact | Minimum window | Format ...` (a table header row with no leading pipe), and
-`Emit standardized tracing annotations and metrics for every ...` (a sentence stacked
-under a caps heading). Ties to the open item "30-file hand-labelled precision sample".
-
-### PARSE-12a  An empty label is the parent of the next label  ⬜
-
-**Status:** To do (pulled forward: heading levels become `#` depth in `markdown_view`, PARSE-8a, so `MarkdownNodeParser`'s `header_path` reproduces the v0 breadcrumbs)
-
-**As a** RAG developer
-**I want to** `LabelHeadings` to give a label that has no content of its own (the next non-blank line is another label) a child: the next label gets `level + 1`
-**So that** `FAQ` / `Q: How does ...` becomes the path `Title > FAQ > Q: How does ...`, as v0 did
-
-**Acceptance Criteria (Gherkin)**
-- Given `["Title", "", "FAQ", "Q: Why?", "", "Because."]`, Then levels `1, 2, 3`
-- Given `["Title", "", "FAQ", "", "Q: Why?", "", "Because."]` (blank between), Then still `1, 2, 3`: emptiness is "no content before the next heading", not adjacency
-- Given `["Title", "", "A", "", "text", "", "B"]`, Then `A` and `B` are both level 2 (A has content)
-- Given `["Title", "", "A", "B", "C"]` (chain), Then `1, 2, 3, 4`: the rule applies again to `C` because `B` is empty too
-- Given `["Title", "", "A"]` (title then label), Then `1, 2`: the title is level 1 and the rule only deepens a label whose parent is level 2 or more
-- Given every clean file, Then the number of headings per file is unchanged (label golden still matches)
-
-**Example with real data**
-`dsid_00623cd6…synthe…txt` line 153 `FAQ` (level 2) directly over line 154 `Q: How does this interact with error-budget ...` (now level 3). Note the v0 limit, kept on purpose: only the *next* label nests; a second `Q:` after the first answer is level 2 again. Smarter sibling handling stays in PARSE-12.
-
-**Non-functional Requirements**
-- Shared NFRs. Pure. One helper `is_empty_heading(lines, headings, k) -> bool`, then the level assignment in `LabelHeadings.find_headings`.
-
-**Dependencies**
-- APIs: `LabelHeadings` unchanged signature; levels change only
-- Uses: PARSE-6a
-- Service Bus: N/A · Database: N/A · UI: N/A
-
-**Non-functional Requirements (PARSE-12 as a whole)**
-- Shared NFRs. Pure. To be split into one-function sub-stories when reached.
-
-**Dependencies**
-- Uses: PARSE-4, PARSE-6a
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
@@ -952,40 +883,4 @@ cleaned, bucketed or chunked. It attaches in PARSE-9 when `TextNode`s are built.
 **Dependencies**
 - APIs: `doc_type(title: str) -> str` in `pipeline/doc_type.py`
 - Uses: PARSE-9
-- Service Bus: N/A · Database: N/A · UI: N/A
-
----
-
-## PARSE-15  Bucket by the dominant signal  ⬜
-
-**Status:** To do
-
-**Background**
-`bucket()` returns `A_hash` on the first `#` heading it sees. The chunk dry run on
-"Runbook authoring and maintenance guidelines" showed the cost: one `## - 2026-01-12`
-line inside a pasted template made the whole page a `#` file, the label rule never ran,
-and 20 `Label:` headings were missed, so the page's first 1,500 chars became one chunk
-and the last three chunks were filed under "- 2026-01-12: Minor wording updates". The
-corpus has 256 such files (bucket A, ≤ 2 `#` lines, ≥ 5 `Label:` lines), about 5%.
-
-**As a** pipeline developer
-**I want to** `bucket()` to pick the style with the most headings, not the first style that matches
-**So that** a stray `#` or `---` inside a template or code sample cannot hide a page's real headings
-
-**Acceptance Criteria (Gherkin)**
-- Given a file with one `#` heading and twenty `Label:` lines, When I call `bucket`, Then `C_plain_labels`
-- Given a file with twelve `#` headings and two `Label:` lines, Then `A_hash`
-- Given the current 13 fixtures, Then every bucket is unchanged
-- Given every clean file, Then the number of files whose bucket changes is reported in the PR, with the PARSE-14 `bucket_flip` row before and after (expected: 256 → under 20)
-- Given the corpus golden for headings, Then it changes only for files whose bucket changed, and the PR lists them
-
-**Example with real data**
-`…runbook-authoring-and-maintenance-guidelines…`: 1 `#` line, 1 setext `---`, 20 labels. Before: 3 headings. After: 21 headings, and `Summary:` is chunk 1.
-
-**Non-functional Requirements**
-- Shared NFRs. The count is over heading-shaped lines only; a `#` inside a fenced code block does not count.
-
-**Dependencies**
-- APIs: `bucket(text: str) -> str`, same signature
-- Uses: PARSE-3, PARSE-14 `bucket_flip`
 - Service Bus: N/A · Database: N/A · UI: N/A

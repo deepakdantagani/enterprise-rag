@@ -5,7 +5,7 @@
 | **Status** | Draft, under review |
 | **Owner** | Deepak Dantagani |
 | **Scope** | Chunking stage of the Enterprise RAG ingestion pipeline: the Markdown view (PARSE-8) and the LlamaIndex adapter that chunks it (PARSE-9). Embedding, vector storage and retrieval are out of scope; their numbers appear here only where they constrain chunking. |
-| **Inputs** | Per clean file: `detector_for(text).find_headings(lines)` (where sections start, all three heading styles) and `blocks(text)` (which lines are tables and code, so no heading is written inside one). See the [parser design](1-parser-system-design.md). |
+| **Inputs** | Per clean file: the clean text. `to_markdown` finds the headings in all three styles itself (markdown-it for `#` and underlined, our label rule for bare labels) and never writes inside a fence or table. See the [parser design](1-parser-system-design.md). |
 | **Related** | [Stories](../stories/2-chunking.md) · [Story rules](../stories.md) · [Parser design](1-parser-system-design.md) |
 | **Last updated** | 2026-09-16 |
 | **Decision** | 2026-09-16: no custom chunker. Our code writes `#` on the headings it finds; LlamaIndex's `MarkdownNodeParser` and `SentenceSplitter` do the chunking. Section 6 has the pipeline, section 7 the evidence. |
@@ -33,9 +33,7 @@ answer generation, any network or model call inside the chunker.
 
 ```mermaid
 flowchart LR
-    P["clean file<br/>143 lines"] --> H["find_headings (ours)<br/>20 headings, line + level"]
-    P --> M["markdown view (ours, new)<br/>'Overview:' → '## Overview:'<br/>143 lines, same numbers"]
-    H --> M
+    P["clean file<br/>143 lines"] --> M["to_markdown (ours, new)<br/>'Overview:' → '## Overview:'<br/>143 lines, same numbers"]
     M --> N["MarkdownNodeParser (LlamaIndex)<br/>20 sections with header_path"]
     N --> S["SentenceSplitter 512 (LlamaIndex)<br/>splits only sections over budget"]
     S --> I["ids + line ranges (ours)<br/>sha256(file:start:end)"]
@@ -43,7 +41,7 @@ flowchart LR
     E --> V[("vector store<br/>20 rows · 1 vector each")]
 ```
 
-Ours: cleaning, heading detection, the `#` rewrite, ids. Library: the cutting. One chunk
+Ours: cleaning, one pass that finds headings and writes the `#`s, ids. Library: the cutting. One chunk
 becomes one vector; inside the embedder every token gets a vector for a moment, then
 they are pooled into one, and only that one is stored. That is why a chunk should hold
 one topic, and the author's section is the topic boundary.
@@ -130,13 +128,13 @@ chosen. That decision does not touch the chunker.
 
 ## 6. The pipeline
 
-Six steps. Four exist or are library code; two are new and small.
+Five steps. Three exist or are library code; two are new and small.
 
 | # | Step | Owner | Size | What it does |
 |---|---|---|---|---|
 | 1 | `clean_text` | ours, exists | PARSE-1 | raw export → clean text. Unescape, whitespace, structure fixes. Line count from here on is the citation line count. |
-| 2 | `find_headings` | ours, exists | PARSE-5/6 | `#`, underlined, and bare-label headings → `(line, level, text)`. The label rule is the part no library has (section 7). |
-| 3 | `markdown_view` | **ours, new** | ~20 lines, PARSE-8 | write `#`×level in front of each heading line; blank a setext underline; never touch a line inside a `table` or `code` block (markdown-it says which). Same line count in and out. Written to `data/confluence/markdown/` and fingerprinted in the manifest. |
+| 2 | `to_markdown` | **ours, new**, replaces `buckets` / `headings` / `blocks` | ~55 lines, PARSE-8 | one pass per file. `structure(text)`: markdown-it gives `#` and underlined heading lines with level, plus fence and table ranges. `label_flags(lines)`: our rule for bare labels, the part no library has (section 7). Then per line: `#` kept, underline → `#`s and an empty line, label → `##` (`###` when stacked under an empty label), nothing inside a fence or table. Same line count. Saved to `data/confluence/markdown/` with `md_sha256` and `rewritten_lines` in the manifest. |
+| 3 | (merged into 2) | | | Every line is judged on its own; there is no file-level style decision, so a stray `##` on a label page cannot hide the labels. |
 | 4 | `MarkdownNodeParser` | LlamaIndex | 0 | cut at every `#` line → one node per section, `header_path` metadata, `#` inside ``` fences ignored. A page with no headings comes out as one node. |
 | 5 | `SentenceSplitter(chunk_size=512)` | LlamaIndex | 0 | leaves the 98% of sections that fit untouched; windows the rest with overlap 0. Pages where step 2 found no headings (~254, 5%) skip step 4 and are windowed with overlap 64 (12%), because blind windows lose boundary sentences and section cuts do not. Two `IngestionPipeline`s, one `if`. |
 | 6 | ids, line ranges, metadata | **ours, new** | ~15 lines, PARSE-9 | `id_func = sha256(file sha256:start:end)`; `start_line` from the node text's position in the view; drop nodes that are only a heading line; `title` + `heading_path` in the embed text, nothing else. |
@@ -194,7 +192,7 @@ pages:
 | page | true headings | `unstructured` titles | ours |
 |---|---|---|---|
 | scheduler | 18 | 7, of which 4 are `curl` lines | 20, 2 false |
-| runbook guidelines | 21 | 0 | 3 today, 21 after PARSE-15 |
+| runbook guidelines | 21 | 0 | 3 with the old file-level bucket, 22 with `to_markdown` |
 | privilege manual | 21 | 1 | 20 |
 
 `MarkdownNodeParser` alone gives 1 node per page on the 68% of files without `#`. So
@@ -218,9 +216,9 @@ actually cost.
 
 | Defect | Evidence | Where it is fixed |
 |---|---|---|
-| One stray `#` line flips a label file to bucket A, so the label rule never runs | "Runbook authoring and maintenance guidelines": one `## - 2026-01-12` line inside a template; 3 headings found instead of 21. Corpus: 256 of 1,645 bucket-A files have ≤ 2 `#` lines and ≥ 5 `Label:` lines, about 5% | PARSE-15: bucket by the dominant signal |
-| A label with the colon in the middle is not a heading to the label rule | "Privilege Approval Safeguards": `Operational Runbook: Approving a Level 3 Grant (step-by-step)` missed; its 6 steps land in the previous section | PARSE-12 label-rule tuning |
-| Unfenced code, YAML and pipe-less table rows promoted to headings | `route_slo = sum_i(…)`, `job_name: …`, `Parameter \| Description \| Default`; about 50 cases | PARSE-12 label-rule tuning |
+| One stray `#` line flips a label file to bucket A, so the label rule never runs | "Runbook authoring and maintenance guidelines": one `## - 2026-01-12` line inside a template; 3 headings found instead of 21. Corpus: 256 of 1,645 bucket-A files have ≤ 2 `#` lines and ≥ 5 `Label:` lines, about 5% | gone by construction in `to_markdown`: every line is judged on its own, no file-level bucket (PARSE-8b, 8d) |
+| A label with the colon in the middle is not a heading to the label rule | "Privilege Approval Safeguards": `Operational Runbook: Approving a Level 3 Grant (step-by-step)` missed; its 6 steps land in the previous section | label-rule tuning, measured by the PARSE-14 `mid_colon_label` row |
+| Unfenced code, YAML and pipe-less table rows promoted to headings | `route_slo = sum_i(…)`, `job_name: …`, `Parameter \| Description \| Default`; about 50 cases | label-rule tuning, measured by the PARSE-14 `false_heading` row |
 
 ## 8. How we validate the bet
 
@@ -238,7 +236,7 @@ the top 20), per question category:
 
 | variant | median chunk |
 |---|---|
-| A: this design, `markdown_view` → `MarkdownNodeParser` → `SentenceSplitter` | ≈ 90 tokens |
+| A: this design, `to_markdown` → `MarkdownNodeParser` → `SentenceSplitter` | ≈ 90 tokens |
 | B: A plus parent-child (parent node per section from `header_path`, `AutoMergingRetriever`) | small match, parent returned |
 | C: `SentenceSplitter` alone on the clean text, no headings, the baseline | ≈ 512 tokens |
 

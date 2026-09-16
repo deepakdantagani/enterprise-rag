@@ -47,12 +47,10 @@ Stories live in `docs/stories/`, one file per stage, numbered in pipeline order:
 | PARSE-5  Heading detector interface + Markdown implementation  (split into one function per PR) | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-6  Label heading detector + selector  (split into one function per PR) | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-7  Blocks from markdown-it  (split into one function per PR) | [1-parsing.md](stories/1-parsing.md) |
-| PARSE-8  Markdown view: make every clean file proper Markdown  (8a, 8b) | [2-chunking.md](stories/2-chunking.md) |
+| PARSE-8  Every clean file becomes Markdown, one pass per file  (8a–8d) | [2-chunking.md](stories/2-chunking.md) |
 | PARSE-9  LlamaIndex adapter: the chunker is library code  (9a, 9b, 9c) | [3-llamaindex.md](stories/3-llamaindex.md) |
 | PARSE-10  Triage gate on the new modules  ⬜ | [4-tools.md](stories/4-tools.md) |
 | PARSE-11  Debug and measurement tools out of the pipeline  ⬜ | [4-tools.md](stories/4-tools.md) |
-| PARSE-12  Depth for label headings  ⬜ | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-13  Document type from the title  ⬜ | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-14  Assumption audit: every chunking assumption as a corpus count  ⬜ | [4-tools.md](stories/4-tools.md) |
-| PARSE-15  Bucket by the dominant signal  ⬜ | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-16  Chunking validation: recall@20 on the benchmark questions  ⬜ | [3-llamaindex.md](stories/3-llamaindex.md) |
