@@ -49,3 +49,15 @@ Found during validation and now in `pipeline/preprocess.py`: JSON-string-escaped
 - Files the triage gate flags (117 today, 2.3%) are still chunked, as plain paragraphs with the title prefixed. Nothing is excluded from the index; the review list is a to-do, not a blocker.
 - Sub-list indentation errors in the source no longer matter: lists are atomic in the chunker.
 - If the corpus changes shape, rerun `python -m pipeline.triage`; new flag types are the signal to revisit this record.
+
+## Addendum, 2026-09-16
+
+The chunker this record refers to (v0, `nodes.py`) was replaced by library code: our
+parser writes `#` on the headings it finds and LlamaIndex's `MarkdownNodeParser` plus
+`SentenceSplitter` do the cutting. Two consequences above change accordingly: flagged
+files are windowed by `SentenceSplitter` with the title prefixed, and lists stay inside
+their section rather than being atomic units of a custom packer; only the ~2% of
+sections over 512 tokens are windowed, at sentence boundaries. The parser decision
+itself is unchanged and was re-tested against `unstructured`'s title heuristic, which
+found 0 to 7 of about 20 headings per page where the label rule finds 20. Details:
+[chunker design](../design/2-chunker-system-design.md).

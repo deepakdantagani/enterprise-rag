@@ -879,7 +879,7 @@ under a caps heading). Ties to the open item "30-file hand-labelled precision sa
 
 ### PARSE-12a  An empty label is the parent of the next label  ⬜
 
-**Status:** To do (pulled forward: PARSE-8e needs it to reproduce v0 breadcrumbs)
+**Status:** To do (pulled forward: heading levels become `#` depth in `markdown_view`, PARSE-8a, so `MarkdownNodeParser`'s `header_path` reproduces the v0 breadcrumbs)
 
 **As a** RAG developer
 **I want to** `LabelHeadings` to give a label that has no content of its own (the next non-blank line is another label) a child: the next label gets `level + 1`

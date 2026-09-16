@@ -14,17 +14,19 @@
 ## 1. Requirement
 
 > Turn 5,189 Confluence page exports into clean text with a reliable section structure
-> (headings) and block structure (lists, tables, code), so that the chunker can produce
-> section-aware chunks and every line of every page is accounted for. The result must be
-> deterministic and provable: the same input always gives the same output, and a
-> one-number fingerprint proves nothing changed after a refactor.
+> (headings) and block structure (lists, tables, code), so that every heading can be
+> written as `#` and a standard Markdown chunker cuts every page by section, with every
+> line of every page accounted for. The result must be deterministic and provable: the
+> same input always gives the same output, and a one-number fingerprint proves nothing
+> changed after a refactor.
 
 What "reliable structure" means for this corpus: the pages were not written one way.
 Only 32% use Markdown headings; 15% underline their headings; 53% write bare labels
 such as `Overview:` with no markup at all. A standard Markdown parser sees no headings in
 that last group. The parser must recover them.
 
-Out of scope: chunk sizing, embeddings, retrieval, any network or model call.
+Out of scope: chunk sizing, embeddings, retrieval, any network or model call. Chunking
+itself is library code; see the [chunker design](2-chunker-system-design.md).
 
 ## 2. Overview
 

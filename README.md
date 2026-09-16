@@ -5,28 +5,34 @@ Enterprise knowledge-base RAG on [EnterpriseRAG-Bench](https://github.com/onyx-d
 ## Layout
 
 ```
-pipeline/                 active ingestion code (a Python package)
-  preprocess.py           raw export -> clean text (unescape, whitespace, structure fixes)
-  structure.py            bucket a file by markup style; plain-label heading rule
-  triage.py               gate for new data: runs preprocess, buckets, flags files for review
-  nodes.py                LlamaIndex integration: Documents -> section-aware TextNodes
-tests/                    unit tests + 13 fixture documents (the validation sample set)
+pipeline/                 active ingestion code (a Python package), pure functions, one idea per module
+  cleaning.py             raw export -> clean text (unescape JSON-escaped bodies, fix wiki markup, tidy whitespace)
+  corpus.py, manifest.py  write data/confluence/clean/ and one manifest row (raw/clean sha256) per file
+  buckets.py              which heading style a file uses: # / underlined / bare labels / prose
+  label_rule.py           our rule for bare-label headings such as `Overview:` (no library finds these)
+  headings.py             one detector per style -> list[Heading(line, level, text)]
+  blocks.py, markdown.py  markdown-it block map: which lines are a list, table, code fence
+  markdown_view.py        planned (PARSE-8): write # on every detected heading, same line count
+  nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
+tests/                    unit tests, 13 fixture documents, golden corpus fingerprints
+tools/                    planned: audit and measurement scripts (PARSE-11, PARSE-14), outside pipeline/
+docs/stories.md           story rules + index; stories in docs/stories/<n>-<stage>.md
+docs/design/              system designs: 1-parser, 2-chunker
 docs/decisions/           one short record per decision (why, evidence, rejected options)
 docs/research/            longer background notes and plans
-data/confluence/          gitignored: archives/ raw/ clean/ validation/ (+ manifests)
+archive/v0/               the first, monolithic version; kept for its tests and fingerprints
+data/confluence/          gitignored: archives/ raw/ clean/ markdown/ validation/ (+ manifest)
 ```
 
 ## Run
 
 ```sh
 uv sync                                   # installs pinned deps into .venv
-uv run python -m pipeline.triage          # raw -> clean, buckets, review list (exit 1 if any flagged)
-uv run python -m pipeline.nodes           # print chunks for tests/fixtures/typical.md
-uv run python -m unittest discover tests
+uv run python -m unittest discover tests  # unit tests + corpus goldens (corpus tests skip if data/ is missing)
 ```
 
-Outputs of `triage` land in `data/confluence/clean/`: the cleaned files, `_manifest.json` (raw/clean sha256 per file), `_triage.json` and `_review.md` (files that need a human look, grouped by reason).
+The corpus writer (PARSE-2) fills `data/confluence/clean/` and `_manifest.json` (raw/clean sha256 per file). The triage gate and the command-line entry points are stories PARSE-10 and PARSE-11; until then the v0 versions live under `archive/v0/`.
 
 ## Pipeline in one paragraph
 
-Raw Confluence exports are normalized (`preprocess`), bucketed by how they express structure (`structure`), and gated (`triage`). Parsing is markdown-it-py with source line maps, plus a rule that promotes bare label lines like `Overview` to headings in files that have no markup. `nodes.ConfluenceNodeParser` turns each document into section-aligned chunks that never split a list, table, or code fence, and carries the title, section breadcrumb, and exact source line range on every node. Why this and not a hosted parser: [docs/decisions/0001-confluence-parser.md](docs/decisions/0001-confluence-parser.md).
+Raw Confluence exports are cleaned (`cleaning`), and their headings found whatever the style (`headings`: markdown-it for `#` and underlined headings, our label rule for bare lines like `Overview:`, which no library detects). Those headings are then written as `#` into a Markdown copy of each page with the same line count (`markdown_view`, planned), so LlamaIndex's own `MarkdownNodeParser` can cut every page into one node per section and `SentenceSplitter` can trim the few sections over 512 tokens (`nodes`, planned). Every node carries the title, the section breadcrumb, an id derived from the file hash and line range, and that exact line range for citation. No custom chunker. Why: [docs/design/2-chunker-system-design.md](docs/design/2-chunker-system-design.md); why this parser and not a hosted one: [docs/decisions/0001-confluence-parser.md](docs/decisions/0001-confluence-parser.md).
