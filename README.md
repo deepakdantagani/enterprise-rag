@@ -7,13 +7,14 @@ Enterprise knowledge-base RAG on [EnterpriseRAG-Bench](https://github.com/onyx-d
 ```
 pipeline/                 active ingestion code (a Python package), pure functions, one idea per module
   cleaning.py             raw export -> clean text (unescape JSON-escaped bodies, fix wiki markup, tidy whitespace)
-  corpus.py, manifest.py  write data/confluence/clean/ and one manifest row (raw/clean sha256) per file
+  corpus.py, manifest.py  write data/confluence/clean/ and data/confluence/markdown/, each with its own _manifest.json (sha256 per file)
   label_rule.py           our rule for bare-label headings such as `Overview:` (no library finds these)
   markdown.py             the one shared markdown-it instance
-  to_markdown.py          planned (PARSE-8): one pass per file, # on every heading (any style), same line count
-  buckets.py, headings.py, blocks.py   the previous heading detectors; retired by PARSE-8d once to_markdown matches the goldens
+  structure.py            what markdown-it sees in a page: # and underlined headings with level, fence and table ranges
+  to_markdown.py          one pass per file: # on every heading (any style), same line count; which labels count is decided here
+  buckets.py, headings.py, blocks.py   the previous heading detectors; retired by PARSE-8d once the golden differences are explained
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
-tests/                    unit tests, 13 fixture documents, golden corpus fingerprints
+tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings
 tools/                    planned: audit and measurement scripts (PARSE-11, PARSE-14), outside pipeline/
 docs/stories.md           story rules + index; stories in docs/stories/<n>-<stage>.md
 docs/design/              system designs: 1-parser, 2-chunker
@@ -31,8 +32,8 @@ uv sync                                   # installs pinned deps into .venv
 uv run python -m unittest discover tests  # unit tests + corpus goldens (corpus tests skip if data/ is missing)
 ```
 
-The corpus writer (PARSE-2) fills `data/confluence/clean/` and `_manifest.json` (raw/clean sha256 per file). The triage gate and the command-line entry points are stories PARSE-10 and PARSE-11; until then the v0 versions live under `archive/v0/`.
+The corpus writers fill `data/confluence/clean/` (PARSE-2, `write_clean_corpus`) and `data/confluence/markdown/` (PARSE-8c, `write_markdown_corpus`), each with a `_manifest.json`. The triage gate and the command-line entry points are stories PARSE-10 and PARSE-11; until then the v0 versions live under `archive/v0/`.
 
 ## Pipeline in one paragraph
 
-Raw Confluence exports are cleaned (`cleaning`). Then one pass per page (`to_markdown`, planned) finds every heading whatever its style (markdown-it for `#` and underlined headings, our label rule for bare lines like `Overview:`, which no library detects) and writes it as `#` into a Markdown copy with the same line count, so LlamaIndex's own `MarkdownNodeParser` can cut every page into one node per section and `SentenceSplitter` can trim the few sections over 512 tokens (`nodes`, planned). Every node carries the title, the section breadcrumb, an id derived from the file hash and line range, and that exact line range for citation. No custom chunker. Why: [docs/design/2-chunker-system-design.md](docs/design/2-chunker-system-design.md); why this parser and not a hosted one: [docs/decisions/0001-confluence-parser.md](docs/decisions/0001-confluence-parser.md).
+Raw Confluence exports are cleaned (`cleaning`). Then one pass per page (`to_markdown`) finds every heading whatever its style (markdown-it for `#` and underlined headings, our label rule for bare lines like `Overview:`, which no library detects) and writes it as `#` into a Markdown copy with the same line count, so LlamaIndex's own `MarkdownNodeParser` can cut every page into one node per section and `SentenceSplitter` can trim the few sections over 512 tokens (`nodes`, planned). Every node carries the title, the section breadcrumb, an id derived from the file hash and line range, and that exact line range for citation. No custom chunker. Why: [docs/design/2-chunker-system-design.md](docs/design/2-chunker-system-design.md); why this parser and not a hosted one: [docs/decisions/0001-confluence-parser.md](docs/decisions/0001-confluence-parser.md).

@@ -41,6 +41,27 @@ def manifest_row(name: str, raw: str, result: CleanResult) -> dict:
     }
 
 
+def markdown_row(clean_name: str, clean: str, markdown: str, headings: int) -> dict:
+    """Build the markdown manifest entry for one file (PARSE-8c).
+
+    clean_sha256 ties the row to the clean manifest. rewritten_lines is the number of
+    lines to_markdown changed: heading lines plus emptied underlines. headings is how
+    many headings the Markdown copy has, title included; a page written in `#` has many
+    headings and one rewritten line, so the two numbers answer different questions.
+    """
+    clean_lines, markdown_lines = clean.split("\n"), markdown.split("\n")
+    if len(clean_lines) != len(markdown_lines):
+        raise ValueError(f"{clean_name}: {len(clean_lines)} clean lines, {len(markdown_lines)} markdown lines")
+    return {
+        "file": clean_name.removesuffix(".txt") + ".md",
+        "clean_file": clean_name,
+        "clean_sha256": sha256(clean),
+        "md_sha256": sha256(markdown),
+        "rewritten_lines": sum(a != b for a, b in zip(clean_lines, markdown_lines)),
+        "headings": headings,
+    }
+
+
 def sha256(text: str) -> str:
     """Hex fingerprint of the text's UTF-8 bytes.
 

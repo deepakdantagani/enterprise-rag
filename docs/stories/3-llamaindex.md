@@ -26,8 +26,8 @@ What the framework gives for free and we use as is:
   untouched, windows big ones at sentence boundaries. Given the embedder's tokenizer
   it counts the way the embedder does.
 - `IngestionPipeline`: declares the chain once. Two pipelines, chosen per page by
-  whether the page has any heading below the title (`rewritten_lines > 1` in the
-  manifest):
+  whether the page has any heading below the title (`headings > 1` in the markdown
+  manifest; not `rewritten_lines`, which is 1 on a page already written in `#`):
   ```python
   sectioned = IngestionPipeline(transformations=[MarkdownNodeParser(), SentenceSplitter(chunk_size=512, chunk_overlap=0)])
   blind     = IngestionPipeline(transformations=[SentenceSplitter(chunk_size=512, chunk_overlap=64)])

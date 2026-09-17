@@ -5,7 +5,6 @@ Run: uv run python -m unittest discover tests
 import doctest
 import hashlib
 import json
-import re
 import sys
 import unittest
 from pathlib import Path
@@ -14,19 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline import to_markdown as to_markdown_module  # noqa: E402
 from pipeline.structure import structure  # noqa: E402
-from pipeline.to_markdown import label_lines, to_markdown  # noqa: E402
+from pipeline.to_markdown import heading_lines, label_lines, to_markdown  # noqa: E402
 from tests.truth import disagreements, load_truth  # noqa: E402
 
 CLEAN_DIR = ROOT / "data/confluence/clean"
 GOLDEN = ROOT / "tests/golden/markdown_fingerprint.json"
 BODY = "This is body text."
-
-
-def hash_lines(markdown: str) -> set[int]:
-    """The heading lines as LlamaIndex's MarkdownNodeParser finds them: `#`s at the start
-    of a line, outside code fences."""
-    fenced = {line for start, end in structure(markdown).protected for line in range(start, end)}
-    return {i for i, line in enumerate(markdown.split("\n")) if re.match(r"^#{1,6}\s", line) and i not in fenced}
 
 
 def intended_headings(text: str) -> set[int]:
@@ -75,7 +67,7 @@ class Properties(unittest.TestCase):
 
     def test_every_heading_we_meant_is_a_hash_line(self):
         for text in self.samples:
-            self.assertLessEqual(intended_headings(text), hash_lines(to_markdown(text)))
+            self.assertLessEqual(intended_headings(text), heading_lines(to_markdown(text)))
 
     def test_only_heading_lines_and_underlines_change(self):
         for text in self.samples:
@@ -88,7 +80,7 @@ class Properties(unittest.TestCase):
 class TruthSet(unittest.TestCase):
     def test_the_hash_lines_of_the_output_are_the_true_headings(self):
         for truth in load_truth():
-            self.assertEqual(disagreements(hash_lines(to_markdown(truth.text)), truth), [], truth.name)
+            self.assertEqual(disagreements(heading_lines(to_markdown(truth.text)), truth), [], truth.name)
 
 
 class RealCorpus(unittest.TestCase):

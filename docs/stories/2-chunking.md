@@ -15,7 +15,7 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 | 1 | PARSE-8a structure | markdown-it in one call: which lines are `#` or underlined headings (with level) and which line ranges are code or table |
 | 2 | PARSE-8b1 label_lines | which label-rule lines become headings: never inside code or a table, never a `Q:` line, never directly under another heading, and only when the file has more labels than Markdown headings |
 | 2 | PARSE-8b2 to_markdown | one pass per file: `#` lines kept, underlined headings rewritten, `label_lines` get `##`, line 0 is the title, same line count |
-| 3 | PARSE-8c markdown copy + manifest | write `data/confluence/markdown/<file>.md` for every clean file, record `md_sha256` and `rewritten_lines` |
+| 3 | PARSE-8c markdown copy + manifest | write `data/confluence/markdown/<file>.md` for every clean file, with its own manifest: `clean_sha256`, `md_sha256`, `rewritten_lines`, `headings` |
 | 4 | PARSE-8d retire the old heading modules | fingerprint `to_markdown` over the corpus, explain every difference against the old heading goldens, then delete `buckets.py`, `headings.py`, `blocks.py` and their goldens |
 
 ---
@@ -249,30 +249,38 @@ Scheduler page: 20 heading lines rewritten, 123 untouched, 143 out. Autotune pla
 - Uses: PARSE-8a `structure`, PARSE-8b1 `label_lines`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### 3. PARSE-8c  Markdown copy and manifest columns  ⬜
+### 3. PARSE-8c  Markdown copy and its manifest  ✅
 
-**Status:** To do
+**Status:** Done 2026-09-17. 5,189 files, 62 MB, 11 s. 104,174 lines rewritten, 118,894 headings, 30 pages with no heading below the title.
 
 **As a** pipeline developer
-**I want to** the corpus writer to save `data/confluence/markdown/<same name>.md` for every clean file and add `md_sha256` and `rewritten_lines` to each manifest row
+**I want to** `write_markdown_corpus(clean_dir, markdown_dir)` to save `<same name>.md` for every clean file, with a `_manifest.json` of its own
 **So that** anyone can open the exact file that was chunked, diff it against clean, and prove only heading lines differ
 
+Decision: the markdown folder gets its own manifest instead of new columns in the clean
+one. Each step owns its folder and never writes into the folder it reads from, so
+re-running the cleaner cannot wipe the markdown columns, and `clean_sha256` in each row
+says which clean file the copy was made from.
+
 **Acceptance Criteria (Gherkin)**
-- Given a clean file, When the writer runs, Then `data/confluence/markdown/<name>.md` exists with the same line count
-- Given the manifest row for that file, Then it has `md_sha256` and `rewritten_lines` (lines that differ from clean)
-- Given a run over the corpus twice, Then every `md_sha256` is identical
-- Given the existing manifest columns and the clean-folder golden, Then unchanged (clean files are not touched)
-- Given a file with no headings at all, Then `rewritten_lines` is 1 (the title) and the rest equals the clean file
+- Given a clean file `x.txt`, When the writer runs, Then `markdown/x.md` is `to_markdown` of it
+- Given its row, Then it has `file`, `clean_file`, `clean_sha256`, `md_sha256`, `rewritten_lines` (lines that differ from clean) and `headings` (heading lines as `MarkdownNodeParser` finds them, title included)
+- Given a page already written in `#`, Then `rewritten_lines` is 1 (the title) and `headings` is the real count; PARSE-9a routes on `headings > 1`, not on `rewritten_lines` (930 pages have one rewritten line, only 30 have one heading)
+- Given a markdown text with a different line count than the clean text, Then `markdown_row` raises `ValueError`
+- Given a run over the corpus twice, Then the rows are identical
+- Given the clean folder, Then no file in it changes, and `_manifest.json` in it is not converted
+- Given the real corpus, Then the rows fingerprint to the same `tests/golden/markdown_fingerprint.json` as PARSE-8b2
 
 **Example with real data**
-Scheduler page: `"rewritten_lines": 20`. Autotune playbook: `40` (20 headings + 20 underlines).
+Deploy guide sample: `"rewritten_lines": 3, "headings": 2` (title, heading, emptied underline). Zero-retention page (written in `#`): `"rewritten_lines": 1, "headings": 6`.
+49 indented `# comment` lines that markdown-it reads as headings keep their indentation, so `MarkdownNodeParser` does not see them and `headings` does not count them.
 
 **Non-functional Requirements**
-- Shared NFRs. One pass over the corpus, under 30 s. The markdown folder is derived data: gitignored, rebuildable, never edited by hand.
+- Shared NFRs. One pass over the corpus, under 30 s (measured 11 s). The markdown folder is derived data: gitignored, rebuildable, never edited by hand. `markdown_row` is pure; only `corpus.py` touches the disk.
 
 **Dependencies**
-- APIs: `write_markdown(clean_dir: Path, markdown_dir: Path, manifest: Path) -> None`, next to PARSE-2's functions
-- Uses: PARSE-2, PARSE-8b
+- APIs: `write_markdown_corpus(clean_dir: Path, markdown_dir: Path) -> list[dict]`, `markdown_row(clean_name, clean, markdown, headings) -> dict`, `heading_lines(markdown: str) -> set[int]`
+- Uses: PARSE-2, PARSE-8b2
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ### 4. PARSE-8d  Retire buckets, headings and blocks  ⬜
