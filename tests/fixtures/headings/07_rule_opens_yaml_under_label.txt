@@ -1,0 +1,133 @@
+Slice budgeting and quant fallback contract blueprint
+
+Overview:
+
+This document defines the slice-level budgeting contract and a prescriptive quantization-fallback policy for mixed-SLO workloads. It is intended for ML engineers, evaluator owners, and runtime operators responsible for model promotion, shadow testing, and production rollouts where quantized artifacts may be introduced to improve unit economics.
+
+Goals:
+- Provide a deterministic mapping from workload slices to a budgeted loss tolerance (fidelity budget) and a quant-risk budget.
+- Define automated fallback triggers and stepwise rollforward/rollback actions when quant-induced degradation exceeds tolerances.
+- Make probe allocation and evaluation priorities transparent to the serving runtime and shadow evaluation mesh.
+
+Scope:
+- Applies to hosted and dedicated inference paths; private deployments should adopt the contract but may adjust thresholds for regulatory requirements.
+- Covers per-slice evaluation, canary cohorts, and continuous shadow mesh executions.
+- Does NOT specify lower-level kernel selection or hardware affinity; those remain runtime concerns.
+
+Key terms:
+- Slice: a logically coherent workload subset (e.g., "search-short", "chat-long-context", "rerank-embeddings-v2").
+- Fidelity budget: acceptable delta in primary quality metric (e.g., BLEU/EM/acceptance-rate) attributable to quantization and other performance optimizations.
+- Quant-risk budget: fraction of traffic allowed to be served by quantized artifacts for a slice before requiring additional approvals or graduated rollout steps.
+- Probe: a synthetic test query used for continual monitoring and safety checks.
+
+Contract components (high-level):
+1) Slice manifest and classification
+   - Each service must publish a slice manifest: slice_id, owners, canonical probeset id, primary metrics, baseline target, and default fidelity/quant budgets.
+
+2) Fidelity and quant budgets (example template)
+   - Default fidelity budget: primary metric delta <= 2% relative, or absolute delta <= 0.02 where appropriate.
+   - Quant-risk budget: startup default 5% traffic to quantized model for low-risk slices; 0% for high-sensitivity slices.
+
+3) Probe allocation and prioritization policy
+   - Live probe allocation is weighted by slice risk score (see scoring table).
+   - Higher-risk slices receive higher probe refresh rates and lower TTLs for shadow artifacts.
+
+Operational table: per-slice example configuration
+
+| slice_id | primary_metric | baseline | fidelity_budget | quant_risk_budget | initial_probe_rate/min | owner |
+|----------|----------------|----------|-----------------|-------------------|------------------------|-------|
+| search-short | NDCG@10 | 0.842 | -0.015 abs | 0.10 | 4 | search-prod-team |
+| chat-long | user_accept_rate | 0.91 | -0.02 rel | 0.00 | 12 | chat-ops |
+| rerank-embeddings-v2 | precision@1 | 0.71 | -0.02 rel | 0.05 | 6 | rerank-team |
+
+Note: tables in Confluence should be copied to the slice registry when a new slice is onboarded.
+
+Slice risk scoring (used for probe and rollout priority):
+- Factors (weighted):
+  - User-facing impact (0.4), regulatory sensitivity (0.2), historical variance (0.2), traffic volume (0.2).
+- Risk score = weighted sum normalized to [0,1]. Slices >0.7 are "high-risk".
+
+Quant fallback policy (automated triggers and actions):
+1) Precondition: A quant artifact has passed synthetic shadow evaluation and static checks (size, perplexity delta threshold).
+2) Canary: route up to min(quant_risk_budget, 5%) traffic via a canary route with in-flight telemetry.
+3) Monitoring window: 24-hour rolling window with primary and secondary metric checks at 5-minute granularity.
+4) Automated checks (example):
+   - If primary metric delta breaches fidelity budget for >3 consecutive 1-hour buckets -> immediate rollback of quant artifact and create incident in PagerDuty (severity P1 for high-risk slices, P2 otherwise).
+   - If error-rate increase >= 0.5% absolute or latency P99 worsens by >50 ms sustained for 30 minutes -> pause rollout and scale shadow capacity down.
+   - If confidence calibration shifts (KL divergence of distribution of top-token logits) exceeds threshold -> degrade to a safer quant profile (e.g., move from 4-bit to 8-bit) rather than full rollback for non-critical regressions.
+
+Graduated rollforward steps (recommended):
+1) Shadow validation (n=1): run quant artifact in mesh with telemetry-only for 24h, gather probes and unlabeled telemetry.
+2) Micro-canary (n=2): 1% traffic for 6h with active probe gating and human-in-loop evaluation for slices with risk>0.6.
+3) Staged increase: 5% for 24h, 10% for 48h, validate against fidelity SLAs.
+4) Full promote: move to target quant_risk_budget if metrics stable for 7 days and no alerts.
+
+Probe design guidelines (short):
+- Probes must include: canonical prompt, expected golden answer(s) where feasible, allowed-variation spec, and annotation instructions.
+- For long-context slices include warmup sequences that emulate KV-cache priming.
+- Attach a metadata blob to each probe: seed, generation-temperature, random-seed, expected-tokenization.
+
+Runbook: Immediate actions on automated rollback
+1) PagerDuty alert triggers SRE rotation and assigns the owning slice team.
+2) Run triage checklist:
+   a) Confirm rollback succeeded (check routing table and model manifest).
+   b) Pull last 3 probe batches and compute diffs vs baseline; save artifacts to /s3/quant-fallback-escrow/<slice>/<timestamp>.
+   c) If variance matches known quant-failure patterns (calibration drift, hallucination increase), escalate to Applied ML triage.
+   d) If failure is transient (related to infra saturation or network flaps), mark incident as P2 and schedule re-run of micro-canary after 6h.
+3) Postmortem within 72 hours for P1 incidents with a corrective action plan and owner assigned.
+
+Metrics to track (must be present in slice telemetry):
+- Primary_metric_value, baseline_primary_metric, metric_delta_pct, probe_failure_rate, calibration_shift_score, latency_P50/P95/P99, error_rate, quantized_inference_percentage.
+
+Schema snippet (YAML) for slice manifest (copy into slice registry as plain text):
+-----
+slice_id: search-short
+owner: search-prod-team
+primary_metric: ndcg@10
+baseline: 0.842
+fidelity_budget: -0.015
+quant_risk_budget: 0.10
+initial_probe_rate_per_min: 4
+canonical_probeset_id: probeset-search-short-v4
+slo_class: SLO-A
+-----
+
+Example CLI (ops) commands:
+- Promote shadow artifact to canary:
+  redwoodctl quant promote --slice search-short --artifact q4-search-20260104 --traffic 0.01 --reason "canary-run"
+- Rollback quant artifact:
+  redwoodctl quant rollback --slice search-short --artifact q4-search-20260104 --inc-incident
+- Dump probe batch for triage:
+  redwoodctl probes fetch --slice search-short --since 2026-01-31T00:00Z --out /tmp/probes.json
+
+Approval and governance:
+- Any slice with quant_risk_budget > 0.2 requires approvals from Applied ML lead and Security compliance for data-sensitive slices.
+- Changes to slice manifests must be reviewed by the owning team and a cross-functional reviewer from Evaluations.
+
+Onboarding checklist for a new slice (numbered):
+1) Create slice manifest in the slice registry with owners and canonical probeset.
+2) Define primary metric and baseline from production telemetry (30d window).
+3) Assign initial fidelity and quant budgets using the default template.
+4) Register probes and verify annotation instructions.
+5) Run shadow validation for 72h and confirm stability metrics.
+6) Schedule micro-canary with SRE and Applied ML observer.
+
+Open design questions and tradeoffs (short):
+- Should we adopt adaptive quant_risk_budget that increases for slices with consistently low variance? (pro: faster savings; con: risk creep).
+- How to balance calibration-based degradation repairs vs immediate rollback for customer-visible slices.
+
+Appendix: Troubleshooting patterns and signatures
+- Calibration-drift signature: steady KL divergence increase with small primary metric decay -> try linear dequantization or temperature adjustments in inference.
+- Hallucination spike: large unexpected token sequences and safety sentinel activations -> immediate rollback and human review.
+- Latency amplification: P99 increases without metric degradation -> examine batch sizing and backend queue saturation.
+
+Owners and contact list:
+- Applied ML: Maya Chen (author, applied-ml@redwood.com)
+- Evaluations: Arjun Patel (evals@redwood.com)
+- SRE escalation: Leah Gomez (sre-oncall@redwood.com)
+
+Change log:
+- 2026-01-10: Draft created by Maya Chen.
+- 2026-02-04: Added graduated rollforward steps and CLI examples; in_review to include Evaluations reviewers.
+
+End of document.

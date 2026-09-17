@@ -11,7 +11,7 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 
 | # | Story | One line |
 |---|---|---|
-| 0 | PARSE-17 heading truth set | about 11 real files, each picked because it breaks one assumption, with the true heading lines decided by a person; 8a and 8b are tested against it |
+| 0 | PARSE-17 heading truth set | 10 real files, each picked because it breaks one assumption, with the true heading lines decided by a person; 8a and 8b are tested against it |
 | 1 | PARSE-8a structure | markdown-it in one call: which lines are `#` or underlined headings (with level) and which line ranges are code or table |
 | 2 | PARSE-8b to_markdown | one pass per file: `#` lines kept, underlined headings rewritten, label-rule lines get `##` (`###` when stacked under an empty label), nothing inside code or a table, same line count |
 | 3 | PARSE-8c markdown copy + manifest | write `data/confluence/markdown/<file>.md` for every clean file, record `md_sha256` and `rewritten_lines` |
@@ -19,9 +19,9 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 
 ---
 
-## PARSE-17  Heading truth set: real files with hand-checked headings  ⬜
+## PARSE-17  Heading truth set: real files with hand-checked headings  ✅
 
-**Status:** To do. Built before PARSE-8a.
+**Status:** Done 2026-09-17. 10 files, 175 true headings, 42 known gaps.
 
 **Background**
 Every heading rule is an assumption about how people write pages, and on 5,189 pages
@@ -32,59 +32,75 @@ the corpus, and keep one real file that shows it. Counts on 2026-09-16:
 | We assume | Times it is wrong | Real example | Today |
 |---|---|---|---|
 | `---` under text is an underlined heading | 191 (text is 2+ lines) | `Appendices` / `A: Example YAML` / `---` opens a YAML block | handled: one-line guard (8a) |
-| `---` under one line is a heading | about 160 | `Schema snippet (YAML) for slice manifest:` / `-----` / `slice_id: ...` | known gap |
+| `---` under one line is a heading | about 160 | `Schema snippet (YAML) for slice manifest:` / `-----` / `slice_id: ...` | harmless: the rule opens a YAML block, but the line above it is a real label, so the heading is right; only the rule line is blanked |
 | a heading inside a list or quote is not real | 216, guard right every time | `- p95 latency (PromQL):` / `  -` | handled: top-level guard (8a) |
 | a line starting `# ` is a heading | about 50 | `# provision-basic-access.sh ...`, a bash comment after `#!/bin/bash`, no fence | known gap, counted by PARSE-14 |
-| a whole-line bold is found by the label rule | 770 of 4,127 missed | `**Symptoms**` directly under `### A) ...` | known gap |
+| a bare label or a whole-line bold is a section | wrong on pages whose author wrote `##`: 24 false headings on one runbook | `**Mitigation**` inside `### A) ...`, `Out of scope:` inside `## Scope` | known gap: the label rule over-fires on `#` pages; decide in PARSE-8b |
+| a `Q:` line is a section | 1,155 lines in 453 files | `Q: Who can ...` under `FAQs:`; a whole FAQ is about 107 tokens, one context | known gap: decide in PARSE-8b |
 | labels end with `:` | not assumed | `Appendices`, `Configuration examples` are flagged without a colon | handled (PARSE-4d) |
 
 The truth is decided by a person reading the page, never produced by the code under
-test; otherwise the test only proves the code agrees with itself. Claude proposes the
-heading lines per file, Deepak approves them in the PR.
+test; otherwise the test only proves the code agrees with itself. Files 1 to 5 were
+decided line by line with Deepak; 6 to 10 by Claude with the same rules, for review in
+the PR. The rules that came out of it:
+
+1. A sentence is never a heading, even when it starts bold or with `Note:`.
+2. The author's strongest heading style marks the sections. On a page with `##` or
+   underlines, a bare label or bold line is a lead-in. On a page with only labels, a
+   standalone label after a blank line with content under it is a section.
+3. Same context, no cut: an FAQ with its `Q:`/`A:` lines, a lead-in directly under a
+   heading, the bold parts of one `###` scenario that fits a chunk.
+4. Sample content (a template, a message draft) is not this page's structure.
+5. A comment in unfenced code is not a heading.
+6. For bare labels the level is a guess, so tests compare label headings by line only;
+   levels are compared where the author wrote them (`#`, `=`, `-`).
 
 **As a** pipeline developer
 **I want to** a small set of real clean files with the true heading lines written down by hand
 **So that** `structure` and `to_markdown` are tested against what a reader sees, and every known gap is a visible, counted entry instead of a surprise
 
 **Acceptance Criteria (Gherkin)**
-- Given `tests/fixtures/headings/`, Then it holds one real clean file per row below, copied byte for byte, and one `expected.json`
-- Given `expected.json`, Then each file has `why` (the assumption it breaks), `headings` (`{line: level}`, the truth), and `known_gaps` (`{line: reason}`, lines where the current design is knowingly wrong)
+- Given `tests/fixtures/headings/`, Then it holds one real clean file per row below, copied byte for byte (`source` names the clean file, and a test compares the bytes when the corpus is present), and one `expected.json`
+- Given `expected.json`, Then each file has `why` (the assumption it breaks), `headings` (`{line: level}`, the truth), and `known_gaps` (`{line: reason}`, lines where the current design is knowingly wrong: a false heading when the line is not in `headings`, a missed one when it is)
 - Given every fixture file, Then every line number in `headings` and `known_gaps` exists in the file and is not blank
 - Given a truth heading line, Then it is never inside a fence or table of that file (a person would not call a table row a heading)
-- Given `load_truth()`, Then it returns `[(name, text, headings, known_gaps)]` in name order, and is the only way tests read the set
-- Given PARSE-8a and 8b tests, Then they use it this way: a reported heading that is not in the truth fails the test unless the line is in `known_gaps`; a line in `known_gaps` that starts passing also fails, with the message "remove this known gap"
+- Given `load_truth()`, Then it returns the entries in name order, and is the only way tests read the set
+- Given `disagreements(reported, truth)`, Then it lists every line where the reported heading lines differ from the truth, known gaps excused; a known gap that no longer differs is listed too, with "remove this known gap". PARSE-8b asserts the list is empty. PARSE-8a, which only sees `#` and underlined headings, asserts `reported - truth - known_gaps` is empty
 
-Files (11):
+Files (10):
 
-| Fixture | Breaks the assumption |
+| Fixture | Shows |
 |---|---|
-| zero-retention requests | none: plain `#` page with a table (the baseline) |
-| platform operational contracts | underlined page that also has a bare label (`Key goals:`) |
-| quiet cutovers runbook | bare-label page with a table |
-| runbook authoring guidelines | 20 labels, one stray `##`, one underline |
-| model promotion protocol | YAML block between two `---` lines |
-| probe telemetry plan | `---` opens YAML under a two-line paragraph |
-| slice budgeting contract | `-----` opens YAML under a one-line lead-in (known gap) |
-| synthetic canary capacity | `-` under a list item reads as a nested heading |
-| contributor foundations | bash comments after `#!/bin/bash`, no fence (known gap) |
-| audit-log incident runbook | `**Symptoms**` bold sub-headings (known gap) |
-| one prose page from the 12 with no headings | no headings at all |
+| 01_hash_page_with_table | baseline `#` page; bold sentence starts are not headings |
+| 02_underlined_page_with_lead_in | underlined sections; `Key goals:` is a lead-in (1 gap) |
+| 03_label_page_with_table | labels are the only style, so they are the sections |
+| 04_labels_with_template_block | a template's labels and stray `##` are sample content; FAQ is one section (3 gaps) |
+| 05_no_headings_yaml_between_rules | the export lost all headings; YAML between two `---` must not become one |
+| 06_labels_without_colons_appendix | two-line "underlined heading" rejected; appendix parts A to D; code comment as `#` (7 gaps) |
+| 07_rule_opens_yaml_under_label | `-----` opening YAML under a real label; the YAML itself must not become a heading |
+| 08_dash_under_list_item | `-` under a list item reads as a nested heading (2 gaps, both `Q:`) |
+| 09_bash_comments_unfenced | bash comments read as `#` headings (5 gaps) |
+| 10_hash_page_with_bold_and_labels | the label rule over-fires on a `##` page (24 gaps) |
 
 **Example with real data**
 ```json
-"slice-budgeting.txt": {
-  "why": "----- under a one-line lead-in opens a YAML block, it is not an underline",
-  "headings": {"0": 1, "12": 2, "...": 2},
-  "known_gaps": {"81": "markdown-it reads line 81 as an underlined heading; about 160 in the corpus"}
+"02_underlined_page_with_lead_in.txt": {
+  "source": "dsid_10912e04...__platform-operational-contracts-and-oncall-playbook-2026.txt",
+  "why": "The author underlines real sections. 'Key goals:' is not underlined: a lead-in ...",
+  "headings": {"0": 1, "2": 2, "12": 2, "16": 2},
+  "known_gaps": {"6": "'Key goals:' is a lead-in; the label rule flags it"}
 }
 ```
+A prototype of today's design (markdown-it with both 8a guards, plus the label rule
+outside fences and tables) gives zero disagreements on all 10 files once the 42 known
+gaps are excused, so the gap list is complete for this set.
 
 **Non-functional Requirements**
-- Shared NFRs. No pipeline code. `tests/truth.py` is about 15 lines. Fixture files are committed (the corpus under `data/` is not), so the tests run on a fresh clone.
+- Shared NFRs. No pipeline code. `tests/truth.py` is about 50 lines: a frozen `Truth`, `load_truth`, `disagreements`. Fixture files are committed (the corpus under `data/` is not), so the tests run on a fresh clone.
 - Adding a file later is one copy plus one JSON entry; no test code changes.
 
 **Dependencies**
-- APIs: `load_truth() -> list[Truth(name, text, headings: dict[int, int], known_gaps: dict[int, str])]`
+- APIs: `load_truth() -> list[Truth(name, source, why, text, headings: dict[int, int], known_gaps: dict[int, str])]`, `disagreements(reported: set[int], truth: Truth) -> list[str]`
 - Uses: clean files from PARSE-3
 - Service Bus: N/A · Database: N/A · UI: N/A
 
