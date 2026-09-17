@@ -1,0 +1,7 @@
+{
+ "files": 5189,
+ "total_headings": 118943,
+ "extra_headings_markdown_it_sees": 22,
+ "fingerprint_sha256": "d79fdd4c3dc452298858cf829d145b671f95af4836b69519aa5e1f6773e518b4",
+ "how": "sha256 over lines '<file> <sha256 of to_markdown(clean text)>' for every clean file in name order. total_headings = title + structure headings + label_lines. extra = lines markdown-it reads as a heading in the output that we did not write: a rewritten heading ends the paragraph above a '---' or an indented '# comment'. MarkdownNodeParser does not see them (it only reads #s at the start of a line)."
+}

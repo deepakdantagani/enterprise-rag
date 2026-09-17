@@ -1,7 +1,8 @@
 """PARSE-8b: every clean file becomes Markdown, one pass per file.
 
 8b1  label_lines   which label-rule lines are sections of this page
-8b2  to_markdown   writes the `#`s (next story)
+8b2  to_markdown   writes the `#`s, same line count, so "line 12" means the same
+                   line in the raw, clean and Markdown copies of a page
 
 Each rule in `label_lines` is a decision recorded with its evidence in
 docs/stories/2-chunking.md and tested against the PARSE-17 truth set.
@@ -9,10 +10,33 @@ docs/stories/2-chunking.md and tested against the PARSE-17 truth set.
 import re
 
 from pipeline.label_rule import label_flags
-from pipeline.structure import Structure
+from pipeline.structure import Structure, structure
 
 TITLE_LINE = 0
+TITLE_LEVEL = 1
+LABEL_LEVEL = 2
 QUESTION = re.compile(r"^Q\d*[:.)]\s")
+
+
+def to_markdown(text: str) -> str:
+    """The clean text with `#`s on every heading line; every other line untouched.
+
+    >>> to_markdown("Deploy guide\\n\\nRollback\\n--------\\nSteps here.")
+    '# Deploy guide\\n\\n## Rollback\\n\\nSteps here.'
+    """
+    lines = text.split("\n")
+    found = structure(text)
+
+    levels = {line: LABEL_LEVEL for line in label_lines(lines, found)}
+    levels |= {line: level for line, level in found.headings.items() if line + 1 in found.underlines}
+    if TITLE_LINE not in found.headings and lines[TITLE_LINE].strip():
+        levels[TITLE_LINE] = TITLE_LEVEL
+
+    for line, level in levels.items():
+        lines[line] = "#" * level + " " + lines[line].strip()
+    for line in found.underlines:
+        lines[line] = ""
+    return "\n".join(lines)
 
 
 def label_lines(lines: list[str], found: Structure) -> set[int]:

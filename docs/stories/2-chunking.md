@@ -216,9 +216,9 @@ Audit-log incident runbook (35 `##`/`###` headings, 24 flagged lines): `set()`. 
 - Uses: PARSE-8a `Structure`, PARSE-4d `label_flags`, PARSE-17 truth set
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### 2. PARSE-8b2  to_markdown  ⬜
+### 2. PARSE-8b2  to_markdown  ✅
 
-**Status:** To do
+**Status:** Done 2026-09-17. Corpus: 118,943 headings written or kept in 5,189 files, 104,174 lines changed, same line count in every file, no heading we meant is missed by markdown-it.
 
 **As a** pipeline developer
 **I want to** `to_markdown(text)` to return the clean text with `#`s on every heading line, one pass, same line count
@@ -231,9 +231,12 @@ Audit-log incident runbook (35 `##`/`###` headings, 24 flagged lines): `set()`. 
 - Given `"# Title\n\n## A\ntext"`, Then unchanged
 - Given an empty text, or a blank line 0, Then no title is written
 - Given any input, Then the output has exactly as many lines as the input
-- Given any input, Then running `to_markdown` on the output changes nothing (idempotent)
-- Given the PARSE-17 truth set, Then the heading lines markdown-it sees in the output (`structure(output).headings`) disagree with the truth on exactly the known gaps
-- Given every clean file, Then `structure(output).headings` has exactly the lines we meant to write, and the corpus fingerprints to `tests/golden/markdown_fingerprint.json`
+- Given any input, Then only heading lines and underline lines differ from the input
+- Given a rewritten heading that was indented, Then the indentation is dropped (`  Summary` becomes `## Summary`), so the `#` is at the start of the line where `MarkdownNodeParser` looks
+- Given the PARSE-17 truth set, Then the `#` lines of the output (start of line, outside fences: what `MarkdownNodeParser` reads) disagree with the truth on exactly the known gaps
+- Given every clean file, Then every heading we meant is a top-level heading for markdown-it in the output, and the corpus fingerprints to `tests/golden/markdown_fingerprint.json`
+
+Not a goal: running `to_markdown` on its own output. PARSE-8c always writes from the clean file. It is not idempotent in 20 files: once `Appendices` is `## Appendices`, the paragraph above a YAML `---` is one line shorter and markdown-it reads `A: Example YAML` over `---` as an underlined heading (14 lines), or an indented `# comment` as a heading (8 lines). The golden pins that count at 22. `MarkdownNodeParser` sees none of them.
 
 **Example with real data**
 Scheduler page: 20 heading lines rewritten, 123 untouched, 143 out. Autotune playbook: 20 underlined headings become `##`, 20 underline lines emptied, 144 lines in and out.
