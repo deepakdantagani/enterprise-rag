@@ -13,7 +13,8 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 |---|---|---|
 | 0 | PARSE-17 heading truth set | 10 real files, each picked because it breaks one assumption, with the true heading lines decided by a person; 8a and 8b are tested against it |
 | 1 | PARSE-8a structure | markdown-it in one call: which lines are `#` or underlined headings (with level) and which line ranges are code or table |
-| 2 | PARSE-8b to_markdown | one pass per file: `#` lines kept, underlined headings rewritten, label-rule lines get `##` (`###` when stacked under an empty label), nothing inside code or a table, same line count |
+| 2 | PARSE-8b1 label_lines | which label-rule lines become headings: never inside code or a table, never a `Q:` line, never directly under another heading, and only when the file has more labels than Markdown headings |
+| 2 | PARSE-8b2 to_markdown | one pass per file: `#` lines kept, underlined headings rewritten, `label_lines` get `##`, line 0 is the title, same line count |
 | 3 | PARSE-8c markdown copy + manifest | write `data/confluence/markdown/<file>.md` for every clean file, record `md_sha256` and `rewritten_lines` |
 | 4 | PARSE-8d retire the old heading modules | fingerprint `to_markdown` over the corpus, explain every difference against the old heading goldens, then delete `buckets.py`, `headings.py`, `blocks.py` and their goldens |
 
@@ -21,7 +22,7 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 
 ## PARSE-17  Heading truth set: real files with hand-checked headings  ✅
 
-**Status:** Done 2026-09-17. 10 files, 175 true headings, 42 known gaps.
+**Status:** Done 2026-09-17. 10 files, 175 true headings, 42 known gaps (6 after PARSE-8b1).
 
 **Background**
 Every heading rule is an assumption about how people write pages, and on 5,189 pages
@@ -115,18 +116,24 @@ lines: on a label or underlined page it returns the whole page as one node. So b
 chunking we write the `#`s ourselves, file by file, and save the result.
 
 Design rules, each one a test:
-1. **Every line is judged on its own.** No file-level "bucket": a page mixing `#`,
-   underlines and labels gets all three recognised. (The old file-level decision let
-   one stray `## - 2026-01-12` inside a template hide 20 labels; 256 files, 5%.)
+1. **The majority style marks the sections.** Labels count only when the file has
+   more label lines than Markdown headings. One stray `## - 2026-01-12` inside a
+   template no longer hides 20 labels (the old file-level bucket did, 256 files), and
+   a runbook written in `##` no longer gets 24 false headings from its lead-ins and
+   bold lines (what running the label rule everywhere did). Scored on the PARSE-17
+   truth set: labels everywhere 42 wrong lines, labels only when no Markdown heading
+   92, majority 17; with rule 4 below, 6.
 2. **Same line count.** A heading line gets `#`s in front; an underline becomes an
    empty line. "Lines 4 to 5" means the same lines in raw, clean and markdown.
 3. **Never inside code or a table.** markdown-it says which line ranges are fences or
    tables; the label rule is not consulted there.
-4. **Levels.** `#` lines keep theirs. An underline of `=` is level 1, `-` level 2. A
-   label is level 2, or level 3 when the previous non-blank line is a label with no
-   content of its own (`FAQ` over `Q: How does ...`), which reproduces the v0
-   breadcrumbs `Title > FAQ > Q: ...`. Line 0, when it is not a heading already, is
-   the title, level 1.
+4. **Same context, no cut.** A `Q:` line is never a heading: a whole FAQ is about 107
+   tokens (median, 453 files), one chunk. A label directly under another heading, no
+   blank line between, is a lead-in (`Tier definitions:` under `Compression tiers`;
+   1,831 lines in 849 files).
+   **Levels.** `#` lines keep theirs. An underline of `=` is level 1, `-` level 2. A
+   label is level 2: for a bare label the level is a guess, so we do not guess deeper.
+   Line 0, when it is not a heading already, is the title, level 1.
 5. **Deterministic and reproducible.** Same clean file, same markdown; the manifest
    records its sha256; the folder can be deleted and rebuilt.
 
@@ -134,7 +141,8 @@ Three small pure pieces, one reason to change each:
 ```
 structure(text)              markdown-it: heading lines + protected ranges      changes only if the parser changes
 label_flags(lines)           the heuristic, exists (PARSE-4d)                   changes whenever we tune the rule
-to_markdown(text)            composes both, writes the #s                       changes only if the rules above change
+label_lines(lines, found)    which flagged lines count on this page             changes when rules 1, 3 or 4 change
+to_markdown(text)            writes the #s, nothing else                        changes only if the output format changes
 ```
 
 Real examples:
@@ -179,7 +187,36 @@ Autotune playbook: 20 setext headings at lines 2, 6, 11, …, each with its unde
 - Uses: `pipeline/markdown.py`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-### 2. PARSE-8b  to_markdown  ⬜
+### 2. PARSE-8b1  label_lines  ✅
+
+**Status:** Done 2026-09-17. Corpus: 74,131 label lines in 3,591 files; 30 files have no heading besides the title. Truth set: 36 known gaps fixed and removed, 6 left (a stray `##` in a template, two appendix parts nothing finds, three code comments read as `#`).
+
+**As a** pipeline developer
+**I want to** `label_lines(lines, found)` to return the label-rule lines that are sections of this page
+**So that** `to_markdown` only writes `##` where a reader sees a section, and every "is this label a heading" rule lives in one function
+
+**Acceptance Criteria (Gherkin)**
+- Given `["Title", "", "Overview:", "text"]` and no Markdown headings, Then `{2}` (line 0 is the title, never a label line)
+- Given a label-shaped line inside a fence or table range of `found`, Then it is not returned
+- Given a line that `found.headings` already has, Then it is not returned (it is a heading already)
+- Given `Q: Why?`, `Q1: Why?` or `Q) Why?` flagged by the label rule, Then it is not returned
+- Given `FAQs:` on line 4 and a flagged label on line 5, Then 5 is not returned (directly under a heading); the same when line 4 is a `#` or underlined heading from `found`; with a blank line between them, it is returned
+- Given 3 Markdown headings and 1 label, Then `set()`; given 1 Markdown heading and 20 labels, Then all 20; given a tie, Then `set()` (the author's Markdown wins)
+- Given the PARSE-17 truth set, Then `{0} | found.headings | label_lines` disagrees with the truth on exactly the known gaps, and the known gaps this story fixes are removed from `expected.json` (36 of 42: the lead-in on file 2, the `Q:` lines, the two lead-ins on file 6, all 24 on file 10)
+- Given every clean file, Then the per-file counts fingerprint to `tests/golden/label_lines_fingerprint.json`
+
+**Example with real data**
+Audit-log incident runbook (35 `##`/`###` headings, 24 flagged lines): `set()`. Runbook authoring guidelines (2 Markdown headings, 23 flagged lines): 20 lines, without `Q:` lines 128 and 131. Corpus: 1,281 files where Markdown wins (10,020 label lines not promoted), 619 where labels win, 50 within 2 of a tie; PARSE-8d samples from those.
+
+**Non-functional Requirements**
+- Shared NFRs. Pure. About 25 lines, in `pipeline/to_markdown.py`.
+
+**Dependencies**
+- APIs: `label_lines(lines: list[str], found: Structure) -> set[int]`
+- Uses: PARSE-8a `Structure`, PARSE-4d `label_flags`, PARSE-17 truth set
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+### 2. PARSE-8b2  to_markdown  ⬜
 
 **Status:** To do
 
@@ -192,21 +229,21 @@ Autotune playbook: 20 setext headings at lines 2, 6, 11, …, each with its unde
 - Given `"Title\n\nOverview:\n\ntext"`, Then `"# Title\n\n## Overview:\n\ntext"`
 - Given `"Summary\n---\ntext"`, Then `"## Summary\n\ntext"` (underline emptied, not removed)
 - Given `"# Title\n\n## A\ntext"`, Then unchanged
-- Given `"Title\n\nFAQ\nQ: Why?\n\nBecause."`, Then `FAQ` is `##` and `Q: Why?` is `###` (stacked label rule); with a blank line between them, still `###`
-- Given a label-shaped line inside a fenced block or a table, Then unchanged
-- Given a page with one stray `## x` line and twenty `Label:` lines, Then all twenty-one are headings
+- Given an empty text, or a blank line 0, Then no title is written
 - Given any input, Then the output has exactly as many lines as the input
-- Given every clean file, Then `MarkdownNodeParser` on the output yields one node per heading with a body, and the corpus fingerprints to `tests/golden/markdown_fingerprint.json`
+- Given any input, Then running `to_markdown` on the output changes nothing (idempotent)
+- Given the PARSE-17 truth set, Then the heading lines markdown-it sees in the output (`structure(output).headings`) disagree with the truth on exactly the known gaps
+- Given every clean file, Then `structure(output).headings` has exactly the lines we meant to write, and the corpus fingerprints to `tests/golden/markdown_fingerprint.json`
 
 **Example with real data**
-Scheduler page: 20 heading lines rewritten, 123 untouched, 143 out. Runbook guidelines: 22 headings (20 labels, the stray `##`, one underline), where the old file-level bucket found 3.
+Scheduler page: 20 heading lines rewritten, 123 untouched, 143 out. Autotune playbook: 20 underlined headings become `##`, 20 underline lines emptied, 144 lines in and out.
 
 **Non-functional Requirements**
-- Shared NFRs. Pure. About 30 lines: `structure` + `label_flags`, then one `for` over the lines.
+- Shared NFRs. Pure. About 20 lines: `structure`, `label_lines`, then write.
 
 **Dependencies**
 - APIs: `to_markdown(text: str) -> str`
-- Uses: PARSE-8a `structure`, PARSE-4d `label_flags`
+- Uses: PARSE-8a `structure`, PARSE-8b1 `label_lines`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
 ### 3. PARSE-8c  Markdown copy and manifest columns  ⬜

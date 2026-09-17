@@ -21,9 +21,7 @@
    "12": 2,
    "16": 2
   },
-  "known_gaps": {
-   "6": "'Key goals:' is a lead-in; the label rule flags it"
-  }
+  "known_gaps": {}
  },
  "03_label_page_with_table.txt": {
   "source": "dsid_177ae73568124eac8a6f60a23854bfa5__operator-runbook-for-quiet-cutovers-and-fallbacks-2029.txt",
@@ -67,9 +65,7 @@
    "144": 2
   },
   "known_gaps": {
-   "61": "stray '## - 2026-01-12' inside the template; markdown-it and MarkdownNodeParser cut here",
-   "128": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it",
-   "131": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it"
+   "61": "stray '## - 2026-01-12' inside the template; markdown-it and MarkdownNodeParser cut here"
   }
  },
  "05_no_headings_yaml_between_rules.txt": {
@@ -109,13 +105,9 @@
    "165": 2
   },
   "known_gaps": {
-   "48": "lead-in directly under a heading, same context; the label rule flags it",
-   "102": "lead-in directly under a heading, same context; the label rule flags it",
    "127": "appendix part 'A: ...' is a section; nothing finds it",
    "148": "appendix part 'C: ...' is a section; nothing finds it",
-   "149": "'# verify ...' is a comment in unfenced pseudo-code; markdown-it reads it as a heading",
-   "155": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it",
-   "158": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it"
+   "149": "'# verify ...' is a comment in unfenced pseudo-code; markdown-it reads it as a heading"
   }
  },
  "07_rule_opens_yaml_under_label.txt": {
@@ -180,10 +172,7 @@
    "174": 2,
    "178": 2
   },
-  "known_gaps": {
-   "154": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it",
-   "157": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it"
-  }
+  "known_gaps": {}
  },
  "09_bash_comments_unfenced.txt": {
   "source": "dsid_06213cf23a94497085cf9303a2f536b9__foundations-for-sustainable-contributor-success-2024.txt",
@@ -218,10 +207,7 @@
   },
   "known_gaps": {
    "96": "bash comment in an unfenced script; markdown-it reads it as a heading",
-   "102": "bash comment in an unfenced script; markdown-it reads it as a heading",
-   "141": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it",
-   "144": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it",
-   "147": "Q: line inside an FAQ; the FAQ is one context, the label rule flags it"
+   "102": "bash comment in an unfenced script; markdown-it reads it as a heading"
   }
  },
  "10_hash_page_with_bold_and_labels.txt": {
@@ -265,31 +251,6 @@
    "346": 3,
    "351": 2
   },
-  "known_gaps": {
-   "17": "bare label on a page whose author wrote ## headings; it is a lead-in; the label rule flags it",
-   "29": "bare label on a page whose author wrote ## headings; it is a lead-in; the label rule flags it",
-   "45": "bare label on a page whose author wrote ## headings; it is a lead-in; the label rule flags it",
-   "117": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "122": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "130": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "137": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "148": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "153": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "161": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "174": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "179": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "185": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "188": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "200": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "206": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "218": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "229": "whole-line bold inside a ### section that fits one chunk, same context; the label rule flags it",
-   "282": "bold field of a message template, not a section of this page; the label rule flags it",
-   "284": "bold field of a message template, not a section of this page; the label rule flags it",
-   "290": "bold field of a message template, not a section of this page; the label rule flags it",
-   "295": "bold field of a message template, not a section of this page; the label rule flags it",
-   "298": "bold field of a message template, not a section of this page; the label rule flags it",
-   "314": "bare label on a page whose author wrote ## headings; it is a lead-in; the label rule flags it"
-  }
+  "known_gaps": {}
  }
 }

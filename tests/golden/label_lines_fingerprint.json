@@ -1,0 +1,7 @@
+{
+ "files": 5189,
+ "total_label_lines": 74131,
+ "files_with_label_lines": 3591,
+ "fingerprint_sha256": "319be2a3c834dc7a52d25f4ee34c0b3a60521c4863cbdfc0bc8f0155593c787e",
+ "how": "sha256 over lines '<file> <number of label_lines>' for every clean file in name order; label_lines(clean lines, structure(clean text))"
+}
