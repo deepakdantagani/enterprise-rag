@@ -1,0 +1,8 @@
+{
+ "files": 5189,
+ "total_headings": 39623,
+ "total_underlines": 12427,
+ "total_protected": 6081,
+ "fingerprint_sha256": "f232f0413188e45f2a992a3a5d83f4ea40faef1b84f235c33656c47f725314fe",
+ "how": "sha256 over lines '<file> <headings> <underlines> <protected ranges>' from structure(clean text) for every clean file in name order; markdown-it commonmark+table. Headings are top-level # headings plus one-line underlined headings; the title line is not counted (to_markdown adds it)."
+}

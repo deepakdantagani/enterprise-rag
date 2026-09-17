@@ -149,9 +149,9 @@ the autotune playbook, 6 on the ADR sample, every node's line range recovered.
 
 Module: `pipeline/to_markdown.py`. Pure. File writing lives in PARSE-8c.
 
-### 1. PARSE-8a  structure  ⬜
+### 1. PARSE-8a  structure  ✅
 
-**Status:** To do
+**Status:** Done 2026-09-17. Corpus: 39,623 headings (12,427 underlined), 6,081 protected ranges, 3,004 files where markdown-it sees no heading.
 
 **As a** pipeline developer
 **I want to** `structure(text)` to return the heading lines markdown-it sees, with level, and the line ranges that are code fences or tables
@@ -165,6 +165,7 @@ Module: `pipeline/to_markdown.py`. Pure. File writing lives in PARSE-8c.
 - Given a `#` line inside the fence, Then it is not in `headings`
 - Given `"---\nroute: a\nmodel: b\n---\n"` (a YAML block between two `---` lines), Then `headings == {}` and `underlines == set()`. An underlined heading counts only when its text is one line. Markdown reads a `---` under a multi-line paragraph as a heading over the whole paragraph; in this corpus that is always a config block (191 cases in 182 files, against 12,461 real one-line underlined headings), so `to_markdown` must leave those lines alone
 - Given a heading inside a quote (`> # quoted`), Then it is not in `headings`; given a fence inside a list item, Then its range is still in `protected`
+- Given the PARSE-17 truth set, Then `structure` reports no heading that is not a true heading or a listed known gap, its levels equal the truth's where both have the line, and no true heading lies inside a protected range
 - Given every clean file, Then the per-file counts of headings, underlines and protected ranges fingerprint to `tests/golden/structure_fingerprint.json`. The totals are not expected to equal the old `markdown_headings_fingerprint`: that one also counts the title line and the multi-line underlined headings; PARSE-8d explains the difference
 
 **Example with real data**
