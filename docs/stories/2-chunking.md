@@ -11,10 +11,82 @@ Shared rules, the story template and the glossary are in [stories.md](../stories
 
 | # | Story | One line |
 |---|---|---|
+| 0 | PARSE-17 heading truth set | about 11 real files, each picked because it breaks one assumption, with the true heading lines decided by a person; 8a and 8b are tested against it |
 | 1 | PARSE-8a structure | markdown-it in one call: which lines are `#` or underlined headings (with level) and which line ranges are code or table |
 | 2 | PARSE-8b to_markdown | one pass per file: `#` lines kept, underlined headings rewritten, label-rule lines get `##` (`###` when stacked under an empty label), nothing inside code or a table, same line count |
 | 3 | PARSE-8c markdown copy + manifest | write `data/confluence/markdown/<file>.md` for every clean file, record `md_sha256` and `rewritten_lines` |
 | 4 | PARSE-8d retire the old heading modules | fingerprint `to_markdown` over the corpus, explain every difference against the old heading goldens, then delete `buckets.py`, `headings.py`, `blocks.py` and their goldens |
+
+---
+
+## PARSE-17  Heading truth set: real files with hand-checked headings  ⬜
+
+**Status:** To do. Built before PARSE-8a.
+
+**Background**
+Every heading rule is an assumption about how people write pages, and on 5,189 pages
+every assumption is wrong somewhere. Unit tests on made-up strings only prove the rule
+does what we imagined. So for each assumption we also assume the opposite, count it on
+the corpus, and keep one real file that shows it. Counts on 2026-09-16:
+
+| We assume | Times it is wrong | Real example | Today |
+|---|---|---|---|
+| `---` under text is an underlined heading | 191 (text is 2+ lines) | `Appendices` / `A: Example YAML` / `---` opens a YAML block | handled: one-line guard (8a) |
+| `---` under one line is a heading | about 160 | `Schema snippet (YAML) for slice manifest:` / `-----` / `slice_id: ...` | known gap |
+| a heading inside a list or quote is not real | 216, guard right every time | `- p95 latency (PromQL):` / `  -` | handled: top-level guard (8a) |
+| a line starting `# ` is a heading | about 50 | `# provision-basic-access.sh ...`, a bash comment after `#!/bin/bash`, no fence | known gap, counted by PARSE-14 |
+| a whole-line bold is found by the label rule | 770 of 4,127 missed | `**Symptoms**` directly under `### A) ...` | known gap |
+| labels end with `:` | not assumed | `Appendices`, `Configuration examples` are flagged without a colon | handled (PARSE-4d) |
+
+The truth is decided by a person reading the page, never produced by the code under
+test; otherwise the test only proves the code agrees with itself. Claude proposes the
+heading lines per file, Deepak approves them in the PR.
+
+**As a** pipeline developer
+**I want to** a small set of real clean files with the true heading lines written down by hand
+**So that** `structure` and `to_markdown` are tested against what a reader sees, and every known gap is a visible, counted entry instead of a surprise
+
+**Acceptance Criteria (Gherkin)**
+- Given `tests/fixtures/headings/`, Then it holds one real clean file per row below, copied byte for byte, and one `expected.json`
+- Given `expected.json`, Then each file has `why` (the assumption it breaks), `headings` (`{line: level}`, the truth), and `known_gaps` (`{line: reason}`, lines where the current design is knowingly wrong)
+- Given every fixture file, Then every line number in `headings` and `known_gaps` exists in the file and is not blank
+- Given a truth heading line, Then it is never inside a fence or table of that file (a person would not call a table row a heading)
+- Given `load_truth()`, Then it returns `[(name, text, headings, known_gaps)]` in name order, and is the only way tests read the set
+- Given PARSE-8a and 8b tests, Then they use it this way: a reported heading that is not in the truth fails the test unless the line is in `known_gaps`; a line in `known_gaps` that starts passing also fails, with the message "remove this known gap"
+
+Files (11):
+
+| Fixture | Breaks the assumption |
+|---|---|
+| zero-retention requests | none: plain `#` page with a table (the baseline) |
+| platform operational contracts | underlined page that also has a bare label (`Key goals:`) |
+| quiet cutovers runbook | bare-label page with a table |
+| runbook authoring guidelines | 20 labels, one stray `##`, one underline |
+| model promotion protocol | YAML block between two `---` lines |
+| probe telemetry plan | `---` opens YAML under a two-line paragraph |
+| slice budgeting contract | `-----` opens YAML under a one-line lead-in (known gap) |
+| synthetic canary capacity | `-` under a list item reads as a nested heading |
+| contributor foundations | bash comments after `#!/bin/bash`, no fence (known gap) |
+| audit-log incident runbook | `**Symptoms**` bold sub-headings (known gap) |
+| one prose page from the 12 with no headings | no headings at all |
+
+**Example with real data**
+```json
+"slice-budgeting.txt": {
+  "why": "----- under a one-line lead-in opens a YAML block, it is not an underline",
+  "headings": {"0": 1, "12": 2, "...": 2},
+  "known_gaps": {"81": "markdown-it reads line 81 as an underlined heading; about 160 in the corpus"}
+}
+```
+
+**Non-functional Requirements**
+- Shared NFRs. No pipeline code. `tests/truth.py` is about 15 lines. Fixture files are committed (the corpus under `data/` is not), so the tests run on a fresh clone.
+- Adding a file later is one copy plus one JSON entry; no test code changes.
+
+**Dependencies**
+- APIs: `load_truth() -> list[Truth(name, text, headings: dict[int, int], known_gaps: dict[int, str])]`
+- Uses: clean files from PARSE-3
+- Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
@@ -75,7 +147,9 @@ Module: `pipeline/to_markdown.py`. Pure. File writing lives in PARSE-8c.
 - Given `"Title\n=====\n"`, Then headings `{0: 1}`
 - Given a fenced block on lines 3-6 and a pipe table on lines 9-12, Then `protected == [(3, 7), (9, 13)]`
 - Given a `#` line inside the fence, Then it is not in `headings`
-- Given every clean file, Then the result fingerprints to `tests/golden/structure_fingerprint.json`, and the heading lines equal the old `markdown_headings_fingerprint` input for bucket A/B files
+- Given `"---\nroute: a\nmodel: b\n---\n"` (a YAML block between two `---` lines), Then `headings == {}` and `underlines == set()`. An underlined heading counts only when its text is one line. Markdown reads a `---` under a multi-line paragraph as a heading over the whole paragraph; in this corpus that is always a config block (191 cases in 182 files, against 12,461 real one-line underlined headings), so `to_markdown` must leave those lines alone
+- Given a heading inside a quote (`> # quoted`), Then it is not in `headings`; given a fence inside a list item, Then its range is still in `protected`
+- Given every clean file, Then the per-file counts of headings, underlines and protected ranges fingerprint to `tests/golden/structure_fingerprint.json`. The totals are not expected to equal the old `markdown_headings_fingerprint`: that one also counts the title line and the multi-line underlined headings; PARSE-8d explains the difference
 
 **Example with real data**
 Autotune playbook: 20 setext headings at lines 2, 6, 11, …, each with its underline line; no fences. Onboarding PRD: 28 `#` headings, none inside a fence.
