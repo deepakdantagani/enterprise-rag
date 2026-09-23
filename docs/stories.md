@@ -38,6 +38,8 @@ Glossary (terms used across the stories; a story should make sense without chat 
 
 Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`, `2-chunking`, `3-llamaindex`, `4-tools`. Story numbers (PARSE-n) are stable; a story keeps its number when it moves.
 
+`5-linear` is the second source, Linear, and carries its own glossary and shared NFRs: its stories are numbered LINEAR-n and its terms (ticket, dsid, activity entry, narrative) are defined in that file. The glossary above is Confluence's.
+
 | Story | File |
 |---|---|
 | PARSE-1  Text cleaning rules as a pure module  ✅ | [1-parsing.md](stories/1-parsing.md) |
@@ -55,3 +57,12 @@ Stories live in `docs/stories/`, one file per stage, numbered in pipeline order:
 | PARSE-13  Document type from the title  ⬜ | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-14  Assumption audit: every chunking assumption as a corpus count  ⬜ | [4-tools.md](stories/4-tools.md) |
 | PARSE-16  Chunking validation: recall@20 on the benchmark questions  ⬜ | [3-llamaindex.md](stories/3-llamaindex.md) |
+| LINEAR-1  Shared cleaning  (1a split by source, 1b escape audit, 1c `normalize_text`) ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-2  `parse_filename`: the id comes from the name  ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-3  Activity truth set: real files with hand-labelled lines  ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-4  `activity_entry`: judge every line on its own  ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-5  `narrative_sections`: group the prose  ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-6  `to_nodes`: pack the ticket  (6a, 6b) ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-7  Reuse the corpus writer for a second source  ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-8  Golden fingerprints for the Linear corpus  ⬜ | [5-linear.md](stories/5-linear.md) |
+| LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [5-linear.md](stories/5-linear.md) |
