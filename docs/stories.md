@@ -46,7 +46,12 @@ Glossary (terms used across the stories; a story should make sense without chat 
 
 ## Index
 
-Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`, `2-chunking`, `3-llamaindex`, `4-tools`, `5-gmail`. Story numbers are stable and prefixed by source: `PARSE-n` for the Confluence stages, `GMAIL-n` for the Gmail stage. A story keeps its number when it moves.
+Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`,
+`2-chunking`, `3-llamaindex`, `4-tools`. Each additional source then gets its own slot,
+assigned alphabetically so branches built in parallel do not collide: `5-gmail`, `6-linear`,
+`7-slack`; `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
+numbers are stable and prefixed by source — `PARSE-n` for the Confluence stages, `GMAIL-n`,
+`SLACK-n` — and a story keeps its number when it moves.
 
 | Story | File |
 |---|---|
@@ -70,3 +75,16 @@ Stories live in `docs/stories/`, one file per stage, numbered in pipeline order:
 | GMAIL-13 … GMAIL-15  Thread roll-up, hybrid retrieval, recall@k  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-16  Gmail audit tool: every rule as a corpus count  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-17  Run log: LlamaIndex instrumentation for the embed and query runs  ⬜ | [5-gmail.md](stories/5-gmail.md) |
+| SLACK-0  Corpus profile  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-1  `unescape`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-2  `normalize_whitespace`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-3  Events and a handler (instrumentation)  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-4  `write_clean_corpus` + manifest  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-5  `channel_of`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-6  `split_messages`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-7  `parse_speaker`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-8  `parse_thread` + truth set  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-9  `chunk_thread`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-10  `to_text_node`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-11  Embed + BM25 hybrid index  (module-level) | [7-slack.md](stories/7-slack.md) |
+| SLACK-12  recall@20 on the benchmark questions  (module-level) | [7-slack.md](stories/7-slack.md) |
