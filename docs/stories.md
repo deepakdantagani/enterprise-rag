@@ -19,6 +19,16 @@ Shared non-functional requirements (apply to every story):
 - Behaviour-preserving: after the story, `uv run python -m unittest discover tests` is
   green and the clean-folder manifest sha256 values are unchanged.
 - Readable: top-of-file story, one idea per function, input -> output doctests, early returns.
+- Maintainable: reuse before writing. Before adding a function, name the existing module or
+  library call it replaces, or say in the PR why neither fits. One idea per function, one
+  function per PR, about 60 lines including tests. Every module opens with the story it
+  implements and the real corpus example that made it necessary, so the next person reads
+  the why before the how.
+- Observable: every stage leaves evidence. A manifest row per file carrying the counts that
+  stage owns, and a count that reconciles with the stage before it. A rule that can misfire
+  gets an audit row in the same PR — a pure function, a corpus count, three real examples —
+  so a wrong rule shows up as a number instead of as lost recall. Anything that calls a
+  model or a store emits events to a run log, never a bare `print`.
 - No Service Bus, database, or UI in any story below (marked N/A).
 
 Glossary (terms used across the stories; a story should make sense without chat history):
@@ -36,9 +46,11 @@ Glossary (terms used across the stories; a story should make sense without chat 
 
 ## Index
 
-Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`, `2-chunking`, `3-llamaindex`, `4-tools`. Story numbers (PARSE-n) are stable; a story keeps its number when it moves.
+Stories live in `docs/stories/`, one file per stage: `1-parsing`, `2-chunking`, `3-llamaindex`, `4-tools` for the Confluence stages, then one file per additional source — `5-gmail`, `5-linear`. Story numbers are stable and prefixed by source: `PARSE-n`, `GMAIL-n`, `LINEAR-n`. A story keeps its number when it moves.
 
-`5-linear` is the second source, Linear, and carries its own glossary and shared NFRs: its stories are numbered LINEAR-n and its terms (ticket, dsid, activity entry, narrative) are defined in that file. The glossary above is Confluence's.
+The glossary above is Confluence's. Each source file carries its own glossary and its own shared NFRs, so a story can be read without the others: Gmail's terms (thread, message record) in [5-gmail.md](stories/5-gmail.md), Linear's (ticket, dsid, activity entry, narrative) in [5-linear.md](stories/5-linear.md).
+
+Note: `5-gmail` and `5-linear` were added in parallel and share the number 5, as do their designs `3-gmail-system-design` and `3-linear-system-design`. Renumbering is a rename and is left for whoever adds source three.
 
 | Story | File |
 |---|---|
@@ -57,6 +69,11 @@ Stories live in `docs/stories/`, one file per stage, numbered in pipeline order:
 | PARSE-13  Document type from the title  ⬜ | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-14  Assumption audit: every chunking assumption as a corpus count  ⬜ | [4-tools.md](stories/4-tools.md) |
 | PARSE-16  Chunking validation: recall@20 on the benchmark questions  ⬜ | [3-llamaindex.md](stories/3-llamaindex.md) |
+| GMAIL-1 … GMAIL-9  Raw threads to message records  ⬜ | [5-gmail.md](stories/5-gmail.md) |
+| GMAIL-10 … GMAIL-12  Message records to LlamaIndex nodes  ⬜ | [5-gmail.md](stories/5-gmail.md) |
+| GMAIL-13 … GMAIL-15  Thread roll-up, hybrid retrieval, recall@k  ⬜ | [5-gmail.md](stories/5-gmail.md) |
+| GMAIL-16  Gmail audit tool: every rule as a corpus count  ⬜ | [5-gmail.md](stories/5-gmail.md) |
+| GMAIL-17  Run log: LlamaIndex instrumentation for the embed and query runs  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | LINEAR-1  Shared cleaning  (1a split by source, 1b escape audit, 1c `normalize_text`) ⬜ | [5-linear.md](stories/5-linear.md) |
 | LINEAR-2  `parse_filename`: the id comes from the name  ⬜ | [5-linear.md](stories/5-linear.md) |
 | LINEAR-3  Activity truth set: real files with hand-labelled lines  ⬜ | [5-linear.md](stories/5-linear.md) |
