@@ -51,7 +51,8 @@ Stories live in `docs/stories/`, one file per stage, numbered in pipeline order:
 assigned alphabetically so branches built in parallel do not collide: `5-gmail`, `6-linear`,
 `7-slack`; `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
 numbers are stable and prefixed by source — `PARSE-n` for the Confluence stages, `GMAIL-n`,
-`SLACK-n` — and a story keeps its number when it moves.
+`LINEAR-n`, `SLACK-n` — and a story keeps its number when it moves. The glossary above is
+Confluence's; each source file carries its own, so a story can be read without the others.
 
 | Story | File |
 |---|---|
@@ -88,3 +89,12 @@ numbers are stable and prefixed by source — `PARSE-n` for the Confluence stage
 | SLACK-10  `to_text_node`  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-11  Embed + BM25 hybrid index  (module-level) | [7-slack.md](stories/7-slack.md) |
 | SLACK-12  recall@20 on the benchmark questions  (module-level) | [7-slack.md](stories/7-slack.md) |
+| LINEAR-1  Shared cleaning  (1a split by source, 1b escape audit, 1c `normalize_text`) ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-2  `parse_filename`: the id comes from the name  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-3  Activity truth set: real files with hand-labelled lines  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-4  `activity_entry`: judge every line on its own  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-5  `narrative_sections`: group the prose  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-6  `to_nodes`: pack the ticket  (6a, 6b) ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-7  Reuse the corpus writer for a second source  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-8  Golden fingerprints for the Linear corpus  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [6-linear.md](stories/6-linear.md) |
