@@ -46,11 +46,13 @@ Glossary (terms used across the stories; a story should make sense without chat 
 
 ## Index
 
-Stories live in `docs/stories/`, one file per stage: `1-parsing`, `2-chunking`, `3-llamaindex`, `4-tools` for the Confluence stages, then one file per additional source — `5-gmail`, `5-linear`. Story numbers are stable and prefixed by source: `PARSE-n`, `GMAIL-n`, `LINEAR-n`. A story keeps its number when it moves.
-
-The glossary above is Confluence's. Each source file carries its own glossary and its own shared NFRs, so a story can be read without the others: Gmail's terms (thread, message record) in [5-gmail.md](stories/5-gmail.md), Linear's (ticket, dsid, activity entry, narrative) in [5-linear.md](stories/5-linear.md).
-
-Note: `5-gmail` and `5-linear` were added in parallel and share the number 5, as do their designs `3-gmail-system-design` and `3-linear-system-design`. Renumbering is a rename and is left for whoever adds source three.
+Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`,
+`2-chunking`, `3-llamaindex`, `4-tools`. Each additional source then gets its own slot,
+assigned alphabetically so branches built in parallel do not collide: `5-gmail`, `6-linear`,
+`7-slack`; `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
+numbers are stable and prefixed by source — `PARSE-n` for the Confluence stages, `GMAIL-n`,
+`LINEAR-n`, `SLACK-n` — and a story keeps its number when it moves. The glossary above is
+Confluence's; each source file carries its own, so a story can be read without the others.
 
 | Story | File |
 |---|---|
@@ -74,12 +76,25 @@ Note: `5-gmail` and `5-linear` were added in parallel and share the number 5, as
 | GMAIL-13 … GMAIL-15  Thread roll-up, hybrid retrieval, recall@k  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-16  Gmail audit tool: every rule as a corpus count  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-17  Run log: LlamaIndex instrumentation for the embed and query runs  ⬜ | [5-gmail.md](stories/5-gmail.md) |
-| LINEAR-1  Shared cleaning  (1a split by source, 1b escape audit, 1c `normalize_text`) ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-2  `parse_filename`: the id comes from the name  ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-3  Activity truth set: real files with hand-labelled lines  ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-4  `activity_entry`: judge every line on its own  ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-5  `narrative_sections`: group the prose  ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-6  `to_nodes`: pack the ticket  (6a, 6b) ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-7  Reuse the corpus writer for a second source  ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-8  Golden fingerprints for the Linear corpus  ⬜ | [5-linear.md](stories/5-linear.md) |
-| LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [5-linear.md](stories/5-linear.md) |
+| SLACK-0  Corpus profile  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-1  `unescape`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-2  `normalize_whitespace`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-3  Events and a handler (instrumentation)  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-4  `write_clean_corpus` + manifest  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-5  `channel_of`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-6  `split_messages`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-7  `parse_speaker`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-8  `parse_thread` + truth set  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-9  `chunk_thread`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-10  `to_text_node`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-11  Embed + BM25 hybrid index  (module-level) | [7-slack.md](stories/7-slack.md) |
+| SLACK-12  recall@20 on the benchmark questions  (module-level) | [7-slack.md](stories/7-slack.md) |
+| LINEAR-1  Shared cleaning  (1a split by source, 1b escape audit, 1c `normalize_text`) ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-2  `parse_filename`: the id comes from the name  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-3  Activity truth set: real files with hand-labelled lines  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-4  `activity_entry`: judge every line on its own  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-5  `narrative_sections`: group the prose  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-6  `to_nodes`: pack the ticket  (6a, 6b) ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-7  Reuse the corpus writer for a second source  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-8  Golden fingerprints for the Linear corpus  ⬜ | [6-linear.md](stories/6-linear.md) |
+| LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [6-linear.md](stories/6-linear.md) |

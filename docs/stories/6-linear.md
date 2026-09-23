@@ -2,7 +2,7 @@
 
 The Linear source of EnterpriseRAG-Bench: 35,308 ticket exports, from raw bytes to LlamaIndex nodes.
 Shared rules, the story template and the Confluence glossary are in [stories.md](../stories.md); every story here
-follows them. The design these stories implement is [3-linear-system-design.md](../design/3-linear-system-design.md),
+follows them. The design these stories implement is [4-linear-system-design.md](../design/4-linear-system-design.md),
 and each story names the requirement (F1–F14, N1–N10) it satisfies.
 
 **Glossary for this file** (a story should make sense without chat history):

@@ -6,7 +6,7 @@
 | **Owner** | Deepak Dantagani |
 | **Scope** | The Linear source of EnterpriseRAG-Bench, from raw export to LlamaIndex nodes: normalize, parse, chunk. Embedding model choice, vector store and retrieval are out of scope; their numbers appear only where they constrain chunking. |
 | **Source corpus** | EnterpriseRAG-Bench v1.0.0, Linear subset: 35,308 `.txt` exports (engineering, product and design tickets), 182 MB, ~45.6M tokens |
-| **Related** | [Parser design](1-parser-system-design.md) · [Chunker design](2-chunker-system-design.md) · [Story rules](../stories.md) |
+| **Related** | [Stories](../stories/6-linear.md) · [Story rules](../stories.md) · [Parser design](1-parser-system-design.md) · [Chunker design](2-chunker-system-design.md) |
 | **Last updated** | 2026-09-23 |
 
 ---
