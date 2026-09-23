@@ -85,6 +85,10 @@ numbers and re-checked after every parser change.
 **Non-functional Requirements**
 - Shared NFRs. Each audit is one pure function over one file's text, about 15 lines, with doctests; the runner only loops and prints. Full corpus under 60 s.
 - Every new assumption added to the design doc gets an audit row in the same PR.
+- Merge follow-up: [GMAIL-16](5-gmail.md) ships a Gmail runner first, deliberately matching
+  this story's `Finding` type and `--json` contract. When this story lands, one small story
+  merges the two runners into one `tools/audit.py --source {confluence,gmail}`; the audits
+  themselves move unchanged. That merge is the agreed cost of not blocking Gmail on this.
 
 **Dependencies**
 - Uses: PARSE-8b, PARSE-8c, PARSE-9a
