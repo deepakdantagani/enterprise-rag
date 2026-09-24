@@ -77,8 +77,8 @@ Confluence's; each source file carries its own, so a story can be read without t
 | GMAIL-13 … GMAIL-15  Thread roll-up, hybrid retrieval, recall@k  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-16  Gmail audit tool: every rule as a corpus count  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-17  Run log: LlamaIndex instrumentation for the embed and query runs  ⬜ | [5-gmail.md](stories/5-gmail.md) |
-| SLACK-0  Corpus profile  ⬜ | [7-slack.md](stories/7-slack.md) |
-| SLACK-1  `unescape`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-0  Corpus profile  ✅ | [7-slack.md](stories/7-slack.md) |
+| SLACK-1  `unescape`  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-2  `normalize_whitespace`  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-3  Events and a handler (instrumentation)  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-4  `write_clean_corpus` + manifest  ⬜ | [7-slack.md](stories/7-slack.md) |
