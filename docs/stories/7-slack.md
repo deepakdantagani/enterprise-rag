@@ -37,7 +37,7 @@ its contract, its Gherkin and a real-data example. The system design is
 2. **Rules live in a table.** Cleaning and parsing rules are one named, documented table per
    module. Adding a rule is a row plus a test, not a new branch buried inside a function.
 3. **Every rule carries its corpus count as a test.** `unescape` fires on 8,334 files;
-   `indented_speaker` on 27,225. If a refactor moves a count, a test fails and says by how
+   `indented_speaker` on 1,489. If a refactor moves a count, a test fails and says by how
    much. A rule with no measured count is a rule nobody has justified.
 4. **Dependency discipline.** A story that wants a third-party dependency has to say which
    LlamaIndex component it rejected and why (NFR-7). So far none has needed one.
@@ -46,7 +46,7 @@ its contract, its Gherkin and a real-data example. The system design is
 |---|---|
 | SLACK-0  Corpus profile | ✅ |
 | SLACK-1  `unescape` | ✅ |
-| SLACK-2  `normalize_whitespace` | ⬜ |
+| SLACK-2  `normalize_whitespace` | ✅ |
 | SLACK-3  events and a handler  *(shared, lands on master)* | ⬜ |
 | SLACK-4  `write_clean_corpus` + manifest | ⬜ |
 | SLACK-5  `channel_of` | ⬜ |
@@ -212,62 +212,85 @@ APIs data contracts: none · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-2  `normalize_whitespace(text) -> str` ⬜
+## SLACK-2  `normalize_whitespace(text) -> WhitespaceResult` ✅
 
-**Status** To do
+**Status** Done
 **As a** speaker parser that anchors on the start of a line
-**I want to** the 27,225 threads with an indented speaker line straightened out
+**I want to** indented speaker lines straightened and the other whitespace defects repaired
 **So that** ` tom_ae: FYI ...` parses as a message rather than as body text
 
-The trap: 27,057 threads (9.47%) contain **legitimate** indentation — list items and fenced
-code. A blanket strip of leading whitespace destroys them. Only a line that is otherwise a
-speaker line may lose its indent.
+`pipeline/slack/whitespace.py`, run on SLACK-1's output. Pure: text in,
+`WhitespaceResult(text, rules_fired)` out. `RULES` is a table of (name, function) in the
+order they run; each function does one thing and returns the new text and its change count.
+
+**The trap, measured.** A speaker line is indented by exactly one space or one tab. The same
+shape is also an HTTP header or YAML pasted outside a fence (` Host: api.redwood.example`,
+` enabled: true`), and deeper indents (`  max_retries: 5`) are always YAML or code. So the
+indent goes only when all of these hold:
+
+1. the line is outside a code block. Any line with an odd number of ``` opens or closes one,
+   wherever the fence sits: `kai: logs:```` opens a block. 39,786 threads open a fence mid-line.
+2. it is indented by one space or one tab, then `name: ` or `name (role): `.
+3. it starts a message (follows a blank line), or its name speaks at least twice in the thread.
+
+That straightens 1,489 threads. Rule 3 leaves 59 more threads indented: mostly headers and
+YAML, but also some real one-off speakers in threads without blank lines between messages
+(`deploy-bot: Deploy started ...`). Better that than headers turned into fake messages;
+SLACK-7 can still read an indented speaker.
+
+**The design doc's numbers do not reproduce.** It quotes 27,225 threads with an indented
+speaker line; no reading of "indented speaker" gets near that (any one-space or one-tab
+`name:` line outside code: 1,548). Its "3+ consecutive blank lines: 448" matches runs of two
+or more blank lines (476 after SLACK-1), which is what this collapses: messages are separated
+by exactly one blank line. The story's sales example quoted the thread without its blank
+lines; the real thread has one between every message.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: an indented speaker line is straightened
-  Given the line " tom_ae: FYI customer claims integrations built during POC..."
+  Given "\n\n tom_ae: FYI customer claims integrations built during POC..."
   Then it becomes "tom_ae: FYI customer claims integrations built during POC..."
 
-Scenario: an indented list item is left alone
-  Given the line "  - Verify SOC2 Type II (owner: Ben)"
+Scenario: YAML, headers and list items keep their indent
+  Given " enabled: true" or " Host: api.redwood.example" inside a message, or "  - Verify SOC2"
   Then it is unchanged
 
-Scenario: indentation inside a fenced code block is left alone
-  Given an indented line between two ``` fences
+Scenario: indentation inside a code block is left alone
+  Given an indented line after "kai: logs:```" and before the closing ```
   Then it is unchanged, whatever it looks like
 
 Scenario: the remaining whitespace rules
-  Given trailing spaces, a CR, a non-breaking space, or 3+ consecutive blank lines
-  Then trailing whitespace goes, CR goes, nbsp becomes a space, blank runs collapse to one
-  And the file ends with exactly one newline
+  Given a CR, a non-breaking space, trailing spaces, or 2+ blank lines in a row
+  Then CR becomes LF, nbsp becomes a space, trailing whitespace goes, blank runs collapse to one
+  And the file ends with exactly one newline; an empty thread stays empty
 ```
 
 ### Example with real data
 
-Before, from a `sales` thread:
+Before, the `sales` thread `jen_sales: Quick sync - ACME PoC is greenlighted...`:
 
 ```text
-jen_sales: Quick sync - ACME PoC is greenlighted but procurement raised 3 blocking items...
+jen_sales: Quick sync — ACME PoC is greenlighted but procurement raised 3 blocking items...
+
  tom_ae: FYI customer claims integrations built during POC must remain theirs.
- sana_se: I reviewed the deliverables - POC outputs are config + prompt recipes.
+
+ sana_se: I reviewed the deliverables — POC outputs are config + prompt recipes...
 ```
 
-After: three messages, none of them indented.
+After: the same three messages, none of them indented.
 
 ### Non-functional Requirements
 
 Shared list, plus:
 
-- **Maintainable:** one rule table, each row a name, a matcher and a fix, applied in a stated
-  order. The order is part of the contract: the fence guard runs before anything that touches
-  leading whitespace, or the code rules corrupt code blocks.
+- **Maintainable:** one `RULES` table, applied in the stated order: carriage_return,
+  non_breaking_space, indented_speaker, trailing_whitespace, blank_line_run, final_newline.
+  CR goes first so every later rule sees plain lines.
 - **Pure:** no disk, no dispatcher call. Returns text plus the rules that fired.
-- **Corpus counts as tests:** 237,002 files (82.98%) have no final newline, 64,212 (22.48%)
-  trailing whitespace, 27,225 (9.53%) an indented speaker line, 448 (0.16%) 3+ consecutive
-  blank lines, 250 a CR, 47 a non-breaking space. And the guard rail: 27,057 files (9.47%)
-  have legitimate indentation and must come through untouched.
+- **Corpus counts as tests** (`test_files_each_rule_fires_on_after_unescape`, on SLACK-1's
+  output): final_newline 236,927, trailing_whitespace 66,893, indented_speaker 1,489,
+  blank_line_run 476, carriage_return 269, non_breaking_space 55.
 
 ### Dependencies
 
