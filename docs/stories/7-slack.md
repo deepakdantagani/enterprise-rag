@@ -873,3 +873,19 @@ whose gold documents are Slack.
 | dense only | the floor |
 | hybrid, dense + BM25 | whether BM25 earns its place |
 | hybrid + channel authority | whether the free metadata signal helps |
+
+**Does a missing channel hurt retrieval?** (from SLACK-5) 9,053 threads (3.2%) have channel
+`unknown`, and nothing in them says where they came from. Report recall@20 separately for
+questions whose gold thread has a channel and for questions whose gold thread is `unknown`:
+
+| gold thread's channel route | questions | recall@20 |
+|---|---|---|
+| `line1` or `export_path` | … | … |
+| `unknown` | … | … |
+
+If the two rates are about the same, the missing channel does not matter. If `unknown` is
+clearly lower, the channel line is helping search, and recovering more channels (for
+example from the thread's content) becomes worth a story. Two rules follow for SLACK-10 and
+here: every node carries `channel_route` in its metadata (kept out of the embedded text), so
+this split is one group-by; and channel authority is a soft boost, never a filter, so an
+`unknown` thread is never dropped from results.
