@@ -47,7 +47,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-0  Corpus profile | ✅ |
 | SLACK-1  `unescape` | ✅ |
 | SLACK-2  `normalize_whitespace` | ✅ |
-| SLACK-3  events and a handler  *(shared, lands on master)* | ⬜ |
+| SLACK-3  events and a handler  *(shared by every source)* | ✅ |
 | SLACK-4  `write_clean_corpus` + manifest | ⬜ |
 | SLACK-5  `channel_of` | ⬜ |
 | SLACK-6  `split_messages` | ⬜ |
@@ -298,24 +298,34 @@ APIs data contracts: SLACK-1 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-3  `pipeline/observability.py`: events and a handler ⬜  *(shared — lands on master first)*
+## SLACK-3  `pipeline/observability.py`: events and a handler ✅  *(shared by every source)*
 
-**Status** To do
+**Status** Done
 **As a** person about to run a pipeline over 285,605 files on a laptop
 **I want to** every stage to say what it did, through LlamaIndex's own instrumentation
 **So that** a run that stalls, skips or errors can be diagnosed without rerunning it under a debugger
 
-**This story is not Slack-specific, and is not built in this branch.** Gmail and Linear have
-their own worktrees and the same need, so three branches would otherwise each write it and
-collide. It lands on master as its own small PR, and the source branches rebase onto it. The
-events therefore carry a `source` field rather than a Slack name:
+**This story is not Slack-specific.** Gmail and Linear have the same need, so the module sits
+at `pipeline/observability.py`, outside `pipeline/slack/`, and imports nothing from any source.
+It landed stacked after SLACK-1 and SLACK-2 (their story-index rows sit next to its row, so
+separate branches off master would conflict); the other source branches take it from master
+once it merges. The events carry a `source` field rather than a Slack name:
 
 ```python
-class FileCleaned(BaseEvent):
-    source: str            # "slack" | "gmail" | "linear"
+class FileCleaned(PipelineEvent):   # PipelineEvent = BaseEvent with a UTC timestamp
+    source: str                      # "slack" | "gmail" | "linear"
     file: str
-    rules_fired: list[str]
+    rules_fired: dict[str, int]      # rule -> changes, as SLACK-1 and SLACK-2 return them
+    bytes_in: int
+    bytes_out: int
 ```
+
+What was built: `FileCleaned`, `FileFailed`, `StageDone`, a `JsonLinesEventHandler`, and
+`events_logged_to(log_path)`, which attaches the handler to LlamaIndex's **root** dispatcher
+for the length of a `with` block. Root, because LlamaIndex's own events only travel upward:
+a handler on our `pipeline` dispatcher would never see an embedding event. Reviewed by a
+code-review agent; its fixes (root dispatcher, UTC ISO timestamps, no silent `default=str`,
+detach by identity so a crash inside the block is not masked) are in, each with a test.
 
 **Library first (NFR-7).** LlamaIndex ships an `instrumentation` module — `Dispatcher`,
 `BaseEvent`, `BaseEventHandler`, `BaseSpan`, `@dispatcher.span` — available since
@@ -361,10 +371,12 @@ never to alter it (NFR-1).
 ### Example with real data
 
 ```json
-{"event":"FileCleaned","source":"slack","file":"dsid_0161f905...__1719998880-cred-cleanup....txt",
- "rules_fired":["unescape_newline","trailing_whitespace","final_newline"],
- "bytes_in":3294,"bytes_out":3268}
-{"event":"StageDone","source":"slack","stage":"clean","files":285605,"failed":0,"seconds":412.8}
+{"event": "FileCleaned", "timestamp": "2026-09-24T02:29:00.898578Z", "span_id": "write_clean_corpus-dfd9fade-...",
+ "tags": {}, "source": "slack", "file": "dsid_919525fd...__1814012345-morning-riddle-and-wfh-poll.txt",
+ "rules_fired": {"unescape_newline": 17, "unescape_quote": 8, "final_newline": 1},
+ "bytes_in": 1324, "bytes_out": 1300}
+{"event": "StageDone", "timestamp": "2026-09-24T02:29:43.109153Z", "span_id": "write_clean_corpus-dfd9fade-...",
+ "tags": {}, "source": "slack", "stage": "clean", "files": 285605, "failed": 0, "seconds": 44.4}
 ```
 
 The same two lines, with `"source":"gmail"`, are what the Gmail branch will emit.
