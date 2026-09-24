@@ -18,6 +18,7 @@ pipeline/                 active ingestion code (a Python package), pure functio
     unescape.py           SLACK-1: JSON-escaped threads -> real characters (only the 8,334 escaped ones)
     whitespace.py         SLACK-2: indented speaker lines, CR, nbsp, trailing space, blank runs, final newline
     corpus.py             SLACK-4: 58 zips -> data/slack/clean/ + _manifest.json, one event per file
+    channel.py            SLACK-5: channel_of(text) -> Channel(name, route): line 1, export path, or unknown
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
 tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings
 tools/                    audit and measurement scripts, outside pipeline/: slack_profile.py (SLACK-0); planned PARSE-11, PARSE-14

@@ -49,7 +49,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-2  `normalize_whitespace` | ✅ |
 | SLACK-3  events and a handler  *(shared by every source)* | ✅ |
 | SLACK-4  `write_clean_corpus` + manifest | ✅ |
-| SLACK-5  `channel_of` | ⬜ |
+| SLACK-5  `channel_of` | ✅ |
 | SLACK-6  `split_messages` | ⬜ |
 | SLACK-7  `parse_speaker` | ⬜ |
 | SLACK-8  `parse_thread` + truth set | ⬜ |
@@ -492,54 +492,88 @@ APIs data contracts: SLACK-1, SLACK-2, SLACK-3 · Service Bus: N/A · Database: 
 
 ---
 
-## SLACK-5  `channel_of(text, filename) -> str` ⬜
+## SLACK-5  `channel_of(text) -> Channel` ✅
 
-**Status** To do
+**Status** Done
 **As a** retrieval pipeline that ranks `postmortems` above `lunch-plans`
-**I want to** the channel of every thread, including the 4.1% that do not state one on line 1
-**So that** 3,037 documents keep their routing metadata instead of falling into `unknown`
+**I want to** the channel of every thread, including those that do not state one on line 1
+**So that** 3,036 more documents keep their routing metadata instead of falling into `unknown`
+
+`pipeline/slack/channel.py`. Pure: the text of one clean thread (SLACK-4's output) in,
+`Channel(name, route)` out. `ROUTES` is an ordered table; the first route that names a known
+channel wins.
+
+| route | line 1 looks like | threads |
+|---|---|---|
+| `line1` | `customer-success` | 273,516 |
+| `export_path` | `sources/slack/eng-ml/3312349999-photon9b-int4-econ-flagging-guidance.json` (943) or `slack/product/1842501234-keys-create-emptystate-presets-accessibility.json` (2,093) | 3,036 |
+| `unknown` | `1719998880`, `2112345678-burst-header-backcompat-checkin.json`, `Elena: Quick sync ...` | 9,053 |
+
+**Known channels are a table, not a pattern.** SLACK-0 found 130 channel-shaped words on line
+1. `KNOWN_CHANNELS` holds the 35 that head 3 or more threads on different subjects. The other
+94 each head one thread: topic slugs (`kv-residency-sim-harness-sync`) or stray words
+(`incident-3781`, `degraded`). `sales-poc-benchmark` heads 3 threads, but they are near-copies
+of one NovaRetail scenario (same AE, same numbers), so it is a topic too, unlike
+`watercooler`, whose 3 threads are about three different things. Every export-path channel
+but one (`temp-alerts`, 1 thread) is among the 35.
+
+**Only line 1 is read.** A path or `#channel` further down is a mention of another channel,
+not where the thread lives. The story's `filename` argument was dropped: no route uses it.
+
+**The design doc's export-path count holds; its unknown count is 263 off.** A path with or
+without the `sources/` prefix: 943 + 2,093 + 1 (`temp-alerts`) = 3,037, the doc's number, of
+which 3,036 name a known channel. (The first version of this story matched only `sources/`
+and found 943; the review caught it.) Unknown is 9,053 (3.2%), not 8,790. By line 1:
+bare `<ts>-<slug>.json` with no channel 2,343, epoch number 4,213, prose summary 1,329, speaker
+line 1,014, stray slug 135, blank 15, the 3 `sales-poc-benchmark` threads and the 1 `temp-alerts`
+path.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: line 1 is a channel name
   Given a thread whose first line is "customer-success"
-  Then channel_of returns "customer-success"
+  Then channel_of returns Channel("customer-success", "line1")
 
-Scenario: line 1 is an export path
+Scenario: line 1 is an export path, with or without "sources/"
   Given a thread whose first line is
         "sources/slack/eng-ml/3312349999-photon9b-int4-econ-flagging-guidance.json"
-  Then channel_of returns "eng-ml"
+        or "slack/product/1842501234-keys-create-emptystate-presets-accessibility.json"
+  Then channel_of returns Channel("eng-ml", "export_path") or Channel("product", "export_path")
 
-Scenario: no channel anywhere
-  Given a thread whose first line is "1719998880"
-  Then channel_of returns "unknown"
+Scenario: no channel on line 1
+  Given a first line "1719998880", a bare "<ts>-<slug>.json", a message, a topic slug or nothing
+  Then channel_of returns Channel("unknown", "unknown")
 
 Scenario: the corpus totals hold
-  When I run channel_of over all 285,605 files
-  Then 273,519 return one of the 36 known channels
-  And 3,037 are recovered from an export path
-  And 8,790 return "unknown"
+  When I run channel_of over all 285,605 clean files
+  Then 273,516 come from line 1, 3,036 from an export path and 9,053 are unknown
 ```
 
 ### Example with real data
 
 | file | line 1 | returns |
 |---|---|---|
-| `dsid_a4e702bd...__1793045678-novacare-vra-check.txt` | `customer-success` | `customer-success` |
-| `dsid_d6bc004c...__3312349999-photon9b-int4-...txt` | `sources/slack/eng-ml/...json` | `eng-ml` |
-| `dsid_0161f905...__1719998880-cred-cleanup-...txt` | `1719998880` | `unknown` |
+| `dsid_a4e702bd...__1793045678-novacare-vra-check.txt` | `customer-success` | `Channel("customer-success", "line1")` |
+| `dsid_d6bc004c...__3312349999-photon9b-int4-...txt` | `sources/slack/eng-ml/...json` | `Channel("eng-ml", "export_path")` |
+| `dsid_0161f905...__1719998880-cred-cleanup-...txt` | `1719998880` | `Channel("unknown", "unknown")` |
 
 ### Non-functional Requirements
 
 Shared list, plus:
 
-- **Maintainable:** the three steps are an ordered table of named strategies — `line1`,
-  `export_path`, `unknown` — so a fourth recovery route is a row with its own corpus count.
-- **Observable:** the strategy that won is recorded per file, so the 3,037 / 8,790 split is a
-  number the run reports rather than a claim in a document.
-- A channel name is lowercase letters, digits, `-`, `_` and spaces, at most 40 characters, and
-  never starts with a digit — that last clause is what keeps a bare timestamp out.
+- **Maintainable:** `ROUTES` is an ordered table of named finders; a new recovery route is a
+  row with its own corpus count. `KNOWN_CHANNELS` is the other table.
+- **Observable:** the winning route is returned with the channel, so SLACK-8 can record it
+  per thread and the run can report the split.
+- **Corpus counts as tests** (`test_routes_and_channels_over_the_clean_corpus`): line1
+  273,516, export_path 3,036, unknown 9,053, and the thread count of every one of the 35
+  channels.
+
+**Reviewed** by a code-review agent. Its catch is the `slack/` path without `sources/` (2,093
+threads recovered). Also from the review: `sales-poc-benchmark` dropped, every channel count
+pinned, and edge cases pinned as deliberate (CRLF works; `Incidents`, `#incidents` and a
+BOM are unknown, and none occurs in the corpus).
 
 ### Dependencies
 

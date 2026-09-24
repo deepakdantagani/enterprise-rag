@@ -168,6 +168,8 @@ them out to be worth a stage.
 
 So the channel rule is three steps: clean line 1, else the `slack/<channel>/` path, else
 `unknown`. That recovers 3,037 documents for one regex and leaves 8,790 (3.1%) unknown.
+*Re-measured by SLACK-5 on the whole corpus: 3,036 recovered from the path (with or without
+`sources/`), 9,053 (3.2%) unknown.*
 
 ## 5. The timestamp is decorative
 
