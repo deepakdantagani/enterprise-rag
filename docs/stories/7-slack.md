@@ -129,7 +129,9 @@ rule and has no `\r`, and each source keeps its own pipeline.
 saved as a JSON string: after line 1 and the blank line, the whole body is one line. In the
 other 9,637 the `\n` means itself, mostly inside code (an SSE capture `data: {...}\n\n`, a
 `printf`), and a blanket replace would change that code. `is_escaped` is the gate: the body
-after the first blank line, ignoring a final newline, is one line and holds a literal `\n`.
+after the first blank line, ignoring a final newline, is one line and holds a literal `\n`
+that is not the tail of an escaped backslash (`C:\\new` is a path, not a line break), so a
+second run never changes a thread again.
 
 | rule considered | files | verdict |
 |---|---|---|
@@ -139,7 +141,8 @@ after the first blank line, ignoring a final newline, is one line and holds a li
 | every file with a literal `\n` | 17,971 | corrupts code in ~9,490 normal files |
 
 **The escapes are JSON's, decoded once, left to right.** The `ESCAPES` table has `\n` `\"`
-`\t` `\r` `\\`, plus `\uXXXX`. One regex pass means `C:\\new` becomes `C:\new`, not `C:\`, a
+`\t` `\r` `\\` `\/`, plus `\uXXXX`. (`\b` and `\f` are left out: they would put control characters
+into chat text.) One regex pass means `C:\\new` becomes `C:\new`, not `C:\`, a
 line break and `ew`. A surrogate pair (`\ud83d\ude00`) becomes one emoji; a lone surrogate
 stays as written, so the output is always valid UTF-8. An unknown escape (`\s` in a regex)
 stays. Two threads are escaped twice; they are decoded once, like everything else.
@@ -200,7 +203,7 @@ Shared list, plus:
   `rules_fired`.
 - **Corpus counts as tests** (`test_files_each_rule_fires_on`): 8,334 files changed; per rule,
   files where it fired: newline 8,334, quote 4,083, backslash 787, unicode 147, tab 36,
-  carriage_return 19. The 17,232 files with `\"` and the 243 with `\t` are corpus-wide counts;
+  carriage_return 19, slash 14. The 17,232 files with `\"` and the 243 with `\t` are corpus-wide counts;
   most of them are not escaped files.
 
 ### Dependencies

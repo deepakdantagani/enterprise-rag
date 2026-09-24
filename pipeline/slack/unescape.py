@@ -24,12 +24,17 @@ ESCAPES = {  # as written in the file -> (rule name, the real character)
     r"\t": ("tab", "\t"),
     r"\r": ("carriage_return", "\r"),
     r"\\": ("backslash", "\\"),
+    r"\/": ("slash", "/"),
 }
 UNICODE_RULE = "unicode"
-# \u2014, or a surrogate pair \ud83d\ude00 (one emoji). A lone surrogate is not matched:
-# it has no character of its own and could not be written out as UTF-8.
 HEX = "[0-9a-fA-F]"
-UNICODE_ESCAPE = rf"\\u(?:[dD][89abAB]{HEX}{{2}}\\u[dD][c-fC-F]{HEX}{{2}}|(?![dD][89a-fA-F]){HEX}{{4}})"
+SURROGATE_PAIR = rf"\\u[dD][89abAB]{HEX}{{2}}\\u[dD][c-fC-F]{HEX}{{2}}"  # \ud83d\ude00: one emoji
+NOT_A_SURROGATE = rf"\\u(?![dD][89a-fA-F]){HEX}{{4}}"                  # \u2014: one character
+# A lone surrogate (\ud83d with no partner) is left as written: it has no character of its
+# own and could not be written out as UTF-8.
+UNICODE_ESCAPE = f"{SURROGATE_PAIR}|{NOT_A_SURROGATE}"
+# A \n that is not the tail of an escaped backslash: `\\n` is a backslash and an n.
+UNESCAPED_NEWLINE = re.compile(r"(?<!\\)(?:\\\\)*\\n")
 ESCAPE_PATTERN = re.compile(
     "|".join(re.escape(escape) for escape in ESCAPES) + "|" + UNICODE_ESCAPE
 )
@@ -62,7 +67,7 @@ def is_escaped(text: str) -> bool:
     (True, False)
     """
     body = text.split("\n\n", 1)[-1].rstrip("\n")
-    return "\n" not in body and r"\n" in body
+    return "\n" not in body and UNESCAPED_NEWLINE.search(body) is not None
 
 
 def decode_escape(escape: str) -> tuple[str, str]:

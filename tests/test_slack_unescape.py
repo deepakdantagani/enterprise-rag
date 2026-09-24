@@ -27,6 +27,10 @@ class WhichFilesAreEscaped(unittest.TestCase):
         text = "eng\n\npaul: capture:```data: {}\\n\\n```\n\nkai: thanks"
         self.assertFalse(is_escaped(text))
 
+    def test_an_escaped_backslash_before_n_is_not_a_newline(self):
+        self.assertFalse(is_escaped("general\n\nsam: C:\\\\new"))
+        self.assertTrue(is_escaped("general\n\nsam: C:\\\\\\new"))  # \\ then \n
+
     def test_a_final_newline_does_not_count_as_a_real_line_break(self):
         self.assertTrue(is_escaped("general\n\nLena: hi\\nCarlos: yo\n"))
 
@@ -53,6 +57,11 @@ class Unescape(unittest.TestCase):
         self.assertEqual(result.text, "general\n\nsam: C:\\new\nkai: ok")
         self.assertEqual(result.rules_fired, {"backslash": 1, "newline": 1})
 
+    def test_slash(self):
+        result = unescape("general\n\nkai: see https:\\/\\/x.io\\nraj: ok")
+        self.assertEqual(result.text, "general\n\nkai: see https://x.io\nraj: ok")
+        self.assertEqual(result.rules_fired, {"slash": 2, "newline": 1})
+
     def test_unicode_and_a_surrogate_pair(self):
         result = unescape("general\n\nzoe: shoutout \\u2014 \\ud83d\\ude00\\nmaya: thanks")
         self.assertEqual(result.text, "general\n\nzoe: shoutout \u2014 \U0001F600\nmaya: thanks")
@@ -67,9 +76,15 @@ class Unescape(unittest.TestCase):
         text = 'sec\n\nsanjay: ```\ngcloud --member=\\"sa@x\\" \\\n  --role=r\n```\n\nkai: ok'
         self.assertEqual(unescape(text), UnescapeResult(text, {}))
 
+    def test_a_high_surrogate_before_an_ordinary_escape(self):
+        result = unescape("general\n\nbot: \\ud83d\\u2014\\nkai: ok")
+        self.assertEqual(result.text, "general\n\nbot: \\ud83d\u2014\nkai: ok")
+
     def test_running_it_twice_changes_nothing_more(self):
         once = unescape("general\n\nLena: hi\\nCarlos: \\\\n is a newline")
         self.assertEqual(unescape(once.text), UnescapeResult(once.text, {}))
+        single_message = unescape("general\n\nsam: C:\\\\new")
+        self.assertEqual(single_message.rules_fired, {})
 
     def test_doctests(self):
         self.assertEqual(doctest.testmod(unescape_module).failed, 0)
@@ -94,7 +109,7 @@ class RealCorpus(unittest.TestCase):
         self.assertEqual(files_changed, 8_334)
         self.assertEqual(files_per_rule, {
             "newline": 8_334, "quote": 4_083, "backslash": 787,
-            "unicode": 147, "tab": 36, "carriage_return": 19,
+            "unicode": 147, "tab": 36, "carriage_return": 19, "slash": 14,
         })
 
 
