@@ -36,7 +36,7 @@ its contract, its Gherkin and a real-data example. The system design is
    rather than inheriting a generic line.
 2. **Rules live in a table.** Cleaning and parsing rules are one named, documented table per
    module. Adding a rule is a row plus a test, not a new branch buried inside a function.
-3. **Every rule carries its corpus count as a test.** `unescape` fires on 17,971 files;
+3. **Every rule carries its corpus count as a test.** `unescape` fires on 8,334 files;
    `indented_speaker` on 27,225. If a refactor moves a count, a test fails and says by how
    much. A rule with no measured count is a rule nobody has justified.
 4. **Dependency discipline.** A story that wants a third-party dependency has to say which
@@ -45,7 +45,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | Story | Status |
 |---|---|
 | SLACK-0  Corpus profile | ✅ |
-| SLACK-1  `unescape` | ⬜ |
+| SLACK-1  `unescape` | ✅ |
 | SLACK-2  `normalize_whitespace` | ⬜ |
 | SLACK-3  events and a handler  *(shared, lands on master)* | ⬜ |
 | SLACK-4  `write_clean_corpus` + manifest | ⬜ |
@@ -114,60 +114,94 @@ APIs data contracts: none · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-1  `unescape(text) -> str` ⬜
+## SLACK-1  `unescape(text) -> UnescapeResult` ✅
 
-**Status** To do
+**Status** Done
 **As a** parser that must not meet the two characters `\` and `n` where a line break belongs
-**I want to** the 17,971 JSON-escaped threads turned back into real characters
-**So that** message splitting works on every file instead of on 93.7% of them
+**I want to** the 8,334 JSON-escaped threads turned back into real characters
+**So that** message splitting sees real line breaks in every file
 
-Same defect class as the Confluence corpus (910 raw files, PARSE-1). Reuse that module if its
-rules fit unchanged, and say so in the PR rather than copying the code.
+`pipeline/slack/unescape.py`. Pure: text in, `UnescapeResult(text, rules_fired)` out. It
+imports nothing from the Confluence pipeline: `pipeline/cleaning.py` gates on a different
+rule and has no `\r`, and each source keeps its own pipeline.
+
+**Only escaped files are touched.** 17,971 files hold a literal `\n`, but only 8,334 were
+saved as a JSON string: after line 1 and the blank line, the whole body is one line. In the
+other 9,637 the `\n` means itself, mostly inside code (an SSE capture `data: {...}\n\n`, a
+`printf`), and a blanket replace would change that code. `is_escaped` is the gate: the body
+after the first blank line, ignoring a final newline, is one line and holds a literal `\n`.
+
+| rule considered | files | verdict |
+|---|---|---|
+| body on one line (chosen) | 8,334 | simple; catches short escaped threads too |
+| Confluence count rule (5+ literal, more literal than real) | 8,479 | misses 4 short escaped threads |
+| either rule | 8,483 | adds 149 escaped threads with a real code block; two rules to test |
+| every file with a literal `\n` | 17,971 | corrupts code in ~9,490 normal files |
+
+**The escapes are JSON's, decoded once, left to right.** The `ESCAPES` table has `\n` `\"`
+`\t` `\r` `\\`, plus `\uXXXX`. One regex pass means `C:\\new` becomes `C:\new`, not `C:\`, a
+line break and `ew`. A surrogate pair (`\ud83d\ude00`) becomes one emoji; a lone surrogate
+stays as written, so the output is always valid UTF-8. An unknown escape (`\s` in a regex)
+stays. Two threads are escaped twice; they are decoded once, like everything else.
+
+**No library does this.** On the 8,334 files, `json.loads` crashes on 4,317 (4,254 also hold a
+bare `"`, which ends a JSON string) and agrees with this code on 4,010 of the 4,017 it can
+read. `codecs.decode(..., "unicode_escape")` reads text as Latin-1 and matches on 2,021.
+
+**Handed on to SLACK-6:** in 2,016 escaped threads each message ends in one `\n`, not a blank
+line, so after unescaping they have line breaks but no blank line between messages.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: an escaped thread becomes a real one
-  Given a thread whose body holds the two characters \n between messages
+  Given a thread whose body is one line holding the two characters \n between messages
   When I unescape it
-  Then those become real line breaks and the message count is right
+  Then those become real line breaks and rules_fired counts them
 
-Scenario: an escaped quote
-  Given the two characters \" inside a message
-  Then they become a single "
+Scenario: an escaped quote, tab, carriage return, backslash or unicode escape
+  Given \" \t \r \\ or \u2014 inside an escaped thread
+  Then each becomes its real character, and \\n becomes a backslash and an n
 
-Scenario: an already-clean thread is untouched
-  Given a thread with no escape sequences
-  Then unescape returns it byte for byte
+Scenario: a thread that is not escaped is untouched
+  Given a multi-line thread, even one with \n or \" inside a code block
+  Then unescape returns it byte for byte with rules_fired {}
 
-Scenario: a real backslash survives
-  Given a Windows path or a regex inside a fenced code block
-  Then a backslash that is not an escape sequence is left alone
+Scenario: running it twice changes nothing more
+  Given the output of unescape
+  Then unescape returns it unchanged
 ```
-
-The last scenario is the sharp edge: 72.8% of threads contain a fenced code block, and code
-contains backslashes that mean themselves.
 
 ### Example with real data
 
-Before, `dsid_0161f905...__1719998880-cred-cleanup-rotation-playbook-checkin.txt`:
+Before, `dsid_919525fd...__1814012345-morning-riddle-and-wfh-poll.txt` (1,324 bytes, 2 real
+line breaks, the body on one line):
 
 ```text
-morgan: heads up - found a batch of expired partner webhook logs...\n\nsanjay: ugh. any plaintext in those logs?
+general
+
+Lena: Morning riddle: ... Guess! :coffee:\nCarlos: 5am brewer? lie. ...\nLena: Poll: WFH Friday next week? ```/poll \"WFH Friday\" \"Yes\" ...```\n...
 ```
 
-After: two messages, separated by a real blank line.
+After: `rules_fired = {"newline": 17, "quote": 8}`, 19 real line breaks, one message per line,
+`/poll "WFH Friday" "Yes" ...`.
+
+The earlier example here, `dsid_0161f905...cred-cleanup-rotation-playbook-checkin.txt`, is not
+escaped: 0 literal `\n`, 78 real line breaks. Its 14 `\"` are inside shell commands in a code
+block, and unescape leaves them alone.
 
 ### Non-functional Requirements
 
 Shared list, plus:
 
-- **Maintainable:** the three escape sequences are a table, `ESCAPES = {r"\n": "\n", ...}`, not
-  three chained `.replace()` calls. A fourth escape is a row.
-- **Pure:** no disk, no dispatcher call inside the function. The caller (SLACK-4) emits the
-  event; this function only returns text and which rules fired.
-- **Corpus counts as tests:** 17,971 files (6.29%) contain a literal `\n`, 17,232 (6.03%) a
-  literal `\"`, 243 (0.09%) a literal `\t`. Each is an assertion, not a comment.
+- **Maintainable:** the escapes are the `ESCAPES` table; a new escape is a row. `\uXXXX` is the
+  one pattern outside it, because it has 65,536 forms.
+- **Pure:** no disk, no dispatcher call. The caller (SLACK-4) emits the event from
+  `rules_fired`.
+- **Corpus counts as tests** (`test_files_each_rule_fires_on`): 8,334 files changed; per rule,
+  files where it fired: newline 8,334, quote 4,083, backslash 787, unicode 147, tab 36,
+  carriage_return 19. The 17,232 files with `\"` and the 243 with `\t` are corpus-wide counts;
+  most of them are not escaped files.
 
 ### Dependencies
 
