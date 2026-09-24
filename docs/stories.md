@@ -83,7 +83,7 @@ Confluence's; each source file carries its own, so a story can be read without t
 | SLACK-3  Events and a handler (instrumentation)  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-4  `write_clean_corpus` + manifest  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-5  `channel_of`  ✅ | [7-slack.md](stories/7-slack.md) |
-| SLACK-6  `split_messages`  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-6  `split_messages`  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-7  `parse_speaker`  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-8  `parse_thread` + truth set  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-9  `chunk_thread`  ⬜ | [7-slack.md](stories/7-slack.md) |
