@@ -38,7 +38,7 @@ library code harder than Confluence did:
 tools/
     gmail_profile.py  GMAIL-0    profile: counts only, no rules
 pipeline/gmail/
-    cleaning.py    GMAIL-1    clean_thread
+    cleaning.py    GMAIL-1a,1b clean_thread
     messages.py    GMAIL-3,4,6,7  split_messages, parse_headers, strip_quotes, attachments
     dates.py       GMAIL-5    normalise_date
     records.py     GMAIL-8    MessageRecord, message_records
@@ -53,7 +53,8 @@ pipeline/gmail/
 | # | Story | One line |
 |---|---|---|
 | 0 | GMAIL-0 profile | `tools/gmail_profile.py` counts files, bytes, tokens, escapes and missing `From:` from `raw/`; decides no rule |
-| 1 | GMAIL-1 clean_thread | unescape the 23% and normalise, reusing `pipeline.cleaning`; **skip** `fix_structure`, which corrupts Gmail bullets |
+| 1a | GMAIL-1a clean_thread | unescape the 27,870 flagged threads with `pipeline.cleaning`, then a whitespace-only tidy; **skip** `fix_structure`, which corrupts Gmail bullets |
+| 1b | GMAIL-1b escape edge cases | the 179 threads `is_escaped` misses; a rule scored on a hand-labelled truth set |
 | 2 | GMAIL-2 clean corpus | write `data/gmail/clean/` + manifest, one row per thread |
 | 3 | GMAIL-3 split_messages | cut a clean thread on `From:` at line start; a thread with none is one message |
 | 4 | GMAIL-4 parse_headers | `From`/`To`/`Cc`/`Date`/`Subject` out of one block, addresses split on commas |
@@ -93,7 +94,7 @@ matter are pinned as a test instead (`test_real_corpus_counts`).
 
 **Acceptance Criteria (Gherkin)**
 - Given `data/gmail/raw/`, When `profile(raw_dir, out_path)` runs, Then `profile.json` holds `files`, `bytes`, `tokens` (4 chars per token, nearest-rank p50/p90/p99/max), `literal_escape_files`, `is_escaped_files`, `ambiguous_escape_files` and `no_from_files`
-- Given a thread with a literal `\n` that `is_escaped` says is not escaped, Then it is counted as ambiguous, not judged: printf string versus partial damage is GMAIL-1's rule
+- Given a thread with a literal `\n` that `is_escaped` says is not escaped, Then it is counted as ambiguous, not judged: printf string versus partial damage is GMAIL-1b's rule
 - Given a thread where `From:` appears only mid-sentence, Then it counts in `no_from_files`; a `From:` at the start of a line, real or escaped, does not
 - Given a second run, Then the file is byte-identical
 
@@ -106,7 +107,7 @@ matter are pinned as a test instead (`test_real_corpus_counts`).
 ```
 
 What this settled, so later stories do not re-argue it:
-- **28,049 is "has a literal `\n`", not "is escaped".** It splits into 27,870 that `is_escaped` flags and 179 that it does not (166 code such as `printf`, 13 partial damage, per GMAIL-1). GMAIL-1 and GMAIL-2 say `was_escaped` is True on 28,049 rows; that is only right if the 166 code threads are also counted, which GMAIL-1 says they must not be. GMAIL-1 owns fixing that number.
+- **28,049 is "has a literal `\n`", not "is escaped".** It splits into 27,870 that `is_escaped` flags and 179 that it does not (mostly real damage, not code, as GMAIL-1b measured). GMAIL-1 and GMAIL-2 originally said `was_escaped` is True on 28,049 rows, which counted threads that only mention `\n`. GMAIL-1a corrects it: `was_escaped` is True on 27,870.
 - **189 needs a line-start test.** A plain "no `From:` anywhere" gives 183, because six threads mention `From:` in prose. `From:` counts only at the start of a line, real or escaped.
 - **Not profiled here on purpose:** messages, message sizes, participants, quoted history, date formats. Each needs a rule that is not built yet (GMAIL-3, 4, 5, 6), so each is counted by the story that builds the rule. Running the tool replaces the earlier hand-made `profile.json`, which held those numbers without code behind them.
 
@@ -119,52 +120,39 @@ Database: N/A · UI: N/A
 
 ---
 
-## GMAIL-1  clean_thread: repair the escaped threads  ⬜
+## GMAIL-1a  clean_thread: repair the fully escaped threads  ✅
 
-**Status:** To do.
+**Status:** Done. Real corpus: 27,870 threads flagged, all 121,390 end with one newline, 0 new `#` lines. 11 escaped threads have no `From:` line after unescaping (not yet explained).
 
 **Background**
-23% of raw threads (28,049) were written with `\n` as two characters, exactly the damage
-`pipeline.cleaning` already fixes for Confluence. Two differences make this its own
-function rather than a call to `clean_text`:
+27,870 of the 121,390 raw threads (23%) were saved as a JSON string: the line breaks are the
+two characters `\` and `n`. `pipeline.cleaning` already detects and decodes exactly this for
+Confluence (`is_escaped`, `unescape`), so this story reuses both unchanged. `ftfy` and
+`json.loads` decode the same samples identically, so neither is added as a dependency.
 
-1. **`fix_structure` must not run.** It rewrites Confluence wiki markup. Measured on a
-   3,000-thread sample it changes 2 files, and both changes are wrong: it turns a body
-   bullet into a Markdown heading.
-2. **13 threads are only partly escaped.** `is_escaped` compares literal `\n` against real
-   newlines across the whole file. In a thread where one message of five was encoded, the
-   real newlines win and the damage is missed. Of the 179 threads where `is_escaped`
-   returns False despite containing `\n`, 166 are genuinely code (`printf("%s\n")`, 1–4
-   occurrences) and 13 are partial damage (6–39 occurrences).
+The one thing that cannot be reused is `normalize`: it calls `fix_structure`, which rewrites
+Confluence wiki markup and, on Gmail, turns a bullet such as `- draft_transfer_annex_notes.docx`
+into `## - draft_transfer_annex_notes.docx`. Measured over the corpus it adds 27 false `#`
+lines and changes 92 threads. Gmail gets its own whitespace-only tidy instead.
 
-So: unescape per message block, not per file, then normalise.
+**Not in this story:** 179 threads contain a literal `\n` that `is_escaped` does not flag
+(printf strings, JSON examples, and partly escaped threads). They come back unchanged here;
+GMAIL-1b decides them.
 
 **As a** pipeline developer
 **I want to** turn one raw thread into clean text with real line breaks
 **So that** `From:` is at the start of a line and every later story can rely on it
 
 **Acceptance Criteria (Gherkin)**
-- Given a raw thread with literal `\n`, When `clean_thread` runs, Then the returned text has real newlines and `was_escaped` is True
-- Given a raw thread with no escapes, Then the text is unchanged apart from normalisation and `was_escaped` is False
-- Given a partially escaped thread, Then the escaped part is repaired and `was_escaped` is True
-- Given a thread containing `printf("%s\n")` and nothing else escaped, Then the text is **not** unescaped
-- Given any thread, Then `fix_structure` is never called and no line gains a `#`
-- Given any thread, Then the text ends with exactly one newline
-- Given the whole corpus, Then 28,049 threads report `was_escaped` True
+- Given a raw thread `is_escaped` flags, When `clean_thread` runs, Then the text has real newlines and `was_escaped` is True
+- Given a raw thread with no escapes, Then the text is unchanged apart from tidying and `was_escaped` is False
+- Given a thread with one literal `\n` inside a `printf` string and nothing else escaped, Then the text is **not** unescaped
+- Given any thread, Then no line gains a leading `#` and `fix_structure` is never called
+- Given any thread, Then trailing spaces are removed, runs of blank lines become one, and the text ends with exactly one newline
+- Given the same thread twice, Then the output is identical
+- Given the whole corpus, Then 27,870 threads report `was_escaped` True and every clean thread ends with exactly one newline
 
 **Example with real data**
-
-`dsid_06947adb33e34cb289d35b51aec90ef6__20260509-…` — partially escaped, 39 literal `\n`
-against 69 real, so `is_escaped` says False and `clean_text` would leave it broken:
-
-```
-before  '… Two asks to keep timelines tight for a mid-June close: \\n- Confirm primary exec
-         sponsor and one secondary (falls back) for the EB session.\\n- Pick 2 preferred …'
-
-after   '… Two asks to keep timelines tight for a mid-June close:'
-        '- Confirm primary exec sponsor and one secondary (falls back) for the EB session.'
-        '- Pick 2 preferred 90-minute EB windows …'
-```
 
 `dsid_00ada6ccfbef490db1abe8e97b9bbf6e__2…` — why `fix_structure` is excluded:
 
@@ -174,17 +162,33 @@ would be '## - draft_transfer_annex_notes.docx'     (a heading, wrong)
 ```
 
 **Non-functional Requirements**
-Shared rules apply. Pure: string in, `CleanResult` out, no disk. Reuses `unescape` and
-`normalize` from `pipeline.cleaning` — no second copy of either.
+Shared rules apply. Pure: string in, `CleanResult` out, no disk. Reuses `is_escaped`,
+`unescape` and `CleanResult` from `pipeline.cleaning`; the only new code is the tidy.
+*Observability:* `was_escaped` goes in the manifest row (GMAIL-2), so the 27,870 is countable.
 
-*Maintainability:* reuses `unescape` and `normalize`; the only new code is the per-block
-escape test. If `fix_structure` is ever wanted here, it needs its own story and its own
-corpus count, not a flag.
-*Observability:* `was_escaped` and `blocks_unescaped` go in the manifest row, so the 28,049
-and the 13 partials are countable, not folklore. Audit row: `escape_missed` (GMAIL-16).
-
-**Dependencies** APIs data contracts: `pipeline.cleaning.unescape`, `.normalize`,
+**Dependencies** APIs data contracts: `pipeline.cleaning.is_escaped`, `.unescape`,
 `.CleanResult` · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## GMAIL-1b  Escape edge cases: the 179 threads `is_escaped` misses  ⬜
+
+**Status:** To do. Needs a decision recorded here before code.
+
+**Background**
+179 threads hold a literal `\n` but `is_escaped` says no. Reading them, most are real
+damage, not code: 379 of 523 occurrences are prose (`Subject: …\n`, `…close: \n- Confirm…`), only
+about 107 are code (`"\n\n--END--"`, `\r\n` HTTP examples). The earlier count of 166 code and 13
+partial threads was wrong. The design's `28,049` is "has a literal `\n`", not "is escaped".
+
+A rule was scored on 40 hand-labelled occurrences
+(`tests/fixtures/gmail_escape/expected.json`): decode a `\n` unless it follows `\r` or sits
+inside a quoted span of 40 characters or fewer. It gets 38 of 40. The two misses are a
+single-quoted JavaScript string and a quoted message snippet. Measured on the truth set only, so
+it is a fit, not an independent test.
+
+**Open:** whether to use that rule, what `was_escaped` means for a partly repaired thread, and
+what to do with the 37 double-escaped `\\n`. Decided when this story starts.
 
 ---
 
@@ -204,7 +208,7 @@ reconciliation later.
 **Acceptance Criteria (Gherkin)**
 - Given `data/gmail/raw/`, When the writer runs, Then `data/gmail/clean/` holds 121,390 `.txt` files with the same names
 - Given each file, Then `_manifest.json` has a row with `file`, `raw_sha256`, `clean_sha256`, `was_escaped`, `raw_lines`, `clean_lines`, `raw_bytes`, `clean_bytes`
-- Given the manifest, Then rows are in file-name order and `was_escaped` is True on exactly 28,049 rows
+- Given the manifest, Then rows are in file-name order and `was_escaped` is True on exactly 27,870 rows
 - Given a second run, Then every `clean_sha256` is identical
 - Given the writer, Then it never writes into `raw/`
 
@@ -225,7 +229,7 @@ does not have, it goes in a Gmail-only row builder beside it, never as a branch 
 *Observability:* the manifest is the audit trail — `was_escaped` count, byte and line
 deltas per file. A run prints one summary line: files in, files out, escaped, bytes.
 
-**Dependencies** APIs data contracts: GMAIL-1, `pipeline.manifest.manifest_row` ·
+**Dependencies** APIs data contracts: GMAIL-1a, `pipeline.manifest.manifest_row` ·
 Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
@@ -275,7 +279,7 @@ codebase is allowed to look for `From:`.
 *Observability:* returns the block count per thread for GMAIL-9's reconciliation. Audit
 rows: `no_from_thread` (expect 189) and `from_in_quote` (expect 0 new blocks).
 
-**Dependencies** APIs data contracts: GMAIL-1 · Service Bus: N/A · Database: N/A · UI: N/A
+**Dependencies** APIs data contracts: GMAIL-1a · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
