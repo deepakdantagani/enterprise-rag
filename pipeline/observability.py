@@ -9,28 +9,38 @@ writes every event to a JSON-lines file while its block runs:
 
 gives one line:
 
-    {"event": "FileCleaned", "timestamp": "...", "span_id": null, "source": "slack",
-     "file": "a.txt", "rules_fired": {"newline": 17}, "bytes_in": 1324, "bytes_out": 1318}
+    {"event": "FileCleaned", "timestamp": "2026-09-23T21:29:43.109153Z", "span_id": null,
+     "tags": {}, "source": "slack", "file": "a.txt", "rules_fired": {"newline": 17}, ...}
 
+The handler sits on LlamaIndex's root dispatcher, so the same log also holds the library's
+own events (embedding, retrieval) when a later stage runs them: one trace per run.
 Events carry `source` ("slack", "gmail", "linear"), so a new source adds a value, not a module.
-Observing never changes a pipeline's output: the handler only writes to its log file.
+Observing never changes a pipeline's output: the handler only writes to its log file. The
+dispatcher swallows handler errors, so a log line lost to a full disk is lost silently.
 """
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-from io import TextIOBase
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from llama_index.core.instrumentation import get_dispatcher
+from llama_index.core.instrumentation import get_dispatcher, root_dispatcher
 from llama_index.core.instrumentation.event_handlers.base import BaseEventHandler
 from llama_index.core.instrumentation.events.base import BaseEvent
+from pydantic import Field, PrivateAttr
 
 dispatcher = get_dispatcher("pipeline")
-FIELDS_NOT_LOGGED = {"id_", "tags", "class_name"}  # LlamaIndex bookkeeping, same on every line
+FIELDS_NOT_LOGGED = {"id_", "class_name"}  # a random id; "BaseEvent" (the name is logged as "event")
 
 
-class FileCleaned(BaseEvent):
+class PipelineEvent(BaseEvent):
+    """Our events: timestamps in UTC, so logs from two machines line up."""
+
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class FileCleaned(PipelineEvent):
     source: str
     file: str
     rules_fired: dict[str, int]
@@ -38,14 +48,14 @@ class FileCleaned(BaseEvent):
     bytes_out: int
 
 
-class FileFailed(BaseEvent):
+class FileFailed(PipelineEvent):
     source: str
     file: str
     error_type: str
     message: str
 
 
-class StageDone(BaseEvent):
+class StageDone(PipelineEvent):
     source: str
     stage: str
     files: int
@@ -53,25 +63,33 @@ class StageDone(BaseEvent):
     seconds: float
 
 
-class JsonLinesHandler(BaseEventHandler):
+class JsonLinesEventHandler(BaseEventHandler):
     """Writes each event as one line of JSON: its name first, then its fields."""
 
-    log_file: TextIOBase
+    log_path: Path
+    _log_file: Any = PrivateAttr(default=None)
+
+    def open(self) -> None:
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._log_file = open(self.log_path, "w", encoding="utf-8")
+
+    def close(self) -> None:
+        self._log_file.close()
 
     def handle(self, event: BaseEvent, **kwargs: Any) -> None:
-        fields = {name: value for name, value in event.model_dump().items() if name not in FIELDS_NOT_LOGGED}
-        line = {"event": type(event).__name__} | fields
-        self.log_file.write(json.dumps(line, default=str) + "\n")
+        fields = {name: value for name, value in event.model_dump(mode="json").items()
+                  if name not in FIELDS_NOT_LOGGED}
+        self._log_file.write(json.dumps({"event": type(event).__name__} | fields) + "\n")
 
 
 @contextmanager
 def events_logged_to(log_path: Path) -> Iterator[None]:
-    """Log every event on the dispatcher to log_path while the block runs, then detach."""
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(log_path, "w", encoding="utf-8") as log_file:
-        handler = JsonLinesHandler(log_file=log_file)
-        dispatcher.add_event_handler(handler)
-        try:
-            yield
-        finally:
-            dispatcher.event_handlers.remove(handler)
+    """Log every event (ours and LlamaIndex's) to log_path while the block runs, then detach."""
+    handler = JsonLinesEventHandler(log_path=log_path)
+    handler.open()
+    root_dispatcher.add_event_handler(handler)
+    try:
+        yield
+    finally:
+        root_dispatcher.event_handlers = [h for h in root_dispatcher.event_handlers if h is not handler]
+        handler.close()

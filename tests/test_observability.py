@@ -10,6 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from llama_index.core.instrumentation import get_dispatcher, root_dispatcher  # noqa: E402
+from llama_index.core.instrumentation.events.embedding import EmbeddingStartEvent  # noqa: E402
+
 from pipeline.observability import (  # noqa: E402
     FileCleaned, FileFailed, StageDone, dispatcher, events_logged_to,
 )
@@ -36,13 +39,22 @@ class EventsLoggedTo(unittest.TestCase):
         self.assertEqual(lines[0]["source"], "slack")
         self.assertEqual(lines[1]["error_type"], "UnicodeDecodeError")
         self.assertEqual(lines[2]["files"], 2)
-        self.assertIn("timestamp", lines[0])
+        self.assertTrue(lines[0]["timestamp"].endswith("Z"))  # ISO 8601, UTC
+        self.assertNotIn("id_", lines[0])
+        self.assertNotIn("class_name", lines[0])
 
-    def test_the_handler_is_detached_when_the_block_ends(self):
+    def test_the_handler_is_detached_when_the_block_ends_even_on_an_error(self):
+        handlers_before = list(root_dispatcher.event_handlers)
+        with self.assertRaises(RuntimeError):
+            with events_logged_to(self.log_path):
+                raise RuntimeError("stage crashed")
+        self.assertEqual(root_dispatcher.event_handlers, handlers_before)
+
+    def test_llama_index_events_land_in_the_same_log(self):
+        library_dispatcher = get_dispatcher("llama_index.core.base.embeddings.base")
         with events_logged_to(self.log_path):
-            pass
-        dispatcher.event(StageDone(source="slack", stage="clean", files=0, failed=0, seconds=0.0))
-        self.assertEqual(self.log_path.read_text(), "")
+            library_dispatcher.event(EmbeddingStartEvent(model_dict={"model": "test"}))
+        self.assertEqual(read_lines(self.log_path)[0]["event"], "EmbeddingStartEvent")
 
     def test_a_span_id_ties_events_to_the_stage_that_emitted_them(self):
         @dispatcher.span

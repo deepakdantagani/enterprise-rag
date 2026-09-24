@@ -79,7 +79,7 @@ Confluence's; each source file carries its own, so a story can be read without t
 | SLACK-0  Corpus profile  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-1  `unescape`  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-2  `normalize_whitespace`  ✅ | [7-slack.md](stories/7-slack.md) |
-| SLACK-3  Events and a handler (instrumentation)  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-3  Events and a handler (instrumentation)  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-4  `write_clean_corpus` + manifest  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-5  `channel_of`  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-6  `split_messages`  ⬜ | [7-slack.md](stories/7-slack.md) |
