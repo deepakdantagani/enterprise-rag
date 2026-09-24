@@ -1,18 +1,26 @@
 """SLACK-6: cut a clean Slack thread into its messages.
 
-A message starts at a line that opens with a speaker, `Aisha (CS): ` or `deploy-bot: `,
-outside a code block. That one rule covers both export layouts: a blank line between
-messages (149,429 threads) and one message per line (108,460). A blank line is not a
-boundary: 12,569 threads have one inside a code block.
+A message starts at a line that opens with a speaker, outside a code block. That one rule
+covers both export layouts: a blank line between messages (149,429 threads) and one message
+per line (108,460). A blank line is not a boundary: 12,569 threads have one inside code.
 
-A line shaped like a speaker is not always one. `Due: 2026-04-02`, `Note: ...` and
-`Content-Type: application/json` are labels inside a message, so NOT_SPEAKERS lists the
-words measured opening a line as a label. Team handles (`ops:`, `legal:`, `support:`) do
-speak, so they are not in it.
+Speakers come in these shapes (SPEAKER_AT_LINE_START):
 
-Code-block detection is SLACK-2's `code_fence_flags`, reused as is; the speaker pattern is
-SLACK-2's widened to full names.
-No LlamaIndex parser splits chat by speaker: its splitters cut by size or by markup.
+    tom_ae:           Aisha (CS):           Maya Chen:        Priya S.:
+    maria gonzalez:   Maya - People Ops:    Connor O'Brien:   Incident Bot:
+
+A line shaped like that is not always a speaker. `Due: 2026-04-02`, `Note: ...` and
+`Content-Type: application/json` are labels inside a message: a name whose first word is in
+NOT_SPEAKERS is one, unless it ends in `Bot` (`Status Bot:`). Team handles (`ops:`,
+`support:`, `Customer Success:`) do speak, so they are not in the table. A name of two or
+three words with a lowercase word after the first (`maria gonzalez`, but also
+`browser console`) counts only if it opens two or more lines in the thread: people speak
+again, labels rarely repeat.
+
+Code-block detection is SLACK-2's `code_fence_flags`, reused; a fence left open at the end of
+a thread (`sre-oncall: executing step A now.```) is treated as a typo and ignored, so it
+cannot swallow the messages after it. No LlamaIndex parser splits chat by speaker: its
+splitters cut by size or by markup.
 
 Pure: the text of one clean thread in, Split(header, messages) out. Nothing is dropped:
 `header + "".join(messages) == text`, byte for byte. The header is whatever comes before the
@@ -23,24 +31,32 @@ its own trailing line breaks.
     Split(header='eng\\n\\n', messages=['kai: paging\\nDue: today\\n\\n', 'ops: on it\\n'])
 """
 import re
+from collections import Counter
 from typing import NamedTuple
 
-from pipeline.slack.whitespace import code_fence_flags
+from pipeline.slack.whitespace import CODE_FENCE, code_fence_flags
 
-# SLACK-2's speaker (`tom_ae: `, `dylan (finance): `), widened to full names: 40,141 threads
-# have `Maya Chen: `, `Priya S.: ` or `Connor O'Brien: `. SLACK-2 keeps its narrower pattern:
-# it only straightens indents, and widening it would change the clean corpus.
-SPEAKER_AT_LINE_START = re.compile(r"([A-Za-z][\w.\-]*(?: [A-Z][\w.'\-]*){0,2})(?: \([^)\n]{1,40}\))?: ")
-NOT_SPEAKERS = frozenset({  # label words measured opening a line inside a message (lowercased)
-    "note", "notes", "response", "result", "results", "body", "also", "all", "today",
+NAME_WORD = r"[A-Za-z][\w.'\-]*"
+SPEAKER_AT_LINE_START = re.compile(
+    rf"([A-Za-z][\w.\-]*(?: {NAME_WORD}){{0,2}})"  # tom_ae, Maya Chen, maria gonzalez, Priya S.
+    r"(?: - [\w&][\w &\-]{0,24})?"                   # - People Ops
+    r"(?: \([^)\n]{1,40}\))?: "                      # (CS)
+)
+BOT_SUFFIX = "bot"
+REPEATS_NEEDED = 2  # a lowercase multi-word name must open this many lines to count
+NOT_SPEAKERS = frozenset({  # first words of labels, measured opening a line inside a message
+    "note", "notes", "response", "resp", "result", "results", "body", "also", "all", "today",
     "summary", "status", "error", "errors", "output", "example", "expected", "actual",
     "impact", "owner", "owners", "plan", "goal", "due", "action", "actions", "next", "context",
-    "question", "answer", "q", "a", "decision", "why", "ask", "fix", "cause", "root", "update",
-    "tldr", "eta", "link", "links", "logs", "log", "trace", "traceback", "repro", "run", "cmd",
-    "command", "request", "reply", "subject", "to", "from", "cc", "re", "date", "time", "host",
-    "content-type", "authorization", "env", "pr", "ticket", "issue", "steps", "step",
-    "user", "assistant", "system", "prompt", "input",
-    "warning", "warn", "info", "fatal", "panic", "exception",
+    "question", "answer", "q", "a", "decision", "why", "ask", "fix", "cause", "reason", "root",
+    "update", "tldr", "eta", "link", "links", "logs", "log", "trace", "traceback", "repro",
+    "run", "cmd", "command", "request", "reply", "subject", "to", "from", "cc", "re", "date",
+    "time", "host", "content-type", "authorization", "headers", "env", "pr", "ticket", "issue",
+    "steps", "step", "user", "assistant", "system", "prompt", "input", "warning", "warn",
+    "info", "fatal", "panic", "exception", "data", "model", "commit", "metrics", "metric",
+    "tag", "labels", "kind", "target", "service", "ref", "region", "total", "alert", "title",
+    "timeline", "proposal", "account", "mitigation", "before", "after", "duration", "config",
+    "option", "severity", "client", "id", "deadline", "version", "p95",
 })
 
 
@@ -59,22 +75,47 @@ def split_messages(text: str) -> Split:
 
 def message_start_lines(lines: list[str]) -> list[int]:
     """Indexes of the lines that open a message: a speaker, outside code, not a label."""
-    return [
-        index
-        for index, (line, inside_code) in enumerate(zip(lines, code_fence_flags(lines)))
-        if not inside_code and opens_message(line)
-    ]
+    inside_code = code_flags_ignoring_an_unclosed_fence(lines)
+    speakers = {index: match.group(1) for index, line in enumerate(lines)
+                if not inside_code[index] and (match := SPEAKER_AT_LINE_START.match(line))}
+    times_named = Counter(name.lower() for name in speakers.values())
+    return [index for index, name in speakers.items() if is_speaker(name, times_named[name.lower()])]
 
 
-def opens_message(line: str) -> bool:
+def is_speaker(name: str, times_named: int) -> bool:
+    """True for a person, bot or team; False for a label, or a one-off lowercase phrase.
+
+    >>> is_speaker("Aisha", 1), is_speaker("Due", 1), is_speaker("Status Bot", 1)
+    (True, False, True)
+    >>> is_speaker("maria gonzalez", 2), is_speaker("browser console", 1)
+    (True, False)
     """
-    A name is a label when its first word is one: `Plan B: `, `Response A: `.
+    words = name.split()
+    if words[-1].lower() == BOT_SUFFIX:
+        return True
+    if words[0].lower() in NOT_SPEAKERS:
+        return False
+    lowercase_after_first = any(word[0].islower() for word in words[1:])
+    return not lowercase_after_first or times_named >= REPEATS_NEEDED
 
-    >>> opens_message("Aisha (CS): Hey team"), opens_message("Maya Chen: ok"), opens_message("Due: 2026-04-02")
-    (True, True, False)
+
+def code_flags_ignoring_an_unclosed_fence(lines: list[str]) -> list[bool]:
+    """SLACK-2's code_fence_flags, but a fence that never closes does not open a block.
+
+    >>> code_flags_ignoring_an_unclosed_fence(["a```", "b", "```", "c: done.```", "d: ok"])
+    [False, True, True, False, False]
     """
-    speaker = SPEAKER_AT_LINE_START.match(line)
-    return speaker is not None and speaker.group(1).split()[0].lower() not in NOT_SPEAKERS
+    flags = code_fence_flags(lines)
+    if not ends_inside_code(lines, flags):
+        return flags
+    last_fence = max(index for index, line in enumerate(lines) if line.count(CODE_FENCE) % 2 == 1)
+    return flags[: last_fence + 1] + [False] * (len(lines) - last_fence - 1)
+
+
+def ends_inside_code(lines: list[str], flags: list[bool]) -> bool:
+    """True when the thread is still inside a code block after its last line."""
+    last_line_opens_or_closes = lines[-1].count(CODE_FENCE) % 2 == 1
+    return flags[-1] != last_line_opens_or_closes
 
 
 def line_offsets(lines: list[str]) -> list[int]:

@@ -42,6 +42,22 @@ class SplitMessages(unittest.TestCase):
         text = "eng\n\nMaya Chen: ok\nPriya S.: fine\nConnor O'Brien: agreed\nPlan B: roll back\n"
         self.assertEqual(len(split_messages(text).messages), 3)
 
+    def test_lowercase_full_names_count_when_they_speak_again(self):
+        text = "eng\n\nmaria gonzalez: rolling back\nbrowser console: 502\nmaria gonzalez: done\n"
+        self.assertEqual(split_messages(text).messages,
+                         ["maria gonzalez: rolling back\nbrowser console: 502\n", "maria gonzalez: done\n"])
+
+    def test_name_with_a_team_and_bots_named_like_labels(self):
+        text = "eng\n\nMaya - People Ops: welcome\nStatus Bot: green\nStatus: green\n"
+        self.assertEqual(len(split_messages(text).messages), 2)
+
+    def test_an_unclosed_fence_does_not_swallow_the_messages_after_it(self):
+        text = "eng\n\nsre-oncall: executing step A now.```\nkai: ok\nraj: thanks\n"
+        self.assertEqual(len(split_messages(text).messages), 3)
+
+    def test_a_quoted_speaker_stays_inside_its_message(self):
+        self.assertEqual(len(split_messages("eng\n\nkai: she said\n> maya: ship it\n").messages), 1)
+
     def test_team_handles_are_speakers(self):
         text = "eng\n\nkai: paging\nops: on it\nlegal: fine by us\n"
         self.assertEqual(len(split_messages(text).messages), 3)
@@ -79,7 +95,7 @@ class RealCorpus(unittest.TestCase):
             totals["threads"] += 1
             totals["messages"] += len(split.messages)
             totals["threads_without_messages"] += not split.messages
-        self.assertEqual(totals, {"threads": 285_605, "messages": 5_687_671, "threads_without_messages": 88})
+        self.assertEqual(totals, {"threads": 285_605, "messages": 5_741_020, "threads_without_messages": 62})
 
 
 if __name__ == "__main__":
