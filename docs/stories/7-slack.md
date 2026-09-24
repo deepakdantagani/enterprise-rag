@@ -44,7 +44,7 @@ its contract, its Gherkin and a real-data example. The system design is
 
 | Story | Status |
 |---|---|
-| SLACK-0  Corpus profile | ⬜ |
+| SLACK-0  Corpus profile | ✅ |
 | SLACK-1  `unescape` | ⬜ |
 | SLACK-2  `normalize_whitespace` | ⬜ |
 | SLACK-3  events and a handler  *(shared, lands on master)* | ⬜ |
@@ -60,36 +60,53 @@ its contract, its Gherkin and a real-data example. The system design is
 
 ---
 
-## SLACK-0  Corpus profile ⬜
+## SLACK-0  Corpus profile ✅
 
-**Status** To do
+**Status** Done
 **As a** engineer about to write a parser for 285,605 files
-**I want to** a single checked-in `profile.json` with the counts every later story argues from
+**I want to** a single `profile.json` with the counts every later story argues from
 **So that** no story quotes a number nobody can reproduce
+
+`tools/slack_profile.py`. It only counts: it changes no file and decides no rule. The file is
+written to `data/slack/profile.json`, which is gitignored like every other generated corpus
+file; the numbers that matter are pinned as a test instead (`test_real_corpus_counts`).
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: profile the whole corpus
   Given the 58 zip slices under data/slack/archives/
-  When I run profile(archives_dir)
-  Then data/slack/profile.json holds files, bytes, token percentiles,
-       the channel histogram, and the count of files whose line 1 is not a channel
+  When I run profile(archives_dir, out_path)
+  Then profile.json holds files, bytes, token percentiles (4 chars per token, nearest rank),
+       every channel-shaped word found on line 1 with its file count,
+       and the count of files whose line 1 is not channel-shaped
   And the run reads the zips directly without extracting 964 MB to disk
   And re-running it produces a byte-identical file
 ```
+
+**Line 1 is listed, not judged.** 130 distinct channel-shaped words appear on line 1: 36 on
+3 or more files, and 94 on exactly one file. Of those 94, 62 are identical to the file's own
+slug and 6 nearly so, so they are most likely topic names rather than channels, but a
+one-thread channel is possible. Which words count as channels is SLACK-5's decision; this
+profile is its evidence.
 
 ### Example with real data
 
 ```json
 { "files": 285605, "bytes": 964465933,
-  "channels": { "incidents": 24044, "eng-platform": 23184, "...": 0 },
-  "line1_not_a_channel": 11827 }
+  "tokens": { "p50": 813, "p90": 1241, "p99": 1713, "max": 4370 },
+  "line1_channel_shaped": { "incidents": 24044, "eng-platform": 23184, "...": 0,
+                            "hysteresis-v0": 1 },
+  "line1_other": 11992 }
 ```
+
+These replace the design doc's slice-1 estimates (p99 1,725, max 3,101) and its
+`11,827` files without a channel, which did not add up with its own 273,519.
 
 ### Non-functional Requirements
 
 Shared list. Reads from the zips; extracting the corpus is not required by any story.
+Runs in about 4 seconds on a laptop.
 
 ### Dependencies
 

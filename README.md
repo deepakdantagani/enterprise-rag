@@ -15,7 +15,7 @@ pipeline/                 active ingestion code (a Python package), pure functio
   buckets.py, headings.py, blocks.py   the previous heading detectors; retired by PARSE-8d once the golden differences are explained
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
 tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings
-tools/                    planned: audit and measurement scripts (PARSE-11, PARSE-14), outside pipeline/
+tools/                    audit and measurement scripts, outside pipeline/: slack_profile.py (SLACK-0); planned PARSE-11, PARSE-14
 docs/stories.md           story rules + index; stories in docs/stories/<n>-<stage>.md
 docs/design/              system designs: 1-parser, 2-chunker
 docs/decisions/           one short record per decision (why, evidence, rejected options)
