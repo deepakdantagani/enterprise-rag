@@ -38,9 +38,9 @@ from pipeline.slack.whitespace import CODE_FENCE, code_fence_flags
 
 NAME_WORD = r"[A-Za-z][\w.'\-]*"
 SPEAKER_AT_LINE_START = re.compile(
-    rf"([A-Za-z][\w.\-]*(?: {NAME_WORD}){{0,2}})"  # tom_ae, Maya Chen, maria gonzalez, Priya S.
-    r"(?: - [\w&][\w &\-]{0,24})?"                   # - People Ops
-    r"(?: \([^)\n]{1,40}\))?: "                      # (CS)
+    rf"(?P<name>[A-Za-z][\w.\-]*(?: {NAME_WORD}){{0,2}})"  # tom_ae, Maya Chen, maria gonzalez, Priya S.
+    r"(?: - (?P<team>[\w&][\w &\-]{0,24}))?"               # - People Ops
+    r"(?: \((?P<role>[^)\n]{1,40})\))?: "                  # (CS)
 )
 BOT_SUFFIX = "bot"
 REPEATS_NEEDED = 2  # a lowercase multi-word name must open this many lines to count
@@ -76,7 +76,7 @@ def split_messages(text: str) -> Split:
 def message_start_lines(lines: list[str]) -> list[int]:
     """Indexes of the lines that open a message: a speaker, outside code, not a label."""
     inside_code = code_flags_ignoring_an_unclosed_fence(lines)
-    speakers = {index: match.group(1) for index, line in enumerate(lines)
+    speakers = {index: match["name"] for index, line in enumerate(lines)
                 if not inside_code[index] and (match := SPEAKER_AT_LINE_START.match(line))}
     times_named = Counter(name.lower() for name in speakers.values())
     return [index for index, name in speakers.items() if is_speaker(name, times_named[name.lower()])]

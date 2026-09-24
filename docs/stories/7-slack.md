@@ -51,7 +51,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-4  `write_clean_corpus` + manifest | ✅ |
 | SLACK-5  `channel_of` | ✅ |
 | SLACK-6  `split_messages` | ✅ |
-| SLACK-7  `parse_speaker` | ⬜ |
+| SLACK-7  `parse_speaker` | ✅ |
 | SLACK-8  `parse_thread` + truth set | ⬜ |
 | SLACK-9  `chunk_thread` | ⬜ |
 | SLACK-10  `to_text_node` | ⬜ |
@@ -684,9 +684,9 @@ APIs data contracts: SLACK-4, SLACK-2 (`code_fence_flags`) · Service Bus: N/A �
 
 ---
 
-## SLACK-7  `parse_speaker(line) -> (name, role, is_bot)` ⬜
+## SLACK-7  `parse_speaker(line) -> Speaker(name, role, is_bot)` ✅
 
-**Status** To do
+**Status** Done
 **As a** design that treats a role taxonomy as signal real Slack does not have
 **I want to** the speaker, their role and whether they are a bot, off the message's first line
 **So that** a chunk can say who spoke and a bot's output can be told from a human's
@@ -704,6 +704,34 @@ reads the parts out of a line that is known to be a speaker line.
 | `Name: ` | `tom_ae: FYI customer claims ...` | `tom_ae` | `None` |
 | `Name (Role): ` | `Aisha (CS): Hey team` | `Aisha` | `CS` |
 | `Name - Team: ` | `Noah - AE: Verdigris wants a 10-day POC ...` | `Noah` | `AE` |
+
+`pipeline/slack/speaker.py`. Pure: one message (or its first line) in, `Speaker(name, role,
+is_bot)` out. It reuses SLACK-6's `SPEAKER_AT_LINE_START`, now with named groups
+`name`/`team`/`role`, so the two stories cannot disagree on the shapes. Every one of the
+5,741,020 messages parses.
+
+**Shapes, measured (messages):** name only 4,978,937 · role in brackets 744,702 · team after a
+dash 17,247 · both 134. 762,083 messages carry a role.
+
+**Decisions:**
+- Both a team and a role (`Dan - HelixEdge (SI):`, 134): the role in brackets wins. The team is
+  not lost, since the speaker line stays in the message text.
+- Team first (`Legal - Priya:`, roughly 800 by a first-name check, not pinned): read as
+  written, name `Legal`. Nothing in the line says which part is the person. SLACK-8's truth
+  set can measure whether it matters.
+- A line that is not a speaker line raises `ValueError`: it would mean a caller bug, since
+  SLACK-6 only hands over speaker lines.
+- Bots, `BOT_RULES`, first rule that fires, 573,797 messages in all: `name_ends_in_bot`
+  (`deploy-bot`, `Incident Bot`, `DeployBot`) 573,157 · `name_starts_with_bot` (`bot-ci`) 444
+  · `role_is_bot` (`evi (bot):`) 196. No person named like a bot was found; about 114 bot
+  messages are missed (`BotCI:`, `bench-bot-2:`, `X - metrics-bot:`), 0.02%.
+
+**Reuse.** No LlamaIndex component reads a chat speaker line; `SlackReader` gets the user from
+the live API. The regex is SLACK-6's.
+
+**Reviewed** by a code-review agent that checked the corpus: no correctness bugs. It corrected
+two docstring claims (the team-first count, a false `talbot` false positive) and asked for
+tests of the team-first decision, `bot_` and `(Bot)`; all done.
 
 ### Acceptance Criteria
 
