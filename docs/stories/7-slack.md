@@ -50,7 +50,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-3  events and a handler  *(shared by every source)* | ✅ |
 | SLACK-4  `write_clean_corpus` + manifest | ✅ |
 | SLACK-5  `channel_of` | ✅ |
-| SLACK-6  `split_messages` | ⬜ |
+| SLACK-6  `split_messages` | ✅ |
 | SLACK-7  `parse_speaker` | ⬜ |
 | SLACK-8  `parse_thread` + truth set | ⬜ |
 | SLACK-9  `chunk_thread` | ⬜ |
@@ -581,59 +581,106 @@ APIs data contracts: SLACK-4 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-6  `split_messages(text) -> list[str]` ⬜
+## SLACK-6  `split_messages(text) -> Split` ✅
 
-**Status** To do
+**Status** Done
 **As a** parser that must not cut a message in half
 **I want to** the message boundaries of a thread, in both export layouts
 **So that** every later story counts speakers and turns correctly
 
-Runs on the clean corpus (SLACK-4), so escaping and stray indentation are already gone.
+`pipeline/slack/messages.py`. Pure: the text of one clean thread (SLACK-4) in,
+`Split(header, messages)` out, and `header + "".join(messages) == text` byte for byte on all
+285,605 threads. The header is what comes before the first message (channel line, export
+path, summary); each message keeps its own trailing line breaks.
 
-Two layouts exist. Most threads separate messages with a blank line; about 3% put one
-message per line. A fenced code block may contain blank lines, so a blank line is not
-always a boundary. The rule is the speaker line, not the blank line.
+**The rule is the speaker line, not the blank line.** A message opens at a line, outside a
+code block, that starts with a speaker. That covers both layouts, which are far closer in
+size than the story assumed ("about 3% one per line"):
+
+| layout | threads |
+|---|---|
+| blank line between messages | 149,429 |
+| one message per line | 108,460 |
+| mixed | 24,281 |
+| no speaker line at all | 3,435 |
+
+12,569 threads have a blank line inside a code block, which is why a blank line cannot be the
+boundary.
+
+**Speaker shapes, all measured:** `tom_ae:`, `Aisha (CS):`, full names `Maya Chen:` and
+`Priya S.:` (40,141 threads), `Maya - People Ops:` (16,754 lines), lowercase full names
+`maria gonzalez:`, and bots `Incident Bot:`. A lowercase full name counts only if it opens two
+or more lines in the thread, because the same shape is also a one-off label (`browser
+console:`, `Edge log example:`).
+
+**Labels are not speakers.** `NOT_SPEAKERS` holds the first words of labels measured opening a
+line inside a message: `Due: 2026-04-02`, `Note:`, `Response:`, `Content-Type:`, `Plan B:`: 112
+words in all. A name ending in `Bot` is always a speaker (`Status Bot:`). Team handles
+(`ops:`, `legal:`, `support:`, `Customer Success:`) do speak, so they are not in the table.
+
+**Reuse.** Code-block detection is SLACK-2's `code_fence_flags`. A fence left open at the end
+of a thread (`sre-oncall: executing step A now.```, 1,434 threads) is treated as a typo so it
+cannot swallow the messages after it. Checked and rejected: LlamaIndex's `SentenceSplitter`
+and `TokenTextSplitter` cut by size, `MarkdownNodeParser`, `JSONNodeParser` and
+`HTMLNodeParser` by markup, `SemanticSplitterNodeParser` by embedding distance, and
+`SlackReader` reads the live API. None splits chat by speaker. `SentenceSplitter` returns in
+SLACK-9 for over-long threads.
+
+**Result:** 5,741,020 messages; 62 threads have none (a bare list of handles, a key-value
+dump, a lone dsid).
+
+**Reviewed** by a code-review agent that sampled real threads, since there is no truth set
+yet (SLACK-8 builds one). Precision of message starts was 298 of 300. It found about 54,000
+missed speaker lines (lowercase full names, `Name - Team`, unclosed fences, 33 label words);
+all are fixed, each with a test.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: blank-line layout with a multi-line message
   Given a message whose text continues on the next line
-  When I split the thread
   Then the continuation stays inside the same message
 
 Scenario: one-message-per-line layout
   Given a thread whose first line is "1772201234-llm-cafe-antics.json"
-  When I split the thread
-  Then each line that opens with a speaker line is its own message
+  Then each line that opens with a speaker is its own message
 
-Scenario: a blank line inside a fenced code block
-  Given a message containing a ``` fence with a blank line in it
-  When I split the thread
+Scenario: a blank line or a speaker shape inside a code block
+  Given a message containing a ``` fence with a blank line and "raj: ..." in it
   Then the fence stays inside one message
+
+Scenario: labels are not speakers
+  Given "Due: 2026-04-02" or "Note: ..." at the start of a line
+  Then it continues the message above it
+
+Scenario: nothing is lost
+  Then header + all messages joined equals the input, for every thread in the corpus
 ```
 
 ### Example with real data
 
-Before, from `dsid_a4e702bd...__1793045678-novacare-vra-check.txt`:
+`dsid_a4e702bd...__1793045678-novacare-vra-check.txt`: header `customer-success\n\n`, then 16
+messages. Message 9 is Priya's task list, 5 lines, `Due: 2026-04-02` included:
 
 ```text
-Aisha (CS): Hey team - NovaCare sent an updated vendor risk assessment and DPA follow-up.
-Can someone pick this up? Link: https://files.redwoodinternal/vra/novacare_2026.pdf :eyes:
-
-Priya (Onboarding): I can take lead on the questionnaire.
+Priya (Onboarding): Added tasks:
+- Verify SOC2 Type II (owner: Ben)
+- Confirm DPA countersign (owner: Tom)
+- Update onboarding tracker + risk flag (owner: Priya)
+Due: 2026-04-02
 ```
-
-After: 2 messages, the first of them 2 lines long.
 
 ### Non-functional Requirements
 
-Shared list. Byte-preserving: joining the returned messages back with their separators
-reproduces the input exactly.
+Shared list, plus:
+
+- **Byte-preserving:** tested on every thread of the corpus.
+- **Maintainable:** `NOT_SPEAKERS` is the label table; a new label is a word in it.
+- **Corpus counts as tests:** 5,741,020 messages, 62 threads without one, NovaCare 16.
 
 ### Dependencies
 
-APIs data contracts: SLACK-4 · Service Bus: N/A · Database: N/A · UI: N/A
+APIs data contracts: SLACK-4, SLACK-2 (`code_fence_flags`) · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
