@@ -192,9 +192,9 @@ what to do with the 37 double-escaped `\\n`. Decided when this story starts.
 
 ---
 
-## GMAIL-2  Clean corpus: data/gmail/clean/ and its manifest  ⬜
+## GMAIL-2  Clean corpus: data/gmail/clean/ and its manifest  ✅
 
-**Status:** To do.
+**Status:** Done. Real corpus: 121,390 files written, 27,870 escaped, 0 files whose bytes differ from their manifest hash, 57 seconds, manifest 45 MB. Simple writer chosen: no failure handling or folder swap, because the data has no duplicate names, empty files or undecodable files. Add them if a later run needs them.
 
 **Background**
 Same shape as `write_clean_corpus` for Confluence: read `raw/`, write `clean/`, one
@@ -216,11 +216,11 @@ reconciliation later.
 ```json
 {"file": "dsid_000025680c494c78b8005828c90c9293__20260625-payment-orchestration-costpool-choreography.txt",
  "raw_sha256": "…", "clean_sha256": "…", "was_escaped": false,
- "raw_lines": 149, "clean_lines": 149, "raw_bytes": 9336, "clean_bytes": 9336}
+ "raw_lines": 150, "clean_lines": 149, "raw_bytes": 9336, "clean_bytes": 9336}
 ```
 
 **Non-functional Requirements**
-Shared rules apply. Reuses `pipeline.manifest.manifest_row` unchanged. Golden:
+Shared rules apply. Reuses `pipeline.manifest.manifest_row` unchanged; does not import `pipeline.corpus` (it pulls in the Confluence Markdown parser). Reads raw files as bytes because 69 threads hold a real `\r`. Golden:
 `tests/golden/gmail_clean_fingerprint.json`, one sha256 over every row's `clean_sha256`
 in manifest order.
 
