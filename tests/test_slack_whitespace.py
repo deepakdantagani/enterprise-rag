@@ -19,10 +19,18 @@ ARCHIVES = ROOT / "data/slack/archives"
 
 
 class IndentedSpeakerLines(unittest.TestCase):
-    def test_a_speaker_line_indented_by_one_space_is_straightened(self):
-        result = normalize_whitespace("sales\n\njen_sales: Quick sync\n tom_ae: FYI customer claims\n")
-        self.assertEqual(result.text, "sales\n\njen_sales: Quick sync\ntom_ae: FYI customer claims\n")
+    def test_an_indented_speaker_line_that_starts_a_message_is_straightened(self):
+        result = normalize_whitespace("sales\n\njen_sales: Quick sync\n\n tom_ae: FYI customer claims\n")
+        self.assertEqual(result.text, "sales\n\njen_sales: Quick sync\n\ntom_ae: FYI customer claims\n")
         self.assertEqual(result.rules_fired, {"indented_speaker": 1})
+
+    def test_mid_message_it_is_straightened_only_if_the_name_speaks_twice(self):
+        text = "eng\n\nkai: ok\n tom: first\n tom: second\n raj: once\n"
+        self.assertEqual(normalize_whitespace(text).text, "eng\n\nkai: ok\ntom: first\ntom: second\n raj: once\n")
+
+    def test_one_space_yaml_and_http_headers_keep_their_indent(self):
+        text = "eng\n\nkai: config:\n enabled: true\n Host: api.redwood.example\n"
+        self.assertEqual(normalize_whitespace(text), WhitespaceResult(text, {}))
 
     def test_a_tab_and_a_role_in_brackets(self):
         result = normalize_whitespace("eng\n\n\trina: ok\n\n dylan (finance): Draft MOU uploaded\n")
@@ -36,9 +44,17 @@ class IndentedSpeakerLines(unittest.TestCase):
         text = "eng\n\nkai: logs:\n```\n tom_ae: not a speaker here\n```\n"
         self.assertEqual(normalize_whitespace(text), WhitespaceResult(text, {}))
 
+    def test_a_fence_that_opens_mid_line_still_opens_a_block(self):
+        text = "eng\n\nkai: logs:```\n tom: code\n```\n\n raj: hi\n"
+        self.assertEqual(normalize_whitespace(text).text, "eng\n\nkai: logs:```\n tom: code\n```\n\nraj: hi\n")
+
+    def test_an_unclosed_fence_keeps_the_rest_of_the_thread_as_code(self):
+        text = "eng\n\nkai: logs:\n```\n\n tom: still code\n"
+        self.assertEqual(normalize_whitespace(text), WhitespaceResult(text, {}))
+
     def test_an_inline_fence_on_one_line_does_not_open_a_block(self):
-        result = normalize_whitespace("general\n\nlena: ```/poll \"WFH\"```\n raj: snacks\n")
-        self.assertEqual(result.text, "general\n\nlena: ```/poll \"WFH\"```\nraj: snacks\n")
+        result = normalize_whitespace("general\n\nlena: ```/poll \"WFH\"```\n\n raj: snacks\n")
+        self.assertEqual(result.text, "general\n\nlena: ```/poll \"WFH\"```\n\nraj: snacks\n")
 
 
 class OtherWhitespaceRules(unittest.TestCase):
@@ -64,6 +80,9 @@ class OtherWhitespaceRules(unittest.TestCase):
         self.assertEqual(normalize_whitespace("eng\n\nkai: ok\n\n\n").text, "eng\n\nkai: ok\n")
         self.assertEqual(normalize_whitespace("eng\n\nkai: ok").rules_fired, {"final_newline": 1})
 
+    def test_an_empty_thread_stays_empty(self):
+        self.assertEqual(normalize_whitespace(""), WhitespaceResult("", {}))
+
     def test_running_it_twice_changes_nothing_more(self):
         once = normalize_whitespace(" \u00a0\r\n\n\n\n tom: hi  \r\n```\n  x \n```")
         self.assertEqual(normalize_whitespace(once.text), WhitespaceResult(once.text, {}))
@@ -80,7 +99,7 @@ class RealCorpus(unittest.TestCase):
             result = normalize_whitespace(unescape(raw_bytes.decode("utf-8")).text)
             files_per_rule.update(result.rules_fired.keys())
         self.assertEqual(files_per_rule, {
-            "final_newline": 236_927, "trailing_whitespace": 66_893, "indented_speaker": 1_544,
+            "final_newline": 236_927, "trailing_whitespace": 66_893, "indented_speaker": 1_489,
             "blank_line_run": 476, "carriage_return": 269, "non_breaking_space": 55,
         })
 
