@@ -745,6 +745,16 @@ Follows PARSE-17's pattern: hand-decide the correct output on real files first, 
 against it. Sample the 50 across both layouts, the `unknown` channel case, threads with
 fenced code, and the bot-heavy ones.
 
+**Carried over from SLACK-6: labels the table does not know yet.** `split_messages` blocks
+the 112 label words in `NOT_SPEAKERS`, but a new one (`pin:`, `endpoint:`, `Avoid:`) still
+opens a false message. A sample put that at about 3 in 78 one-off single-word speakers, or
+roughly 11,000 of 5,741,020 message starts (0.2%); no text is lost, one line just becomes its
+own message. This story turns that estimate into a measured precision on the truth set, and
+reports the most frequent speakers that open only one line in their thread, so a new label
+stands out among the one-off bots (`deploy-bot`, 39,740) and costs one word in the table.
+Requiring every speaker to appear twice was rejected: it would drop about 295,000 real
+one-off messages, mostly bots.
+
 ### Acceptance Criteria
 
 ```gherkin
