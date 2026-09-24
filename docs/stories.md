@@ -47,7 +47,7 @@ Glossary (terms used across the stories; a story should make sense without chat 
 ## Index
 
 Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`,
-`2-chunking`, `3-llamaindex`, `4-tools`. Each additional source then gets its own slot,
+`2-chunking`, `3-llamaindex`, `4-tools`, then `8-data-profile` for the cross-source profile. Each additional source then gets its own slot,
 assigned alphabetically so branches built in parallel do not collide: `5-gmail`, `6-linear`,
 `7-slack`; `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
 numbers are stable and prefixed by source — `PARSE-n` for the Confluence stages, `GMAIL-n`,
@@ -71,6 +71,7 @@ Confluence's; each source file carries its own, so a story can be read without t
 | PARSE-13  Document type from the title  ⬜ | [1-parsing.md](stories/1-parsing.md) |
 | PARSE-14  Assumption audit: every chunking assumption as a corpus count  ⬜ | [4-tools.md](stories/4-tools.md) |
 | PARSE-16  Chunking validation: recall@20 on the benchmark questions  ⬜ | [3-llamaindex.md](stories/3-llamaindex.md) |
+| DATA-1  Import, manifest and profile for the remaining sources  ✅ | [8-data-profile.md](stories/8-data-profile.md) |
 | GMAIL-1 … GMAIL-9  Raw threads to message records  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-10 … GMAIL-12  Message records to LlamaIndex nodes  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-13 … GMAIL-15  Thread roll-up, hybrid retrieval, recall@k  ⬜ | [5-gmail.md](stories/5-gmail.md) |
