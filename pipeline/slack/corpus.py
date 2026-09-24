@@ -16,11 +16,13 @@ Run: uv run python -m pipeline.slack.corpus
 """
 import hashlib
 import json
+import shutil
 import sys
 import time
 import uuid
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from functools import partial
 from pathlib import Path
 
 from pipeline.observability import FileCleaned, FileFailed, StageDone, dispatcher, events_logged_to
@@ -30,38 +32,81 @@ from pipeline.slack.whitespace import normalize_whitespace
 SOURCE = "slack"
 STAGE = "clean"
 MANIFEST_NAME = "_manifest.json"
+STAGING_SUFFIX = ".staging"
 
 
 @dispatcher.span
 def write_clean_corpus(archives_dir: Path, clean_dir: Path) -> list[dict]:
     """Clean every thread in the zips into clean_dir, save the manifest, return its rows.
 
+    Everything is written to a fresh folder that replaces clean_dir only at the end, so
+    clean_dir never mixes two runs, and always holds exactly the files its manifest lists.
     One span covers the stage; every event inside it carries that span_id."""
-    started, failed, rows = time.monotonic(), 0, []
-    clean_dir.mkdir(parents=True, exist_ok=True)
-    for name, raw_bytes in read_threads(archives_dir):
-        try:
-            row = clean_one_thread(name, raw_bytes, clean_dir)
-        except (UnicodeDecodeError, OSError) as error:
-            failed += 1
-            dispatcher.event(FileFailed(source=SOURCE, file=name, error_type=type(error).__name__,
-                                        message=str(error)))
+    started, failed, rows, seen = time.monotonic(), 0, [], set()
+    staging_dir = fresh_dir(clean_dir.with_name(clean_dir.name + STAGING_SUFFIX))
+    for name, read_raw_bytes in read_threads(archives_dir):
+        if name in seen:  # the first one stays; this one would overwrite it
+            failed += report_failure(name, DuplicateName(f"{name} appears more than once in the zips"))
             continue
-        rows.append(row)
+        seen.add(name)
+        try:
+            rows.append(clean_one_thread(name, read_raw_bytes(), staging_dir))
+        except READ_ERRORS as error:
+            (staging_dir / name).unlink(missing_ok=True)  # no half-written file without a row
+            failed += report_failure(name, error)
     rows.sort(key=lambda row: row["name"])
-    save_manifest(clean_dir, rows)
+    save_manifest(staging_dir, rows)
+    replace_dir(clean_dir, staging_dir)
     dispatcher.event(StageDone(source=SOURCE, stage=STAGE, files=len(rows), failed=failed,
                                seconds=round(time.monotonic() - started, 1)))
     return rows
 
 
-def read_threads(archives_dir: Path) -> Iterator[tuple[str, bytes]]:
-    """(file name, raw bytes) for every .txt in every zip, zips in name order, without unzipping."""
+class DuplicateName(Exception):
+    """Two zip members share a file name; the second would overwrite the first."""
+
+
+# Bad data fails one file; anything else is a bug in the cleaners and stops the run.
+READ_ERRORS = (UnicodeDecodeError, zipfile.BadZipFile, OSError)
+
+
+def report_failure(name: str, error: Exception) -> int:
+    """Emit FileFailed for one file; returns 1, the number of failures to add."""
+    dispatcher.event(FileFailed(source=SOURCE, file=name, error_type=type(error).__name__,
+                                message=str(error)))
+    return 1
+
+
+def read_threads(archives_dir: Path) -> Iterator[tuple[str, Callable[[], bytes]]]:
+    """(file name, a function that reads its raw bytes) for every .txt in every zip, zips in
+    name order, without unzipping. Reading is deferred so a corrupt member fails as one file,
+    and a corrupt zip as one entry named after the zip."""
     for archive_path in sorted(archives_dir.glob("*.zip")):
-        with zipfile.ZipFile(archive_path) as archive:
+        try:
+            archive = zipfile.ZipFile(archive_path)
+        except zipfile.BadZipFile as error:
+            yield archive_path.name, partial(raise_error, error)
+            continue
+        with archive:
             for member in archive.namelist():
                 if member.endswith(".txt"):
-                    yield Path(member).name, archive.read(member)
+                    yield Path(member).name, partial(archive.read, member)
+
+
+def raise_error(error: Exception) -> bytes:
+    raise error
+
+
+def fresh_dir(path: Path) -> Path:
+    shutil.rmtree(path, ignore_errors=True)
+    path.mkdir(parents=True)
+    return path
+
+
+def replace_dir(target: Path, replacement: Path) -> None:
+    """Swap replacement in as target. The old target is derived data: this run rebuilt it."""
+    shutil.rmtree(target, ignore_errors=True)
+    replacement.rename(target)
 
 
 def clean_one_thread(name: str, raw_bytes: bytes, clean_dir: Path) -> dict:
