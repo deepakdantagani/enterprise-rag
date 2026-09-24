@@ -37,7 +37,7 @@ its contract, its Gherkin and a real-data example. The system design is
 2. **Rules live in a table.** Cleaning and parsing rules are one named, documented table per
    module. Adding a rule is a row plus a test, not a new branch buried inside a function.
 3. **Every rule carries its corpus count as a test.** `unescape` fires on 8,334 files;
-   `indented_speaker` on 27,225. If a refactor moves a count, a test fails and says by how
+   `indented_speaker` on 1,489. If a refactor moves a count, a test fails and says by how
    much. A rule with no measured count is a rule nobody has justified.
 4. **Dependency discipline.** A story that wants a third-party dependency has to say which
    LlamaIndex component it rejected and why (NFR-7). So far none has needed one.
@@ -46,9 +46,9 @@ its contract, its Gherkin and a real-data example. The system design is
 |---|---|
 | SLACK-0  Corpus profile | ✅ |
 | SLACK-1  `unescape` | ✅ |
-| SLACK-2  `normalize_whitespace` | ⬜ |
-| SLACK-3  events and a handler  *(shared, lands on master)* | ⬜ |
-| SLACK-4  `write_clean_corpus` + manifest | ⬜ |
+| SLACK-2  `normalize_whitespace` | ✅ |
+| SLACK-3  events and a handler  *(shared by every source)* | ✅ |
+| SLACK-4  `write_clean_corpus` + manifest | ✅ |
 | SLACK-5  `channel_of` | ⬜ |
 | SLACK-6  `split_messages` | ⬜ |
 | SLACK-7  `parse_speaker` | ⬜ |
@@ -212,62 +212,85 @@ APIs data contracts: none · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-2  `normalize_whitespace(text) -> str` ⬜
+## SLACK-2  `normalize_whitespace(text) -> WhitespaceResult` ✅
 
-**Status** To do
+**Status** Done
 **As a** speaker parser that anchors on the start of a line
-**I want to** the 27,225 threads with an indented speaker line straightened out
+**I want to** indented speaker lines straightened and the other whitespace defects repaired
 **So that** ` tom_ae: FYI ...` parses as a message rather than as body text
 
-The trap: 27,057 threads (9.47%) contain **legitimate** indentation — list items and fenced
-code. A blanket strip of leading whitespace destroys them. Only a line that is otherwise a
-speaker line may lose its indent.
+`pipeline/slack/whitespace.py`, run on SLACK-1's output. Pure: text in,
+`WhitespaceResult(text, rules_fired)` out. `RULES` is a table of (name, function) in the
+order they run; each function does one thing and returns the new text and its change count.
+
+**The trap, measured.** A speaker line is indented by exactly one space or one tab. The same
+shape is also an HTTP header or YAML pasted outside a fence (` Host: api.redwood.example`,
+` enabled: true`), and deeper indents (`  max_retries: 5`) are always YAML or code. So the
+indent goes only when all of these hold:
+
+1. the line is outside a code block. Any line with an odd number of ``` opens or closes one,
+   wherever the fence sits: `kai: logs:```` opens a block. 39,786 threads open a fence mid-line.
+2. it is indented by one space or one tab, then `name: ` or `name (role): `.
+3. it starts a message (follows a blank line), or its name speaks at least twice in the thread.
+
+That straightens 1,489 threads. Rule 3 leaves 59 more threads indented: mostly headers and
+YAML, but also some real one-off speakers in threads without blank lines between messages
+(`deploy-bot: Deploy started ...`). Better that than headers turned into fake messages;
+SLACK-7 can still read an indented speaker.
+
+**The design doc's numbers do not reproduce.** It quotes 27,225 threads with an indented
+speaker line; no reading of "indented speaker" gets near that (any one-space or one-tab
+`name:` line outside code: 1,548). Its "3+ consecutive blank lines: 448" matches runs of two
+or more blank lines (476 after SLACK-1), which is what this collapses: messages are separated
+by exactly one blank line. The story's sales example quoted the thread without its blank
+lines; the real thread has one between every message.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: an indented speaker line is straightened
-  Given the line " tom_ae: FYI customer claims integrations built during POC..."
+  Given "\n\n tom_ae: FYI customer claims integrations built during POC..."
   Then it becomes "tom_ae: FYI customer claims integrations built during POC..."
 
-Scenario: an indented list item is left alone
-  Given the line "  - Verify SOC2 Type II (owner: Ben)"
+Scenario: YAML, headers and list items keep their indent
+  Given " enabled: true" or " Host: api.redwood.example" inside a message, or "  - Verify SOC2"
   Then it is unchanged
 
-Scenario: indentation inside a fenced code block is left alone
-  Given an indented line between two ``` fences
+Scenario: indentation inside a code block is left alone
+  Given an indented line after "kai: logs:```" and before the closing ```
   Then it is unchanged, whatever it looks like
 
 Scenario: the remaining whitespace rules
-  Given trailing spaces, a CR, a non-breaking space, or 3+ consecutive blank lines
-  Then trailing whitespace goes, CR goes, nbsp becomes a space, blank runs collapse to one
-  And the file ends with exactly one newline
+  Given a CR, a non-breaking space, trailing spaces, or 2+ blank lines in a row
+  Then CR becomes LF, nbsp becomes a space, trailing whitespace goes, blank runs collapse to one
+  And the file ends with exactly one newline; an empty thread stays empty
 ```
 
 ### Example with real data
 
-Before, from a `sales` thread:
+Before, the `sales` thread `jen_sales: Quick sync - ACME PoC is greenlighted...`:
 
 ```text
-jen_sales: Quick sync - ACME PoC is greenlighted but procurement raised 3 blocking items...
+jen_sales: Quick sync — ACME PoC is greenlighted but procurement raised 3 blocking items...
+
  tom_ae: FYI customer claims integrations built during POC must remain theirs.
- sana_se: I reviewed the deliverables - POC outputs are config + prompt recipes.
+
+ sana_se: I reviewed the deliverables — POC outputs are config + prompt recipes...
 ```
 
-After: three messages, none of them indented.
+After: the same three messages, none of them indented.
 
 ### Non-functional Requirements
 
 Shared list, plus:
 
-- **Maintainable:** one rule table, each row a name, a matcher and a fix, applied in a stated
-  order. The order is part of the contract: the fence guard runs before anything that touches
-  leading whitespace, or the code rules corrupt code blocks.
+- **Maintainable:** one `RULES` table, applied in the stated order: carriage_return,
+  non_breaking_space, indented_speaker, trailing_whitespace, blank_line_run, final_newline.
+  CR goes first so every later rule sees plain lines.
 - **Pure:** no disk, no dispatcher call. Returns text plus the rules that fired.
-- **Corpus counts as tests:** 237,002 files (82.98%) have no final newline, 64,212 (22.48%)
-  trailing whitespace, 27,225 (9.53%) an indented speaker line, 448 (0.16%) 3+ consecutive
-  blank lines, 250 a CR, 47 a non-breaking space. And the guard rail: 27,057 files (9.47%)
-  have legitimate indentation and must come through untouched.
+- **Corpus counts as tests** (`test_files_each_rule_fires_on_after_unescape`, on SLACK-1's
+  output): final_newline 236,927, trailing_whitespace 66,893, indented_speaker 1,489,
+  blank_line_run 476, carriage_return 269, non_breaking_space 55.
 
 ### Dependencies
 
@@ -275,24 +298,34 @@ APIs data contracts: SLACK-1 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-3  `pipeline/observability.py`: events and a handler ⬜  *(shared — lands on master first)*
+## SLACK-3  `pipeline/observability.py`: events and a handler ✅  *(shared by every source)*
 
-**Status** To do
+**Status** Done
 **As a** person about to run a pipeline over 285,605 files on a laptop
 **I want to** every stage to say what it did, through LlamaIndex's own instrumentation
 **So that** a run that stalls, skips or errors can be diagnosed without rerunning it under a debugger
 
-**This story is not Slack-specific, and is not built in this branch.** Gmail and Linear have
-their own worktrees and the same need, so three branches would otherwise each write it and
-collide. It lands on master as its own small PR, and the source branches rebase onto it. The
-events therefore carry a `source` field rather than a Slack name:
+**This story is not Slack-specific.** Gmail and Linear have the same need, so the module sits
+at `pipeline/observability.py`, outside `pipeline/slack/`, and imports nothing from any source.
+It landed stacked after SLACK-1 and SLACK-2 (their story-index rows sit next to its row, so
+separate branches off master would conflict); the other source branches take it from master
+once it merges. The events carry a `source` field rather than a Slack name:
 
 ```python
-class FileCleaned(BaseEvent):
-    source: str            # "slack" | "gmail" | "linear"
+class FileCleaned(PipelineEvent):   # PipelineEvent = BaseEvent with a UTC timestamp
+    source: str                      # "slack" | "gmail" | "linear"
     file: str
-    rules_fired: list[str]
+    rules_fired: dict[str, int]      # rule -> changes, as SLACK-1 and SLACK-2 return them
+    bytes_in: int
+    bytes_out: int
 ```
+
+What was built: `FileCleaned`, `FileFailed`, `StageDone`, a `JsonLinesEventHandler`, and
+`events_logged_to(log_path)`, which attaches the handler to LlamaIndex's **root** dispatcher
+for the length of a `with` block. Root, because LlamaIndex's own events only travel upward:
+a handler on our `pipeline` dispatcher would never see an embedding event. Reviewed by a
+code-review agent; its fixes (root dispatcher, UTC ISO timestamps, no silent `default=str`,
+detach by identity so a crash inside the block is not masked) are in, each with a test.
 
 **Library first (NFR-7).** LlamaIndex ships an `instrumentation` module — `Dispatcher`,
 `BaseEvent`, `BaseEventHandler`, `BaseSpan`, `@dispatcher.span` — available since
@@ -338,10 +371,12 @@ never to alter it (NFR-1).
 ### Example with real data
 
 ```json
-{"event":"FileCleaned","source":"slack","file":"dsid_0161f905...__1719998880-cred-cleanup....txt",
- "rules_fired":["unescape_newline","trailing_whitespace","final_newline"],
- "bytes_in":3294,"bytes_out":3268}
-{"event":"StageDone","source":"slack","stage":"clean","files":285605,"failed":0,"seconds":412.8}
+{"event": "FileCleaned", "timestamp": "2026-09-24T02:29:00.898578Z", "span_id": "write_clean_corpus-dfd9fade-...",
+ "tags": {}, "source": "slack", "file": "dsid_919525fd...__1814012345-morning-riddle-and-wfh-poll.txt",
+ "rules_fired": {"unescape_newline": 17, "unescape_quote": 8, "final_newline": 1},
+ "bytes_in": 1324, "bytes_out": 1300}
+{"event": "StageDone", "timestamp": "2026-09-24T02:29:43.109153Z", "span_id": "write_clean_corpus-dfd9fade-...",
+ "tags": {}, "source": "slack", "stage": "clean", "files": 285605, "failed": 0, "seconds": 44.4}
 ```
 
 The same two lines, with `"source":"gmail"`, are what the Gmail branch will emit.
@@ -364,20 +399,36 @@ APIs data contracts: none · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-4  `write_clean_corpus(archives_dir, clean_dir)` ⬜
+## SLACK-4  `write_clean_corpus(archives_dir, clean_dir)` ✅
 
-**Status** To do
+**Status** Done
 **As a** pipeline that has to prove which raw bytes produced which clean bytes
 **I want to** every thread cleaned once into `data/slack/clean/`, with a manifest beside it
 **So that** the cleaning step has the audit trail the Confluence one has
 
-Mirrors PARSE-2. One row per file: name, `raw_sha256`, `clean_sha256`, and which rules fired.
+`pipeline/slack/corpus.py`, run with `uv run python -m pipeline.slack.corpus`. It reads the
+58 zips directly, runs SLACK-1 then SLACK-2 on each thread, writes it under its own name, and
+writes `_manifest.json`: one row per file with name, `raw_sha256`, `clean_sha256` and the
+rules that fired. SLACK-1's rules get an `unescape_` prefix, because both stages have a
+`carriage_return` rule and they mean different things. It is the only module of the stage
+that touches disk. It imports no Confluence code: `pipeline/corpus.py` reads a folder, not
+zips, and writes Confluence manifest rows.
 
-**Library first (NFR-7):** the cleaning functions implement LlamaIndex's `Transformation`, so
-they run inside an `IngestionPipeline` and get its `IngestionCache` — a re-run skips every
-node+transformation pair it has already done, which is most of what a hand-written resume
-would do. The manifest stays anyway: the docstore tracks document identity, not which raw
-bytes produced which clean bytes.
+**The full run, measured:** 285,605 threads, 0 failed, 1.4 GB; 44 s into an empty folder, 67 s
+when it also replaces a previous run's folder. The manifest's per-rule
+totals equal the SLACK-1 and SLACK-2 corpus pins exactly: unescape_newline 8,334,
+unescape_quote 4,083, unescape_backslash 787, unescape_unicode 147, unescape_tab 36,
+unescape_carriage_return 19, unescape_slash 14, final_newline 236,927, trailing_whitespace
+66,893, indented_speaker 1,489, blank_line_run 476, carriage_return 269,
+non_breaking_space 55.
+
+**Library first, and why not `IngestionPipeline` here (NFR-7).** The story planned to run the
+cleaners as LlamaIndex `Transformation`s inside an `IngestionPipeline` with an
+`IngestionCache`. We did not: this stage's output is files and a manifest, not nodes;
+`IngestionCache` would hold all 285,605 threads in memory to save a rerun of about a minute;
+and the manifest already proves which raw bytes made which clean bytes. The pipeline belongs
+where nodes first exist (SLACK-10). Observability does use the library: one
+`@dispatcher.span` over the stage and SLACK-3's events on it.
 
 ### Acceptance Criteria
 
@@ -386,39 +437,54 @@ Scenario: the corpus is written once
   Given the 58 zip slices
   When I run write_clean_corpus
   Then data/slack/clean/ holds 285,605 files under their original names
-  And data/slack/clean/_manifest.json holds one row per file
+  And data/slack/clean/_manifest.json holds one row per file, in name order
 
 Scenario: the manifest records what happened
   Then each row carries raw_sha256, clean_sha256 and the rules that fired
   And the per-rule totals match the counts in SLACK-1 and SLACK-2
 
-Scenario: re-running changes nothing
-  When I run it a second time
-  Then every clean_sha256 is unchanged
+Scenario: a file that fails is an event, and the run goes on
+  Given a thread that is not valid UTF-8
+  Then a FileFailed event names it, it gets no clean file and no manifest row
+  And StageDone reports files and failed
+
+Scenario: re-running changes nothing, and neither does logging
+  When I run it a second time, with or without a log attached
+  Then every row is unchanged
 ```
 
 ### Example with real data
 
 ```json
-{ "name": "dsid_0161f905...__1719998880-cred-cleanup-rotation-playbook-checkin.txt",
-  "raw_sha256": "sha256:...",
-  "clean_sha256": "sha256:...",
-  "rules": ["unescape_newline", "trailing_whitespace", "final_newline"] }
+{"name": "dsid_919525fd7c2944db922e298431b6e366__1814012345-morning-riddle-and-wfh-poll.txt",
+ "raw_sha256": "...", "clean_sha256": "...",
+ "rules": {"unescape_newline": 17, "unescape_quote": 8, "final_newline": 1}}
 ```
+
+and its event in `data/slack/logs/clean-<time>-<id>.jsonl`: `bytes_in` 1,324, `bytes_out` 1,300.
+
+**Reviewed** by a code-review agent. It confirmed that the real run was correct: 285,605 unique names, and
+manifest rows, files on disk and `clean_sha256` values all agree. It found four bugs that the
+corpus does not trigger today, now fixed with a test each:
+- a repeated name overwrote the first file; it is now a `DuplicateName` failure
+- files from an earlier run survived; the staging folder swap fixes this
+- a corrupt zip member or zip stopped the whole run; it is now a `BadZipFile` failure for that entry
+- a half-written file could stay on disk; it is now deleted
+A bug in the cleaners still stops the run on purpose: across 285k files, a broad `except`
+would hide it.
 
 ### Non-functional Requirements
 
 Shared list, plus:
 
-- **Observable:** this is the first stage that runs at corpus scale, so it is the first caller
-  of the SLACK-3 dispatcher — one span for the stage, one event per file, one summary at the
-  end. A failed file is an event and the run continues.
-- **Restartable (NFR-3):** a second run skips work already done, via the `IngestionCache`, and
-  ends with identical `clean_sha256` values.
-- **Maintainable:** the only module in the cleaning stage allowed to touch disk. SLACK-1 and
-  SLACK-2 stay pure, which is what makes them testable on strings.
-- Plus a golden fingerprint over the manifest in the Confluence pattern, so a later refactor
-  that changes one byte of one file fails a test.
+- **Observable:** one span for the stage, one event per file, one StageDone at the end. The
+  entry point writes the log to `data/slack/logs/`.
+- **Restartable (NFR-3):** a rerun rewrites every file with identical bytes. It writes into
+  `clean.staging/` and swaps it in at the end, so `clean/` never mixes two runs and always holds
+  exactly the files its manifest lists; a crash mid-run leaves the previous `clean/` intact.
+- **Maintainable:** the only disk-touching module of the stage; SLACK-1 and SLACK-2 stay pure.
+- **Golden fingerprint:** `test_slice_0003_fingerprint` hashes the manifest rows of one real
+  slice (5,000 threads), so a later change to one byte of one file fails a test.
 
 ### Dependencies
 

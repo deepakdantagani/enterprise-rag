@@ -13,8 +13,11 @@ pipeline/                 active ingestion code (a Python package), pure functio
   structure.py            what markdown-it sees in a page: # and underlined headings with level, fence and table ranges
   to_markdown.py          one pass per file: # on every heading (any style), same line count; which labels count is decided here
   buckets.py, headings.py, blocks.py   the previous heading detectors; retired by PARSE-8d once the golden differences are explained
+  observability.py        SLACK-3, shared by every source: FileCleaned/FileFailed/StageDone events, JSON-lines run log
   slack/                  the Slack pipeline, imports nothing from other sources
     unescape.py           SLACK-1: JSON-escaped threads -> real characters (only the 8,334 escaped ones)
+    whitespace.py         SLACK-2: indented speaker lines, CR, nbsp, trailing space, blank runs, final newline
+    corpus.py             SLACK-4: 58 zips -> data/slack/clean/ + _manifest.json, one event per file
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
 tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings
 tools/                    audit and measurement scripts, outside pipeline/: slack_profile.py (SLACK-0); planned PARSE-11, PARSE-14

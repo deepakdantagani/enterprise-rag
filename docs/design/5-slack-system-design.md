@@ -194,7 +194,7 @@ Measured over all 285,605 files:
 |---|---|---|
 | no final newline | 237,002 | 82.98% |
 | trailing whitespace | 64,212 | 22.48% |
-| indented speaker line (` tom_ae: ...`) | 27,225 | 9.53% |
+| indented speaker line (` tom_ae: ...`); re-measured by SLACK-2: 1,489 straightened | 27,225 | 9.53% |
 | literal `\n` (8,334 of these are JSON-escaped bodies, SLACK-1) | 17,971 | 6.29% |
 | literal `\"` | 17,232 | 6.03% |
 | 3+ consecutive blank lines | 448 | 0.16% |
