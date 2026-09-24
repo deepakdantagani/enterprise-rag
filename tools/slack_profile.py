@@ -1,4 +1,4 @@
-"""SLACK-0: count what is in the Slack corpus, straight from the 58 zips.
+r"""SLACK-0: count what is in the Slack corpus, straight from the 58 zips.
 
 Every later Slack story quotes a number (how many threads, how long, which channels).
 This writes those numbers to one file, data/slack/profile.json, so each one can be
@@ -11,8 +11,10 @@ Run: uv run python -m tools.slack_profile
 
     >>> is_channel_shaped("customer-success"), is_channel_shaped("1719998880")
     (True, False)
-    >>> percentile([5, 6, 7], 50)
-    6
+    >>> first_line(" incidents \n\nmorgan: hi")
+    'incidents'
+    >>> token_summary([7, 5, 6])
+    {'p50': 6, 'p90': 7, 'p99': 7, 'max': 7}
 """
 import json
 import math
@@ -20,48 +22,80 @@ import re
 import sys
 import zipfile
 from collections import Counter
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-CHANNEL_SHAPE = re.compile(r"[a-z][a-z0-9-]*")
+CHANNEL_NAME_PATTERN = re.compile(r"[a-z][a-z0-9-]*")
 CHARS_PER_TOKEN = 4
+TOKEN_PERCENTILES = (50, 90, 99)
 
 
 def profile(archives_dir: Path, out_path: Path) -> dict:
-    """Count files, bytes, token percentiles and line-1 words; write them as JSON."""
-    sizes, tokens, line1 = [], [], Counter()
-    for archive in sorted(Path(archives_dir).glob("*.zip")):
-        with zipfile.ZipFile(archive) as z:
-            for name in z.namelist():
-                if not name.endswith(".txt"):
-                    continue
-                raw = z.read(name)
-                text = raw.decode("utf-8")
-                sizes.append(len(raw))
-                tokens.append(len(text) // CHARS_PER_TOKEN)
-                line1[text.split("\n", 1)[0].strip()] += 1
-    tokens.sort()
-    shaped = {w: n for w, n in line1.items() if is_channel_shaped(w)}
-    result = {
-        "files": len(sizes),
-        "bytes": sum(sizes),
-        "tokens": {f"p{p}": percentile(tokens, p) for p in (50, 90, 99)} | {"max": tokens[-1]},
-        "line1_channel_shaped": dict(sorted(shaped.items(), key=lambda kv: (-kv[1], kv[0]))),
-        "line1_other": len(sizes) - sum(shaped.values()),
+    """Count the corpus in archives_dir, write the counts to out_path as JSON, return them."""
+    counts = count_threads(read_thread_files(archives_dir))
+    Path(out_path).write_text(json.dumps(counts, indent=2) + "\n")
+    return counts
+
+
+def read_thread_files(archives_dir: Path) -> Iterator[bytes]:
+    """Yield the raw bytes of every .txt inside every zip, in a fixed order, without unzipping."""
+    for archive_path in sorted(Path(archives_dir).glob("*.zip")):
+        with zipfile.ZipFile(archive_path) as archive:
+            for file_name in archive.namelist():
+                if file_name.endswith(".txt"):
+                    yield archive.read(file_name)
+
+
+def count_threads(thread_files: Iterable[bytes]) -> dict:
+    """Turn raw thread files into the profile: sizes, token percentiles, line-1 words."""
+    file_sizes, token_counts, first_line_counts = [], [], Counter()
+    for raw_bytes in thread_files:
+        text = raw_bytes.decode("utf-8")
+        file_sizes.append(len(raw_bytes))
+        token_counts.append(len(text) // CHARS_PER_TOKEN)
+        first_line_counts[first_line(text)] += 1
+    channel_shaped_words = {
+        word: file_count
+        for word, file_count in first_line_counts.items()
+        if is_channel_shaped(word)
     }
-    Path(out_path).write_text(json.dumps(result, indent=2) + "\n")
-    return result
+    return {
+        "files": len(file_sizes),
+        "bytes": sum(file_sizes),
+        "tokens": token_summary(token_counts),
+        "line1_channel_shaped": most_common_first(channel_shaped_words),
+        "line1_other": len(file_sizes) - sum(channel_shaped_words.values()),
+    }
+
+
+def first_line(text: str) -> str:
+    """Line 1 with surrounding spaces removed: where the export usually puts the channel."""
+    return text.split("\n", 1)[0].strip()
 
 
 def is_channel_shaped(word: str) -> bool:
     """Lowercase letters, digits and dashes, starting with a letter: how channels are named."""
-    return CHANNEL_SHAPE.fullmatch(word) is not None
+    return CHANNEL_NAME_PATTERN.fullmatch(word) is not None
 
 
-def percentile(sorted_values: list[int], p: int) -> int:
+def token_summary(token_counts: list[int]) -> dict:
+    """p50, p90, p99 and max of the per-thread token counts."""
+    ascending = sorted(token_counts)
+    summary = {f"p{p}": percentile(ascending, p) for p in TOKEN_PERCENTILES}
+    return summary | {"max": ascending[-1]}
+
+
+def percentile(ascending_values: list[int], p: int) -> int:
     """Nearest-rank percentile: the smallest value with at least p% of values at or below it."""
-    return sorted_values[math.ceil(p / 100 * len(sorted_values)) - 1]
+    return ascending_values[math.ceil(p / 100 * len(ascending_values)) - 1]
+
+
+def most_common_first(word_counts: dict[str, int]) -> dict[str, int]:
+    """Sort by count, largest first, then by word, so the JSON is identical on every run."""
+    return dict(sorted(word_counts.items(), key=lambda item: (-item[1], item[0])))
 
 
 if __name__ == "__main__":
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/slack")
-    print(json.dumps(profile(root / "archives", root / "profile.json"), indent=2)[:400])
+    slack_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/slack")
+    counts = profile(slack_dir / "archives", slack_dir / "profile.json")
+    print(json.dumps(counts, indent=2)[:400])
