@@ -35,6 +35,8 @@ library code harder than Confluence did:
 ## Module layout
 
 ```
+tools/
+    gmail_profile.py  GMAIL-0    profile: counts only, no rules
 pipeline/gmail/
     cleaning.py    GMAIL-1    clean_thread
     messages.py    GMAIL-3,4,6,7  split_messages, parse_headers, strip_quotes, attachments
@@ -50,6 +52,7 @@ pipeline/gmail/
 
 | # | Story | One line |
 |---|---|---|
+| 0 | GMAIL-0 profile | `tools/gmail_profile.py` counts files, bytes, tokens, escapes and missing `From:` from `raw/`; decides no rule |
 | 1 | GMAIL-1 clean_thread | unescape the 23% and normalise, reusing `pipeline.cleaning`; **skip** `fix_structure`, which corrupts Gmail bullets |
 | 2 | GMAIL-2 clean corpus | write `data/gmail/clean/` + manifest, one row per thread |
 | 3 | GMAIL-3 split_messages | cut a clean thread on `From:` at line start; a thread with none is one message |
@@ -72,6 +75,47 @@ Stories 1–9 are pure and offline. 10–12 configure library code. 13–15 are 
 side and depend on an embedded index existing. 16 and 17 are the observability pair and
 can be built at any point after the stage they watch: GMAIL-16 after GMAIL-9, GMAIL-17
 before the first full embed run, because it is what makes that run diagnosable.
+
+---
+
+## GMAIL-0  Corpus profile  ✅
+
+**Status:** Done.
+
+**As a** engineer about to write cleaning and parsing rules for 121,390 threads
+**I want to** a single `profile.json` produced by committed code
+**So that** no Gmail story quotes a number nobody can reproduce
+
+`tools/gmail_profile.py`, the Gmail twin of `tools/slack_profile.py`. It only counts: it
+changes no file and decides no rule. It reads `data/gmail/raw/` and writes
+`data/gmail/profile.json` (gitignored like every generated corpus file); the numbers that
+matter are pinned as a test instead (`test_real_corpus_counts`).
+
+**Acceptance Criteria (Gherkin)**
+- Given `data/gmail/raw/`, When `profile(raw_dir, out_path)` runs, Then `profile.json` holds `files`, `bytes`, `tokens` (4 chars per token, nearest-rank p50/p90/p99/max), `literal_escape_files`, `is_escaped_files`, `ambiguous_escape_files` and `no_from_files`
+- Given a thread with a literal `\n` that `is_escaped` says is not escaped, Then it is counted as ambiguous, not judged: printf string versus partial damage is GMAIL-1's rule
+- Given a thread where `From:` appears only mid-sentence, Then it counts in `no_from_files`; a `From:` at the start of a line, real or escaped, does not
+- Given a second run, Then the file is byte-identical
+
+**Example with real data**
+```json
+{ "files": 121390, "bytes": 860188084,
+  "tokens": { "p50": 1745, "p90": 2186, "p99": 2640, "max": 4313 },
+  "literal_escape_files": 28049, "is_escaped_files": 27870,
+  "ambiguous_escape_files": 179, "no_from_files": 189 }
+```
+
+What this settled, so later stories do not re-argue it:
+- **28,049 is "has a literal `\n`", not "is escaped".** It splits into 27,870 that `is_escaped` flags and 179 that it does not (166 code such as `printf`, 13 partial damage, per GMAIL-1). GMAIL-1 and GMAIL-2 say `was_escaped` is True on 28,049 rows; that is only right if the 166 code threads are also counted, which GMAIL-1 says they must not be. GMAIL-1 owns fixing that number.
+- **189 needs a line-start test.** A plain "no `From:` anywhere" gives 183, because six threads mention `From:` in prose. `From:` counts only at the start of a line, real or escaped.
+- **Not profiled here on purpose:** messages, message sizes, participants, quoted history, date formats. Each needs a rule that is not built yet (GMAIL-3, 4, 5, 6), so each is counted by the story that builds the rule. Running the tool replaces the earlier hand-made `profile.json`, which held those numbers without code behind them.
+
+**Non-functional Requirements**
+Shared rules apply. Reuses `pipeline.cleaning.is_escaped` unchanged. Pure counting over a
+folder read in file-name order; about 8 seconds on a laptop.
+
+**Dependencies** APIs data contracts: `pipeline.cleaning.is_escaped` · Service Bus: N/A ·
+Database: N/A · UI: N/A
 
 ---
 
