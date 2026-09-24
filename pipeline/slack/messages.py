@@ -39,8 +39,8 @@ from pipeline.slack.whitespace import CODE_FENCE, code_fence_flags
 NAME_WORD = r"[A-Za-z][\w.'\-]*"
 SPEAKER_AT_LINE_START = re.compile(
     rf"(?P<name>[A-Za-z][\w.\-]*(?: {NAME_WORD}){{0,2}})"  # tom_ae, Maya Chen, maria gonzalez, Priya S.
-    r"(?: - (?P<team>[\w&][\w &\-]{0,24}))?"               # - People Ops
-    r"(?: \((?P<role>[^)\n]{1,40})\))?: "                  # (CS)
+    r"(?: - (?P<after_dash>[\w&][\w &\-]{0,24}))?"         # - People Ops
+    r"(?: \((?P<in_brackets>[^)\n]{1,40})\))?: "           # (CS)
 )
 BOT_SUFFIX = "bot"
 REPEATS_NEEDED = 2  # a lowercase multi-word name must open this many lines to count

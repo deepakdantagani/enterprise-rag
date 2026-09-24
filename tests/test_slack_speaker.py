@@ -1,4 +1,4 @@
-"""SLACK-7: parse_speaker(line) reads name, role and bot flag off a message's speaker line.
+"""SLACK-7: parse_speaker(line) reads name, team or role, and bot flag off a message's speaker line.
 
 Run: uv run python -m unittest discover tests
 """
@@ -21,14 +21,14 @@ class ParseSpeaker(unittest.TestCase):
     def test_a_name_alone(self):
         self.assertEqual(parse_speaker("tom_ae: FYI customer claims"), Speaker("tom_ae", None, False))
 
-    def test_a_role_in_brackets(self):
+    def test_what_is_in_brackets(self):
         self.assertEqual(parse_speaker("Aisha (CS): Hey team"), Speaker("Aisha", "CS", False))
 
-    def test_a_team_after_a_dash(self):
+    def test_what_is_after_a_dash(self):
         self.assertEqual(parse_speaker("Ruth - Customer Success: Quick sync"),
                          Speaker("Ruth", "Customer Success", False))
 
-    def test_the_role_in_brackets_wins_over_the_team(self):
+    def test_brackets_win_over_a_dash(self):
         self.assertEqual(parse_speaker("Dan - HelixEdge (SI): Were ready to support initial customers."),
                          Speaker("Dan", "SI", False))
 
@@ -45,7 +45,7 @@ class ParseSpeaker(unittest.TestCase):
                  "bot_deploy: note: open-embed-v1 variant rollout"]
         self.assertEqual([parse_speaker(line).is_bot for line in lines], [True] * 6)
 
-    def test_a_bot_by_its_role(self):
+    def test_a_bot_by_its_team_or_role(self):
         self.assertEqual(parse_speaker("evi (bot): :eyes: Good job team."), Speaker("evi", "bot", True))
         self.assertTrue(parse_speaker("Front Desk (Bot): Lunch is here").is_bot)
 
@@ -71,13 +71,13 @@ class RealCorpus(unittest.TestCase):
             for message in split_messages(path.read_text(encoding="utf-8")).messages:
                 speaker = parse_speaker(message)
                 totals["messages"] += 1
-                totals["with_role"] += speaker.role is not None
+                totals["with_team_or_role"] += speaker.team_or_role is not None
                 totals["from_bots"] += speaker.is_bot
-                messages_per_bot_rule[bot_rule(speaker.name, speaker.role)] += 1
-        self.assertEqual(totals, {"messages": 5_741_020, "with_role": 762_083, "from_bots": 573_797})
+                messages_per_bot_rule[bot_rule(speaker.name, speaker.team_or_role)] += 1
+        self.assertEqual(totals, {"messages": 5_741_020, "with_team_or_role": 762_083, "from_bots": 573_797})
         del messages_per_bot_rule[None]
         self.assertEqual(messages_per_bot_rule,
-                         {"name_ends_in_bot": 573_157, "name_starts_with_bot": 444, "role_is_bot": 196})
+                         {"name_ends_in_bot": 573_157, "name_starts_with_bot": 444, "team_or_role_is_bot": 196})
 
 
 if __name__ == "__main__":

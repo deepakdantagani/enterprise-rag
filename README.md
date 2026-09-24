@@ -20,7 +20,7 @@ pipeline/                 active ingestion code (a Python package), pure functio
     corpus.py             SLACK-4: 58 zips -> data/slack/clean/ + _manifest.json, one event per file
     channel.py            SLACK-5: channel_of(text) -> Channel(name, route): line 1, export path, or unknown
     messages.py           SLACK-6: split_messages(text) -> Split(header, messages), cut at speaker lines outside code
-    speaker.py            SLACK-7: parse_speaker(line) -> Speaker(name, role, is_bot)
+    speaker.py            SLACK-7: parse_speaker(line) -> Speaker(name, team_or_role, is_bot)
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
 tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings
 tools/                    audit and measurement scripts, outside pipeline/: slack_profile.py (SLACK-0); planned PARSE-11, PARSE-14
