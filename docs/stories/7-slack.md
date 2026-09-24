@@ -48,7 +48,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-1  `unescape` | ✅ |
 | SLACK-2  `normalize_whitespace` | ✅ |
 | SLACK-3  events and a handler  *(shared by every source)* | ✅ |
-| SLACK-4  `write_clean_corpus` + manifest | ⬜ |
+| SLACK-4  `write_clean_corpus` + manifest | ✅ |
 | SLACK-5  `channel_of` | ⬜ |
 | SLACK-6  `split_messages` | ⬜ |
 | SLACK-7  `parse_speaker` | ⬜ |
@@ -399,20 +399,36 @@ APIs data contracts: none · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-4  `write_clean_corpus(archives_dir, clean_dir)` ⬜
+## SLACK-4  `write_clean_corpus(archives_dir, clean_dir)` ✅
 
-**Status** To do
+**Status** Done
 **As a** pipeline that has to prove which raw bytes produced which clean bytes
 **I want to** every thread cleaned once into `data/slack/clean/`, with a manifest beside it
 **So that** the cleaning step has the audit trail the Confluence one has
 
-Mirrors PARSE-2. One row per file: name, `raw_sha256`, `clean_sha256`, and which rules fired.
+`pipeline/slack/corpus.py`, run with `uv run python -m pipeline.slack.corpus`. It reads the
+58 zips directly, runs SLACK-1 then SLACK-2 on each thread, writes it under its own name, and
+writes `_manifest.json`: one row per file with name, `raw_sha256`, `clean_sha256` and the
+rules that fired. SLACK-1's rules get an `unescape_` prefix, because both stages have a
+`carriage_return` rule and they mean different things. It is the only module of the stage
+that touches disk. It imports no Confluence code: `pipeline/corpus.py` reads a folder, not
+zips, and writes Confluence manifest rows.
 
-**Library first (NFR-7):** the cleaning functions implement LlamaIndex's `Transformation`, so
-they run inside an `IngestionPipeline` and get its `IngestionCache` — a re-run skips every
-node+transformation pair it has already done, which is most of what a hand-written resume
-would do. The manifest stays anyway: the docstore tracks document identity, not which raw
-bytes produced which clean bytes.
+**The full run, measured:** 285,605 threads, 0 failed, 1.4 GB; 44 s into an empty folder, 67 s
+when it also replaces a previous run's folder. The manifest's per-rule
+totals equal the SLACK-1 and SLACK-2 corpus pins exactly: unescape_newline 8,334,
+unescape_quote 4,083, unescape_backslash 787, unescape_unicode 147, unescape_tab 36,
+unescape_carriage_return 19, unescape_slash 14, final_newline 236,927, trailing_whitespace
+66,893, indented_speaker 1,489, blank_line_run 476, carriage_return 269,
+non_breaking_space 55.
+
+**Library first, and why not `IngestionPipeline` here (NFR-7).** The story planned to run the
+cleaners as LlamaIndex `Transformation`s inside an `IngestionPipeline` with an
+`IngestionCache`. We did not: this stage's output is files and a manifest, not nodes;
+`IngestionCache` would hold all 285,605 threads in memory to save a rerun of about a minute;
+and the manifest already proves which raw bytes made which clean bytes. The pipeline belongs
+where nodes first exist (SLACK-10). Observability does use the library: one
+`@dispatcher.span` over the stage and SLACK-3's events on it.
 
 ### Acceptance Criteria
 
@@ -421,39 +437,54 @@ Scenario: the corpus is written once
   Given the 58 zip slices
   When I run write_clean_corpus
   Then data/slack/clean/ holds 285,605 files under their original names
-  And data/slack/clean/_manifest.json holds one row per file
+  And data/slack/clean/_manifest.json holds one row per file, in name order
 
 Scenario: the manifest records what happened
   Then each row carries raw_sha256, clean_sha256 and the rules that fired
   And the per-rule totals match the counts in SLACK-1 and SLACK-2
 
-Scenario: re-running changes nothing
-  When I run it a second time
-  Then every clean_sha256 is unchanged
+Scenario: a file that fails is an event, and the run goes on
+  Given a thread that is not valid UTF-8
+  Then a FileFailed event names it, it gets no clean file and no manifest row
+  And StageDone reports files and failed
+
+Scenario: re-running changes nothing, and neither does logging
+  When I run it a second time, with or without a log attached
+  Then every row is unchanged
 ```
 
 ### Example with real data
 
 ```json
-{ "name": "dsid_0161f905...__1719998880-cred-cleanup-rotation-playbook-checkin.txt",
-  "raw_sha256": "sha256:...",
-  "clean_sha256": "sha256:...",
-  "rules": ["unescape_newline", "trailing_whitespace", "final_newline"] }
+{"name": "dsid_919525fd7c2944db922e298431b6e366__1814012345-morning-riddle-and-wfh-poll.txt",
+ "raw_sha256": "...", "clean_sha256": "...",
+ "rules": {"unescape_newline": 17, "unescape_quote": 8, "final_newline": 1}}
 ```
+
+and its event in `data/slack/logs/clean-<time>-<id>.jsonl`: `bytes_in` 1,324, `bytes_out` 1,300.
+
+**Reviewed** by a code-review agent. It confirmed that the real run was correct: 285,605 unique names, and
+manifest rows, files on disk and `clean_sha256` values all agree. It found four bugs that the
+corpus does not trigger today, now fixed with a test each:
+- a repeated name overwrote the first file; it is now a `DuplicateName` failure
+- files from an earlier run survived; the staging folder swap fixes this
+- a corrupt zip member or zip stopped the whole run; it is now a `BadZipFile` failure for that entry
+- a half-written file could stay on disk; it is now deleted
+A bug in the cleaners still stops the run on purpose: across 285k files, a broad `except`
+would hide it.
 
 ### Non-functional Requirements
 
 Shared list, plus:
 
-- **Observable:** this is the first stage that runs at corpus scale, so it is the first caller
-  of the SLACK-3 dispatcher — one span for the stage, one event per file, one summary at the
-  end. A failed file is an event and the run continues.
-- **Restartable (NFR-3):** a second run skips work already done, via the `IngestionCache`, and
-  ends with identical `clean_sha256` values.
-- **Maintainable:** the only module in the cleaning stage allowed to touch disk. SLACK-1 and
-  SLACK-2 stay pure, which is what makes them testable on strings.
-- Plus a golden fingerprint over the manifest in the Confluence pattern, so a later refactor
-  that changes one byte of one file fails a test.
+- **Observable:** one span for the stage, one event per file, one StageDone at the end. The
+  entry point writes the log to `data/slack/logs/`.
+- **Restartable (NFR-3):** a rerun rewrites every file with identical bytes. It writes into
+  `clean.staging/` and swaps it in at the end, so `clean/` never mixes two runs and always holds
+  exactly the files its manifest lists; a crash mid-run leaves the previous `clean/` intact.
+- **Maintainable:** the only disk-touching module of the stage; SLACK-1 and SLACK-2 stay pure.
+- **Golden fingerprint:** `test_slice_0003_fingerprint` hashes the manifest rows of one real
+  slice (5,000 threads), so a later change to one byte of one file fails a test.
 
 ### Dependencies
 
