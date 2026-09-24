@@ -234,9 +234,9 @@ Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## GMAIL-3  split_messages: cut a thread into messages  ⬜
+## GMAIL-3  split_messages: cut a thread into messages  ✅
 
-**Status:** To do.
+**Status:** Done. Real corpus: 578,254 blocks start with `From:`, 189 threads give one whole-body block (578,443 blocks in all), 609 threads have a preamble, 0 non-blank lines lost. Signature is `(title, preamble, blocks)`: option A chosen, a plain cut that keeps everything. The Date-before-From and marker cases go to GMAIL-3b.
 
 **Background**
 The only structural signal in this corpus. 92 threads of 121,390 contain a Markdown
@@ -250,11 +250,11 @@ their `dsid` is unreachable.
 **So that** each message can become its own embedded unit
 
 **Acceptance Criteria (Gherkin)**
-- Given a clean thread, When `split_messages` runs, Then it returns `(title, blocks)` where `title` is line 1 and each block starts with `From:` at a line start
-- Given a thread with 5 `From:` lines, Then 5 blocks are returned, and concatenating them with the title and separators reproduces every non-blank line of the file
+- Given a clean thread, When `split_messages` runs, Then it returns `(title, preamble, blocks)` where `title` is line 1, `preamble` is the text between the title and the first `From:`, and each block starts with `From:` at a line start
+- Given a thread with 5 `From:` lines, Then 5 blocks are returned, and the title, preamble and blocks together hold every non-blank line of the file
 - Given a `From:` inside a quoted block or mid-line, Then it does **not** start a new block
 - Given one of the 189 threads with no `From:`, Then one block is returned holding the whole body, and the caller can tell it apart (no headers parse)
-- Given the corpus, Then the block count sums to 578,254
+- Given the corpus, Then 578,254 blocks start with `From:`, plus 189 whole-body blocks, 578,443 in all
 
 **Example with real data**
 
@@ -280,6 +280,17 @@ codebase is allowed to look for `From:`.
 rows: `no_from_thread` (expect 189) and `from_in_quote` (expect 0 new blocks).
 
 **Dependencies** APIs data contracts: GMAIL-1a · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## GMAIL-3b  Lines that a plain cut leaves in the wrong block  ⬜
+
+**Status:** To do. Sized after GMAIL-4 and GMAIL-5, which show how much it matters.
+
+A plain cut at `From:` (GMAIL-3) leaves three real cases as they are, measured on the clean threads:
+- **`Date:` or `Sent:` on the line just before `From:`:** 826 blocks in 181 threads. The date sits in the preamble or the previous block, so GMAIL-4 finds no `Date` for that email.
+- **A marker such as `---Message 2/4---` just before a `From:`:** 731 blocks in 199 threads. The marker ends up at the end of the previous block.
+- **Preamble text:** 609 threads: 173 a `Date:` line, 181 a marker, 269 other text such as a one-paragraph summary. GMAIL-3 keeps all of it in `preamble`.
 
 ---
 
