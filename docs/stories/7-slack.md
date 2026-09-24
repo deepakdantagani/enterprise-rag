@@ -11,7 +11,7 @@ Slack-specific glossary (the shared one is in [stories.md](../stories.md)):
 - **Message**: one speaker's turn inside a thread. May span several lines and may contain a
   fenced code block with blank lines inside it.
 - **Speaker line**: the prefix that opens a message, `Aisha (CS): ` or `build-bot: `. Name,
-  optional role in brackets, colon, space.
+  optional team or role in brackets or after ` - `, colon, space.
 - **dsid**: the document id in the filename, `dsid_<32 hex>__<unix_ts>-<slug>.txt`. Unique
   across all 285,605 files, so it is the id. The timestamp beside it is **not** a date: only
   73,578 distinct values cover the corpus, 1,063 files share `1765432100`, the years run from
@@ -51,7 +51,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-4  `write_clean_corpus` + manifest | ✅ |
 | SLACK-5  `channel_of` | ✅ |
 | SLACK-6  `split_messages` | ✅ |
-| SLACK-7  `parse_speaker` | ⬜ |
+| SLACK-7  `parse_speaker` | ✅ |
 | SLACK-8  `parse_thread` + truth set | ⬜ |
 | SLACK-9  `chunk_thread` | ⬜ |
 | SLACK-10  `to_text_node` | ⬜ |
@@ -684,45 +684,91 @@ APIs data contracts: SLACK-4, SLACK-2 (`code_fence_flags`) · Service Bus: N/A �
 
 ---
 
-## SLACK-7  `parse_speaker(line) -> (name, role, is_bot)` ⬜
+## SLACK-7  `parse_speaker(line) -> Speaker(name, team_or_role, is_bot)` ✅
 
-**Status** To do
+**Status** Done
 **As a** design that treats a role taxonomy as signal real Slack does not have
-**I want to** the speaker, their role and whether they are a bot, off the message's first line
+**I want to** the speaker, their team or role and whether they are a bot, off the message's first line
 **So that** a chunk can say who spoke and a bot's output can be told from a human's
+
+**Input.** The first line of one message from `split_messages` (SLACK-6). SLACK-6 has already
+decided the line opens a message, so `parse_speaker` never sees a body line: whether
+`Due: 2026-04-02` is a speaker or a label is SLACK-6's call (its `NOT_SPEAKERS` table), and
+SLACK-2 has already straightened an indented speaker line such as ` tom_ae:`. This story only
+reads the parts out of a line that is known to be a speaker line.
+
+**The three shapes SLACK-6 accepts**, so the three this story must read:
+
+| shape | real line | name | team_or_role |
+|---|---|---|---|
+| `Name: ` | `tom_ae: FYI customer claims ...` | `tom_ae` | `None` |
+| `Name (Role): ` | `Aisha (CS): Hey team` | `Aisha` | `CS` |
+| `Name - Team: ` | `Noah - AE: Verdigris wants a 10-day POC ...` | `Noah` | `AE` |
+
+`pipeline/slack/speaker.py`. Pure: one message (or its first line) in, `Speaker(name,
+team_or_role, is_bot)` out. It reuses SLACK-6's `SPEAKER_AT_LINE_START`, now with named groups
+`name`/`after_dash`/`in_brackets`, so the two stories cannot disagree on the shapes. Every one of the
+5,741,020 messages parses.
+
+**Shapes, measured (messages):** name only 4,978,937 · in brackets 744,702 · after a dash
+17,247 · both 134. 762,083 messages carry a `team_or_role`.
+
+**Decisions:**
+- **`team_or_role`, not `role`.** What sits beside the name is kept as written and not
+  classified. It mixes teams (`CS` 21,799 messages, `People Ops` 21,193), job roles (`PM`
+  23,533, `AE` 15,723), duties (`oncall` 48,853) and employers (`Customer - Acme Corp:` gives
+  `Acme Corp`) across 7,334 distinct values; `SRE` and `Eng` could be either. Sorting them would be its own story, worth
+  it only if SLACK-12 shows filtering by team helps.
+- Both brackets and a dash (`Dan - HelixEdge (SI):`, 134): the brackets win. `HelixEdge` is
+  not lost, since the speaker line stays in the message text.
+- Team first (`Legal - Priya:`, roughly 800 by a first-name check, not pinned): read as
+  written, name `Legal`. Nothing in the line says which part is the person. SLACK-8's truth
+  set can measure whether it matters.
+- A line that is not a speaker line raises `ValueError`: it would mean a caller bug, since
+  SLACK-6 only hands over speaker lines.
+- Bots, `BOT_RULES`, first rule that fires, 573,797 messages in all: `name_ends_in_bot`
+  (`deploy-bot`, `Incident Bot`, `DeployBot`) 573,157 · `name_starts_with_bot` (`bot-ci`) 444
+  · `team_or_role_is_bot` (`evi (bot):`) 196. No person named like a bot was found; about 114 bot
+  messages are missed (`BotCI:`, `bench-bot-2:`, `X - metrics-bot:`), 0.02%.
+
+**Reuse.** No LlamaIndex component reads a chat speaker line; `SlackReader` gets the user from
+the live API. The regex is SLACK-6's.
+
+**Reviewed** by a code-review agent that checked the corpus: no correctness bugs. It corrected
+two docstring claims (the team-first count, a false `talbot` false positive) and asked for
+tests of the team-first decision, `bot_` and `(Bot)`; all done.
 
 ### Acceptance Criteria
 
 ```gherkin
-Scenario: name with a role
+Scenario: name with a team or role in brackets
   Given the line "Aisha (CS): Hey team"
   Then parse_speaker returns ("Aisha", "CS", False)
+
+Scenario: name with a team after a dash
+  Given the line "Ruth - Customer Success: Quick sync from today's all-hands Q&A"
+  Then parse_speaker returns ("Ruth", "Customer Success", False)
 
 Scenario: a bot
   Given the line "questionnaire-bot: Received nova-care_vra_2026.pdf"
   Then parse_speaker returns ("questionnaire-bot", None, True)
 
 Scenario: naming styles that appear in the corpus
-  Given the lines "jen_sales: ...", "alex-cust: ...", " tom_ae: ..."
-  Then each returns its name with the leading space stripped and role None
-
-Scenario: not a speaker line
-  Given the line "Due: 2026-04-02"
-  Then parse_speaker returns None
+  Given the lines "jen_sales: ...", "alex-cust: ...", "tom_ae: ..."
+  Then each returns its name as written and team_or_role None
 ```
 
-The last scenario is the sharp edge: a body line such as `Due: 2026-04-02` or
-`status: pending` also contains a colon. A name is at most 40 characters, has no sentence
-punctuation, and the colon must be followed by a space.
+A line SLACK-6 would not have cut on is outside this contract. The check that SLACK-6 cut in
+the right places (labels such as `Due:` left inside a message) belongs to SLACK-8.
 
 ### Example with real data
 
-| line | name | role | is_bot |
+| line | name | team_or_role | is_bot |
 |---|---|---|---|
 | `Aisha (CS): Hey team` | `Aisha` | `CS` | false |
-| `build-bot: nightly-personas deployed` | `build-bot` | `None` | true |
-| ` tom_ae: FYI customer claims ...` | `tom_ae` | `None` | false |
-| `Due: 2026-04-02` | — | — | — |
+| `Priya - Design: Notes on the mock ...` | `Priya` | `Design` | false |
+| `build-bot: canary run completed ...` | `build-bot` | `None` | true |
+| `tom_ae: FYI customer claims ...` | `tom_ae` | `None` | false |
 
 ### Non-functional Requirements
 
@@ -730,7 +776,7 @@ Shared list.
 
 ### Dependencies
 
-APIs data contracts: SLACK-4 · Service Bus: N/A · Database: N/A · UI: N/A
+APIs data contracts: SLACK-6 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
@@ -778,9 +824,9 @@ Scenario: the truth set holds
   "participants": ["Aisha", "Ben", "Priya", "Tom", "questionnaire-bot"],
   "message_count": 16,
   "messages": [
-    {"turn": 0, "speaker": "Aisha", "role": "CS", "is_bot": false,
+    {"turn": 0, "speaker": "Aisha", "team_or_role": "CS", "is_bot": false,
      "text": "Hey team - NovaCare sent an updated vendor risk assessment..."},
-    {"turn": 4, "speaker": "questionnaire-bot", "role": null, "is_bot": true,
+    {"turn": 4, "speaker": "questionnaire-bot", "team_or_role": null, "is_bot": true,
      "text": "Received nova-care_vra_2026.pdf. Extracted fields: ..."}
   ] }
 ```
