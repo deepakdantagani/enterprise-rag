@@ -1,0 +1,6 @@
+{
+ "files": 121390,
+ "escaped": 27870,
+ "fingerprint_sha256": "d636df5957e5f8bcce3c6471ef6bb5f4f46354e435eba3da20b2c02f53d70bd2",
+ "how": "sha256 over lines '<file> <clean_sha256>' from _manifest.json, in file order"
+}
