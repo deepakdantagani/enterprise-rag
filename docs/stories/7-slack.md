@@ -56,7 +56,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-8  `parse_thread` | ✅ |
 | SLACK-8b  truth set | ✅ |
 | SLACK-6b  label words from the truth set | ✅ |
-| SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ⬜ |
+| SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ✅ |
 | SLACK-10  `SlackMessageChunker` | ⬜ |
 | SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
 | SLACK-12  recall@20 on the benchmark questions | ⬜ |
@@ -1011,9 +1011,9 @@ APIs data contracts: SLACK-6, SLACK-8b · Service Bus: N/A · Database: N/A · U
 
 ---
 
-## SLACK-9  `SlackThreadParser`: a custom LlamaIndex `NodeParser` ⬜
+## SLACK-9  `SlackThreadParser`: a custom LlamaIndex `NodeParser` ✅
 
-**Status** To do
+**Status** Done
 **As a** pipeline that runs inside LlamaIndex's `IngestionPipeline`
 **I want to** a `NodeParser` that turns one clean-thread `Document` into one `TextNode`
 **So that** our parsing rules run as a library `Transformation`, and everything after the node is library code
@@ -1054,6 +1054,35 @@ inside `IngestionPipeline`, and three things must be handled here or in SLACK-11
    `file_metadata=lambda path: {"file_name": Path(path).name}`, verified to keep only the name;
    this story still excludes anything it did not set.
 3. The Document id is a random UUID by default (see SLACK-11).
+
+**Built.** `pipeline/slack/nodes.py`: `SlackThreadParser(NodeParser)` implements the one
+method LlamaIndex asks for, `_parse_nodes`; LlamaIndex's `get_nodes_from_documents` calls it
+and then tidies up (source link, char offsets, copying the Document's metadata onto the node).
+
+**Measured, all 285,605 threads:** one node each, 285,605 distinct node ids, `channel` left out
+on 9,053 (unknown), empty `participants` on 64 (no message), and the thread's own id in no
+embedded text.
+
+**Decisions:**
+- **Node text** is the thread minus its channel line and minus any line that is only the
+  thread's own id (`dsid_02f44014...`: line 1 in 151 threads, line 3 in 7 more). Everything
+  else before the first message stays: 157 threads carry real text there (a summary, an odd
+  speaker line such as `emily(sec):`) and 64 have no message at all, so a node built from the
+  messages alone would drop content in 221 threads.
+- **Embedded metadata** is `channel` and `participants` (names only; roles are already in the
+  speaker lines). `doc_id` is hidden from the embedding but shown to the LLM, to cite.
+- **Every key of the Document is hidden too.** LlamaIndex copies the Document's metadata onto
+  the node, and `SimpleDirectoryReader`'s defaults (`file_path`, `file_size`, `creation_date`,
+  `last_modified_date`) would otherwise prefix every vector with the file name, the fake
+  timestamp and file-system dates. Found by the review; the library test now uses the reader's
+  defaults.
+- **Node id** `sha256(doc_id:first_turn:last_turn)`, the same on every run; SLACK-10 reuses it.
+  A thread with no message has turns `None`: flat metadata allows it, but check the vector
+  store chosen in SLACK-11 accepts `None`.
+
+**Reviewed** by a code-review agent against the installed library source: our keys win the
+metadata merge, the source link is kept, a single node gets no prev/next links, and the
+docstore dedupes and upserts by the Document id (the dsid), not by our node id.
 
 ### Acceptance Criteria
 
