@@ -52,7 +52,8 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-5  `channel_of` | ✅ |
 | SLACK-6  `split_messages` | ✅ |
 | SLACK-7  `parse_speaker` | ✅ |
-| SLACK-8  `parse_thread` + truth set | ⬜ |
+| SLACK-8  `parse_thread` | ✅ |
+| SLACK-8b  truth set | ⬜ |
 | SLACK-9  `chunk_thread` | ⬜ |
 | SLACK-10  `to_text_node` | ⬜ |
 | SLACK-11  Embed + BM25 hybrid index | ⬜ |
@@ -630,7 +631,7 @@ SLACK-9 for over-long threads.
 dump, a lone dsid).
 
 **Reviewed** by a code-review agent that sampled real threads, since there is no truth set
-yet (SLACK-8 builds one). Precision of message starts was 298 of 300. It found about 54,000
+yet (SLACK-8b builds one). Precision of message starts was 298 of 300. It found about 54,000
 missed speaker lines (lowercase full names, `Name - Team`, unclosed fences, 33 label words);
 all are fixed, each with a test.
 
@@ -722,7 +723,7 @@ team_or_role, is_bot)` out. It reuses SLACK-6's `SPEAKER_AT_LINE_START`, now wit
 - Both brackets and a dash (`Dan - HelixEdge (SI):`, 134): the brackets win. `HelixEdge` is
   not lost, since the speaker line stays in the message text.
 - Team first (`Legal - Priya:`, roughly 800 by a first-name check, not pinned): read as
-  written, name `Legal`. Nothing in the line says which part is the person. SLACK-8's truth
+  written, name `Legal`. Nothing in the line says which part is the person. SLACK-8b's truth
   set can measure whether it matters.
 - A line that is not a speaker line raises `ValueError`: it would mean a caller bug, since
   SLACK-6 only hands over speaker lines.
@@ -759,7 +760,7 @@ Scenario: naming styles that appear in the corpus
 ```
 
 A line SLACK-6 would not have cut on is outside this contract. The check that SLACK-6 cut in
-the right places (labels such as `Due:` left inside a message) belongs to SLACK-8.
+the right places (labels such as `Due:` left inside a message) belongs to SLACK-8b.
 
 ### Example with real data
 
@@ -780,16 +781,97 @@ APIs data contracts: SLACK-6 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-8  `parse_thread(path) -> Thread` + the truth set ⬜
+## SLACK-8  `parse_thread(file_name, text) -> Thread` ✅
+
+**Status** Done
+**As a** pipeline that chunks and indexes threads
+**I want to** one record per thread: its id, slug, channel, header and messages with speakers
+**So that** later stories read fields instead of re-parsing text
+
+`pipeline/slack/thread.py`. Pure, like SLACK-5, 6 and 7: the clean file's name and text in,
+`Thread` out; the caller reads the file (SLACK-4 is the only story that touches disk). It
+glues `channel_of` (SLACK-5), `split_messages` (SLACK-6) and `parse_speaker` (SLACK-7).
+
+| field | from | notes |
+|---|---|---|
+| `doc_id` | file name, `dsid_<32 hex>__` | unique across 285,605 files; the id everywhere downstream |
+| `slug` | file name, after the timestamp and `-` | `None` for the 6,199 files that have none (`dsid_…__2987654321.txt`, 26 of them ending `_1`); one name lacks the dash (`__1931234000Region-…` gives `Region-…`) |
+| `channel` | `channel_of` | `Channel(name, route)`, `unknown` included |
+| `header` | `split_messages` | text before the first message |
+| `messages` | `split_messages` + `parse_speaker` | `Message(turn, speaker, text)`; `text` is the whole message, speaker line included |
+| `participants` | the speakers | distinct names in the order they first speak |
+
+**Not kept: the timestamp in the file name.** It is not a time (design section 5: keyboard
+walks, years 2001 to 2513), so it is not a field anyone could misuse as one.
+
+**The text survives whole:** `header + "".join(m.text for m in messages)` is the file text,
+byte for byte.
+
+**Result, all 285,605 files:** every name parses, 285,605 distinct `doc_id`s, 5,741,020
+messages, 6,199 without a slug; every thread round-trips. Pinned in a real-data test.
+
+**Decisions:** the story was split; the truth set is SLACK-8b, so this PR stays one function.
+The signature takes the name and text instead of a path, to stay pure. `messages` and
+`participants` are lists, like SLACK-6's `Split`; a `Thread` is not hashable, which nothing
+needs yet.
+
+**Reviewed** by a code-review agent that ran the name pattern over every file: no
+correctness bugs; it asked for the exact em dash in the example, the odd slug shapes in the
+field table, and a stronger no-timestamp test; all done.
+
+### Acceptance Criteria
+
+```gherkin
+Scenario: one thread becomes one record
+  When I parse dsid_a4e702bd...__1793045678-novacare-vra-check.txt
+  Then the record has doc_id "a4e702bd03254699b0e7bed0000972ab", slug "novacare-vra-check",
+       channel "customer-success", 16 messages and participants
+       Aisha, Priya, Ben, Tom, questionnaire-bot
+
+Scenario: a file name without a slug
+  When I parse dsid_5badc87efd7a49128d67b0234f809fa1__2987654321.txt
+  Then slug is None
+
+Scenario: a thread with no speaker line
+  Then messages and participants are empty and the header is the whole text
+```
+
+### Example with real data
+
+```json
+{ "doc_id": "a4e702bd03254699b0e7bed0000972ab",
+  "slug": "novacare-vra-check",
+  "channel": {"name": "customer-success", "route": "line1"},
+  "header": "customer-success\n\n",
+  "participants": ["Aisha", "Priya", "Ben", "Tom", "questionnaire-bot"],
+  "messages": [
+    {"turn": 0, "speaker": {"name": "Aisha", "team_or_role": "CS", "is_bot": false},
+     "text": "Aisha (CS): Hey team — NovaCare sent an updated vendor risk assessment..."},
+    {"turn": 4, "speaker": {"name": "questionnaire-bot", "team_or_role": null, "is_bot": true},
+     "text": "questionnaire-bot: Received nova-care_vra_2026.pdf. Extracted fields: ..."}
+  ] }
+```
+
+### Non-functional Requirements
+
+Shared list. Pure; the SLACK-5/6/7 corpus pins must not move.
+
+### Dependencies
+
+APIs data contracts: SLACK-5, SLACK-6, SLACK-7 · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## SLACK-8b  The truth set ⬜
 
 **Status** To do
 **As a** pipeline that will trust the parser 285,605 times
-**I want to** one record per thread, and ~50 hand-checked threads that prove the parser right
+**I want to** ~50 hand-checked threads that prove `parse_thread` right
 **So that** a parsing regression fails a test instead of quietly poisoning the index
 
-Follows PARSE-17's pattern: hand-decide the correct output on real files first, then assert
-against it. Sample the 50 across both layouts, the `unknown` channel case, threads with
-fenced code, and the bot-heavy ones.
+Split out of SLACK-8 so each PR stays one function. Follows PARSE-17's pattern: hand-decide
+the correct output on real files first, then assert against it. Sample the 50 across both
+layouts, the `unknown` channel case, threads with fenced code, and the bot-heavy ones.
 
 **Carried over from SLACK-6: labels the table does not know yet.** `split_messages` blocks
 the 112 label words in `NOT_SPEAKERS`, but a new one (`pin:`, `endpoint:`, `Avoid:`) still
@@ -801,34 +883,17 @@ stands out among the one-off bots (`deploy-bot`, 39,740) and costs one word in t
 Requiring every speaker to appear twice was rejected: it would drop about 295,000 real
 one-off messages, mostly bots.
 
+**Carried over from SLACK-7: team-first speaker lines.** `Legal - Priya:` is read as written,
+name `Legal`, `team_or_role` `Priya` (roughly 800 lines by a first-name check, not pinned).
+Measure on the truth set how often a line is the wrong way round, and decide whether a rule
+is worth it.
+
 ### Acceptance Criteria
 
 ```gherkin
-Scenario: one thread becomes one record
-  When I parse dsid_a4e702bd...__1793045678-novacare-vra-check.txt
-  Then the record has channel "customer-success", thread_ts 1793045678,
-       slug "novacare-vra-check", 5 participants and 16 messages
-
 Scenario: the truth set holds
   Given 50 hand-checked threads under tests/golden/slack_truth.json
   Then parse_thread reproduces every message boundary and speaker in them
-```
-
-### Example with real data
-
-```json
-{ "doc_id": "a4e702bd03254699b0e7bed0000972ab",
-  "channel": "customer-success",
-  "thread_ts": 1793045678,
-  "slug": "novacare-vra-check",
-  "participants": ["Aisha", "Ben", "Priya", "Tom", "questionnaire-bot"],
-  "message_count": 16,
-  "messages": [
-    {"turn": 0, "speaker": "Aisha", "team_or_role": "CS", "is_bot": false,
-     "text": "Hey team - NovaCare sent an updated vendor risk assessment..."},
-    {"turn": 4, "speaker": "questionnaire-bot", "team_or_role": null, "is_bot": true,
-     "text": "Received nova-care_vra_2026.pdf. Extracted fields: ..."}
-  ] }
 ```
 
 ### Non-functional Requirements
@@ -837,7 +902,7 @@ Shared list.
 
 ### Dependencies
 
-APIs data contracts: SLACK-5, SLACK-6, SLACK-7 · Service Bus: N/A · Database: N/A · UI: N/A
+APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 

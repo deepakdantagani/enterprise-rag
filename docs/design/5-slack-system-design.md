@@ -32,7 +32,7 @@
 | FR-5 | Every thread resolves to a channel, or to `unknown` when the corpus does not carry one | SLACK-5 |
 | FR-6 | Every thread splits into its messages, in both export layouts, without cutting a message | SLACK-6 |
 | FR-7 | Every message yields its speaker, team or role, and whether the speaker is a bot | SLACK-7 |
-| FR-8 | Every thread becomes one record: channel, participants, ordered messages, doc id | SLACK-8 |
+| FR-8 | Every thread becomes one record: channel, participants, ordered messages, doc id | SLACK-8 (record), SLACK-8b (truth set) |
 | FR-9 | A thread becomes one chunk, split on a message boundary only when over budget | SLACK-9 |
 | FR-10 | A chunk becomes a `TextNode` carrying channel and participants into the embedded text | SLACK-10 |
 | FR-11 | Chunks are embedded and indexed for both dense and lexical retrieval | SLACK-11 |
