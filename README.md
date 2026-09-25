@@ -23,7 +23,7 @@ pipeline/                 active ingestion code (a Python package), pure functio
     speaker.py            SLACK-7: parse_speaker(line) -> Speaker(name, team_or_role, is_bot)
     thread.py             SLACK-8: parse_thread(file_name, text) -> Thread(doc_id, slug, channel, header, messages, participants)
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
-tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings
+tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings; fixtures/slack_truth/: 50 real Slack threads with hand-decided message starts (SLACK-8b)
 tools/                    audit and measurement scripts, outside pipeline/: slack_profile.py (SLACK-0); planned PARSE-11, PARSE-14
 docs/stories.md           story rules + index; stories in docs/stories/<n>-<stage>.md
 docs/design/              system designs: 1-parser, 2-chunker

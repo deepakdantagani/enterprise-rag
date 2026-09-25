@@ -1,0 +1,25 @@
+eng-releases
+
+deploy-bot: Build pipeline triggered for release/canary - tag=canary-2026-03-20-7, commit=7f3a2d1. Env=canary. Steps: lint -> unit -> integration -> package. CI: https://ci.redwood/internal/7f3a2d1 :rocket:
+ci-bot: Lint job queued on runner lint-04
+ci-bot: Lint failed (exit 1) — 3 files with stylelint errors. Summary: no-trailing-spaces x3, max-line-length x1. Full log: https://ci.redwood/internal/7f3a2d1/lint
+mike_chen: @anya i think this is the rule bump we saw earlier when stylelint moved to 14.x — no-trailing-spaces got stricter
+anya: yep, our package.json pulled ^14.0.0. Options: pin back to 13.7.x, or add an override in .stylelintrc to turn off that rule.
+sara: mid-release — what's the fastest path? revert the merge or hotfix and rerun?
+mike_chen: revert slows everything. I can open a tiny hotfix PR that pins stylelint to 13.7.1 and updates lockfile, rerun CI. Should be a <5min change.
+deploy-bot: Lint artifacts uploaded: artifacts/lint/2147654321.tar.gz
+anya: proposed patch (one-line change):
+```diff
+-  "stylelint": "^14.0.0",
++  "stylelint": "13.7.1",
+```
+sara: ok hold rollout. mike, open PR named hotfix/lint-pin and tag this thread. We'll wait for CI green. :eyes:
+mike_chen: PR opened: https://github.com/redwood/inference/pull/5212 — CI triggered (hotfix/lint-pin)
+ci-bot: Re-run triggered by mike_chen for PR #5212. New pipeline id 2147654335
+ci-bot: Lint step passed ✅
+ci-bot: Unit tests started
+ci-bot: Unit tests passed ✅ — integration queue next
+ci-bot: All checks passed. Build artifact created: s3://redwood-builds/canary/7f3a2d1.tar.gz
+deploy-bot: Canary deploy resumed for tag canary-2026-03-20-7. Starting rollout to canary nodes (batch 1/3)
+anya: noted — pinned to 13.7.1. Follow-up: i'll update Renovate/renovate.json so it doesn't auto-upgrade stylelint to ^14 without a config change.
+mike_chen: thanks everyone — monitoring canary metrics now. :thumbsup:

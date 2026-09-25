@@ -1,0 +1,86 @@
+incidents
+
+incident-bot: :rotating_light: ALERT: SLO breach detected for /v1/generate (region: us-west-2). p99 latency spike above 1s for the last 5m. Streaming stalls observed. Auto-incident created. Thread: 1871112222
+
+alex: Acknowledging, paging oncall. @lee can you take first look? Looks correlated with recent traffic spike + several long-context requests.
+
+lee: On it. digging into traces and kv cache metrics. attaching quick query results.
+
+lee: ```
+metric: model_inference.latency.p99: 1450ms (5m avg)
+metric: model_inference.latency.p95: 380ms
+metric: kv_cache.evictions.rate: 3200/min (baseline 120/min)
+metric: kv_cache.size_per_shard: [67MB, 3MB, 0.5MB, 70MB]  <-- high skew
+logs: streaming stall detected at decode step for request id=rc_9a1c
+```
+
+lee: Initial hypothesis: KV cache fragmentation/pressure causing eviction cascades. Some shards are full while others underutilized -> eviction thrash when large-context requests land on hot shards. Also we see prefill rate >> decode rate for some streaming clients (prefill bursts queuing up and causing tail stalls).
+
+maria: Noted. Any immediate customer impact? p99 for the endpoint is failing SLOs so we should prepare an RCA+customer note. Which customers are affected?
+
+lee: From sampling, ~2.8% of requests in last 10m exceeded 1s; top affected tenants: acme-inc (heavy long-context), beta-chat (streaming lots of short bursts), internal-eval.
+
+sam: For mitigation: we can do a quick config flip to reduce prefill concurrency and increase kv_cache_shard_count for the pool. Propose:
+1) route streaming traffic to smaller model variant (fallback-model-medium) for 15m
+2) set prefill.max_concurrency=2 for the affected route
+3) bump kv_cache.shards from 4 -> 8 (requires rolling restart of that worker pool)
+
+sam: Commands (internal ops API):
+```bash
+# route to fallback variant
+curl -X POST "https://control-plane.local/api/v1/routes/route-xyz/override" -d '{"model":"fallback-model-medium","reason":"mitigate kv thrash"}' -H "Authorization: Bearer $TOKEN"
+
+# reduce prefill concurrency
+curl -X PATCH "https://control-plane.local/api/v1/routes/route-xyz/config" -d '{"prefill":{"max_concurrency":2}}' -H "Authorization: Bearer $TOKEN"
+```
+
+sam: Rolling restart command for shard compaction (k8s):
+```bash
+kubectl -n inference rollout restart deployment/model-worker-pool-7  # target pool in us-west-2
+```
+
+lee: I'll apply the prefill change now and watch. If we still see holes, I'll kick the rolling restart.
+
+alex: Please post back with short customer-facing summary once we have triage. Also add me when you hand off.
+
+lee: Applied prefill throttle. monitoring...
+
+lee: 2m after change: p99 dropped to 820ms, p95 steady at 360ms, kv_cache.evictions.rate down to 400/min. Streaming stalls reduced in sampled traces.
+
+maria: Good improvement. Customer impact assessment draft:
+- Impact window: 2026-03-14T03:47:02Z -> ongoing (mitigated)
+- Affected routes: /v1/generate (streaming enabled)
+- Estimated affected requests: ~2.8% of total in window (~3.4k requests)
+- High-priority tenants impacted: acme-inc (some user sessions experienced stalls), beta-chat (partial stream stalls)
+- Action taken: throttled prefill concurrency, routed heavy streams to fallback-model-medium, scheduled rolling restart of model-worker-pool-7 for shard compaction
+
+maria: ETA to full resolution (post-compaction): ~20-30m assuming restart finishes cleanly. I'll prepare a brief for support+acct teams.
+
+lee: Starting rolling restart now. Will watch for compaction logs.
+
+incident-bot: Deploy started: rollout restart for deployment/model-worker-pool-7 by lee at 1871112290.
+
+lee: Logs during restart snippet:
+```
+[2026-03-14T03:50:12Z] worker-4: kv_cache.compaction.started shard=2
+[2026-03-14T03:52:01Z] worker-4: kv_cache.compaction.completed reclaimed=42MB
+[2026-03-14T03:54:05Z] worker-6: kv_cache.compaction.started shard=5
+```
+
+lee: After compaction and restart: p99 = 460ms, p95 = 320ms, evictions ~40/min. Looks like fragmentation was the main driver.
+
+alex: Great work. Please prepare an action list for follow-up: longer-term fixes (better shard balancing, adaptive prefill controls, eviction backoff, telemetry to detect skew earlier). Assign owners.
+
+maria: I'll own customer comms and the postmortem write-up. Lee, can you own the live mitigation runbook updates plus a ticket for adaptive sharding? Sam, please follow up on library-level prefill throttling experiments.
+
+lee: Will do. Draft mitigation runbook item: detect shard skew if max_shard_util / median_shard_util > 4 for 5m -> auto-increase shards or trigger compaction. Add metric alert: kv_cache.shard_skew_ratio.
+
+sam: I'll add experiment ticket: PRE-FILL-47 (adaptive prefill based on decode throughput).
+
+oncall-bot: Handoff reminder: Night oncall is @sam in 30m. Tagging thread for visibility and adding to incident log.
+
+maria: Postmortem follow-up scheduled: 2026-03-14 10:00 UTC. I'll invite eng-runtime, eng-sre, and product.
+
+alex: Thanks all. If anything regresses, re-open paging. Otherwise we’ll close this in the next hour after monitoring window. :thumbsup:
+
+lee: closing monitoring window at 1871112350. Will file RCA and link here.

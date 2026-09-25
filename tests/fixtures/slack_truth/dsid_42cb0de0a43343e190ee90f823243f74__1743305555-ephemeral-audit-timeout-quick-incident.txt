@@ -1,0 +1,25 @@
+eng-platform
+
+riley: noticed weirdness in prod: routing flag flip but no audit row. tenant: beta-inc. saw traffic fall back to default pool at 08:12 UTC.
+
+ada: which flag? trace ids?
+
+riley: flag `routing.priority_v3`. trace `tr-77a2`. console search returned no console_audit entry.
+
+chris: could be the emergency "ephemeral-apply" path. We have `POST /internal/runtime/apply?persist=false` still active for oncall. It should log an audit entry but maybe the audit write failed.
+
+ada: quick check: control-plane logs show `audit.flush timeout` at 08:12:10 and runtime returned 200.
+
+riley: that matches. mitigation: change runtime to return 5xx when audit write times out (fail-closed). ops-bot: can we toggle this quickly?
+
+ops-bot: ops team can flip runtime flag `audit_strict=true` using runbook `runtime-flags-update`.
+
+chris: I'll own the backend change. plan: make audit write synchronous and retry with backoff, or return 503 if backend audit store unavailable. will push patch to staging in 3h.
+
+ada: console UX: show "Unrecorded runtime change" on tenant timeline and allow operator to backfill audit with evidence. add telemetry `runtime_unrecorded_changes_total`. alert when >0 for 5m.
+
+riley: created INC-2025-343, owners: chris (backend), ada (console), riley (incident).
+
+ops-bot: Incident INC-2025-343 created: https://incidents.redwood/INC-2025-343
+
+chris: thanks. I'll also add response headers: `X-Audit-Id` and `X-Audit-Retry-Token` on apply responses so callers can reconcile.

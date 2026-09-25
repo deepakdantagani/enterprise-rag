@@ -1,0 +1,23 @@
+product
+
+Nora (Product): quick sync 1: we need to finalize the
+observability MVP for the console: per-route cost, simple tracing hooks, and an errors rollup. customer ask: CSV exports + alerts. keep it lean.
+Ethan (Eng): agree but we must avoid full token-level telemetry. propose sampled spans (default 10%) + carry route/service tags.
+Zoe (SRE): +1. require agent-side PII filter and a safe fallback when collector is down. retention: aggregated metrics 90d, sampled raw spans 14d.
+Diego (Data): we can compute per-route spend if apps send model_id and token counts; daily rollups keep storage low. will prototype SQL for the rollups.
+Hana (CS): customers need alerting on sudden spend spikes and an easy CSV for finance. prioritize export & alerts over fancy charts.
+Luca (Design): I'll mock a compact card: left=top routes, center=trend sparkline, right=top error groups. figma: https://figma.com/s/obs-mini-card
+deploy-bot: docs deploy OK (artifact 51000) :white_check_mark:
+Nora (Product): MVP agreed: 1) per-route cost card + CSV export, 2) sampled tracing hooks + tag carryover, 3) errors rollup with grouping. open: sampling default, perf guardrails, and acceptance criteria.
+Ethan (Eng): tech acceptance: tracing must not add >4ms p50; sampling configurable per-account; collector failure must not block requests.
+Zoe (SRE): ops acceptance: storage delta <12% at default sampling; alerts for span parsing errors and PII detection.
+Diego (Data): data acceptance: route cost within 2% of billing on audit tenants; CSV for 30 days <20s.
+Hana (CS): customer acceptance: pilot signoff from 3 customers required for GA.
+Ethan (Eng): example config: ```yaml
+observability:
+  tracing_enabled: true
+  sample_rate: 0.10
+  pii_scrub: true
+  fallback: local_aggregate
+```
+Nora (Product): timeline: sprint 1 behind FF, sprint 2 pilot, GA after 2-week pilot + signoffs. action items: @Ethan perf/storage, @Diego ETL, @Hana coordinate pilots, @Luca ship mocks. reconvene Wed 11am.

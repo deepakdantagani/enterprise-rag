@@ -1,0 +1,44 @@
+eng-releases
+
+ashwin: Quick heads-up — PR #23456 (refactor task routing) is green locally but CI is consistently flaky on integration jobs. I need to land before Friday's canary window, but we have a deploy-freeze starting next Monday. Can people spare quick eyes? :eyes:
+
+maria: I can take a look in ~30m. Which CI job is failing?
+
+ashwin: Failing job is `ci/integration-matrix` and occasionally `ci/e2e-chrome`. Failure looks like a timeout in the db setup step. Example log snippet:
+
+```
+TaskSetupError: timed out waiting for test-db to accept connections
+  at test/setup_db.go:72
+```
+
+jamie: If it's db spin-up, sometimes rerunning the integration matrix with warmed cache helps. I can kick a rerun if you post the job link.
+
+ashwin: job: https://ci.redwood.internal/build/32211 — rerun id 32211. I tried one rerun earlier but it flaked twice.
+
+maria: I'll queue a targeted rerun for the `integration-matrix` shard only and watch. Also can you add a short repro in the PR for infra to look at?
+
+ashwin: added a note in the PR and pushed a tiny sleep before DB init as a diagnostic. If it passes, I'll revert the sleep.
+
+release-bot: :warning: Reminder: deploy-freeze scheduled from 2026-03-22 00:00 UTC to 2026-03-29 00:00 UTC for weekly maintenance. Last safe landing is 2026-03-21 23:00 UTC. See #all-hands for details.
+
+sasha: Given the freeze, prefer staged landing: if the integration job is flaky, plan A = land to canary only and monitor; plan B = wait until after freeze and coordinate full rollout. Which do you prefer?
+
+ashwin: Plan A preferred (canary-only) — we need the fix in prod for a customer bug. How do we flag canary-only?
+
+jamie: Add label `canary-only` and request `release-owner` approval. I'll be the approver for canary traffic today. I also need the PR to include a rollback plan + smoke test steps.
+
+maria: Reran integration shard, it's green this time (job 32211-rerun2). tagging @jamie for canary approval.
+
+jamie: Reviewing now. Quick note: please include these commands in PR description for smoke test and rollback:
+
+```
+# smoke test
+curl -sS https://canary.api.redwood.ai/health | jq .status
+
+# rollback (temporary):
+ro deploy rollback --component=routing --revision=prev
+```
+
+ashwin: Done — PR updated with smoke/rollback commands and brief notes on the db init flake. Requesting canary approval @jamie :pray:
+
+jamie: Approved for canary. I'll trigger canary rollout at 02:00 UTC (low traffic window) if no regressions in 30m of metrics. Good luck! :rocket

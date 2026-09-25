@@ -1,0 +1,23 @@
+eng-releases
+
+release-manager: Deploybot flagged build 2026.03.20-rc3 — vuln scan found 1 LOW severity CVE in optional dep 'fast-compress'. SBOM provenance missing. Deploybot quarantined the canary. Need quick decision: pin, hotpatch, or note+staged rollout?
+deploybot: [automated] canary quarantined for artifact sha256:abc123... reason: SBOM provenance missing. vuln: CVE-2025-9999 (LOW). Details: https://scanner.local/cve/CVE-2025-9999
+anna: Low sev on an optional lib. Can we proceed with release notes and staged rollout?
+mike (sec): Need a runtime-impact check. If the vulnerable code isn't on the request path, release notes + follow-up eval is probably OK.
+ben (infra): Fast option: pin to previous image digest (sha256:def456) and rerun pipeline. Takes ~30m to validate.
+release-manager: Change window closes 17:00 PT. Ben/Anna can we get a pin + smoke before then?
+anna: On it — doing pin + smoke now. Commands I'm running:
+```
+./ci/pin_artifact.sh --from sha256:abc123 --to sha256:def456 --env canary
+./ci/trigger-smoke --env canary
+```
+ETA ~25m
+sre-oncall: If the pin/verify isn't done by 17:00, fallback is to stall the global rollout and start a manual EU-only carveout. @mike please confirm that's acceptable.
+mike (sec): Confirmed, carveout is acceptable as a fallback. Also add a short changelog entry and attach the JIRA for audit.
+legal: Need an audit trail for the missing provenance. I've created JIRA INF-4289: "SBOM provenance missing — release trace". https://jira.company/browse/INF-4289
+deploybot: [automated] Watching images for pin events. Will unquarantine canary if pinned artifact detected.
+anna: Smoke passed on the pinned canary, health checks green. Logs: https://ci.company/builds/3456
+ben (infra): I pushed the pin and promoted canary to staged. :thumbsup:
+release-manager: Decision: pin to known-good digest and proceed with staggered rollout. Add entry to release notes linking INF-4289. Track follow-up remediation for the optional lib.
+mike (sec): I'll run a quick dependency eval and open a follow-up ticket for remediation. :eyes:
+release-manager: Thanks all — closing thread.
