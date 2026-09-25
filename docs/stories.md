@@ -87,7 +87,7 @@ Confluence's; each source file carries its own, so a story can be read without t
 | SLACK-7  `parse_speaker`  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-8  `parse_thread`  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-8b  truth set  ✅ | [7-slack.md](stories/7-slack.md) |
-| SLACK-6b  label words from the truth set  ⬜ | [7-slack.md](stories/7-slack.md) |
+| SLACK-6b  label words from the truth set  ✅ | [7-slack.md](stories/7-slack.md) |
 | SLACK-9  `SlackThreadParser`  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-10  `SlackMessageChunker`  ⬜ | [7-slack.md](stories/7-slack.md) |
 | SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval  (module-level) | [7-slack.md](stories/7-slack.md) |
