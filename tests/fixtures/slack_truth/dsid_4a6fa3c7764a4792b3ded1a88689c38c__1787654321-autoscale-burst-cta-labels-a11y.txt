@@ -1,0 +1,24 @@
+This thread is a short design microcopy review for autoscale/burst CTA wording and a11y considerations. Contains design decisions and action items.
+
+maya: quick copy check — the autoscale + burst modal CTAs feel ambiguous to me. are users enabling a feature or buying extra capacity?
+liam: +1, confused on first read. I thought 'Enable burst capacity' would be a toggle, not a paid add-on.
+alex: context: this modal shows when a pool is near capacity, so goal is to get them to temporarily allow extra GPU burst. we need clear wording and to surface cost/impact.
+jordan: suggested variants for CTAs, for testing:```Primary:
+- Enable burst capacity (Recommended)
+- Add burst credits
+Secondary:
+- Not now
+- Configure later```
+maya: my concern: screen readers and short labels. 'Enable burst' reads fine but 'Add burst credits' might be unclear out of context. prefer explicit but concise.
+zoe: accessibility nit — verbs are good. also add an aria description: "Temporarily increase pool capacity (may incur additional charges)". keep the visible label short but ensure the extra text exists for assistive tech.
+liam: what about two-word CTA + tooltip pattern? e.g., `Enable burst` and next to it a `?` tooltip: "adds temporary capacity, billed per-minute".
+alex: product preference: users should understand cost up front. could we include microcopy under the CTA: "Temporary increase · estimated $0.12/min" — small, low-contrast label.
+maya: accessibility check on the low-contrast text — must meet AA. maybe use a darker shade and keep it 12px.
+jordan: implementation note: tooltip content should be keyboard-focusable. also, if we have estimated cost, compute server-side and render it — not placeholder.
+zoe: copy proposal for testing (full string): `Enable burst capacity — Temporary increase to handle traffic spikes. Estimated cost: $0.12/min. Learn more.` Visible CTA: `Enable burst` Secondary: `Configure later`
+maya: I like that. small tweak: replace "Learn more" with a link icon + "Details" for clarity.
+liam: UX microcopy for cancel path: replace "Configure later" with "Keep current settings" — less ambiguous.
+alex: agree. final A/B variants: A) "Enable burst" / "Keep current settings" B) "Reserve burst capacity" / "Keep current settings". we can track click rates + support tickets.
+maya: action items: 1) jordan to implement tooltip + cost line 2) zoe to add aria label and run a quick contrast check 3) i'll write final copy and push to figma.
+jordan: noted — I'll prototype with both variants and link figma.
+maya: thanks all :thumbsup:

@@ -1,0 +1,31 @@
+eng-infra
+
+Maya (infra): Heads up — we need to decide region placement for Q3 reserved GPU commits. Can folks drop quick region-by-region cost + operational notes (SKUs, network, limits)? I'll synthesize.
+
+Kevin (finance): Quick summary from billing probe: one-year reserved-like commitments show effective savings roughly: us-west ~20–25% vs on-demand, europe ~15–20% (higher infra tax/energy pass-through), apac ~8–15% (less aggressive discounts right now). I can push exact amortized $/GPU-month later.
+
+Jon (eng-infra): Ops note: APAC regions (asia-southeast1, asia-northeast1) are missing latest A100v4/large partitions for sustained capacity — quota and SKU availability are the blocker, not just price. Also inter-region private links in EU cost more per GiB (we saw peer-link charges pop up).
+
+Priya (sre): Network caution: egress and cross-region replication for cache warmups adds tail latency. If we route EU traffic to US-hosted models we pay egress + see 60–120ms tail growth for some endpoints. We should quantify egress $/month on projected QPS.
+
+Sara (eng-ml): From model perf: cold KV cache across regions is real — 2x token latency on first few requests after failover. For low-latency apps it's better to colocate model + user region even if cost is +10–15%. Also, embeddings-heavy workloads amplify egress costs.
+
+Kevin (finance): Proposal idea: hybrid commit profile — front-load reserved capacity in us-west (largest demand, best discounts) + modest reserved in europe-west4 for enterprise/regulated customers. Keep APAC mostly on-demand + spot until we can secure annual SKUs or partner colo. Rough placeholder numbers: A100-class reserved ~ $1.8k–2.4k / GPU-month amortized depending on term and provider; on-demand ~ +20–30% higher. (I'll export exact per-region parity table by EOD).
+
+Jon (eng-infra): Implementation gotchas: some clouds' committed use discounts are global billing credits (good), others require regional reserved instances (harder to move). Also check preemptible/spot blend — we can shift non-latency workloads to spot, but serving pools must be backed by guaranteed capacity.
+
+Priya (sre): Actionable network test: I'll run a synthetic KV miss/replication probe to measure extra egress and tail latency across US/EU/APAC. Will post numbers in the thread when done.
+
+capacity-bot: capacity-bot queued run: region-scan:1790125460 — inventory and quota snapshot started (ETA ~2h) :gear:
+
+Jon (eng-infra): Quick routing note: if we choose split (US + EU reserved), we need per-route policy in the control plane to prefer local pool for EU customers and fallback to global on overload. That also affects billing attribution (make sure cost center tagging persists).
+
+Kevin (finance): One more finance item: vendors will give better APAC pricing if we commit 12+ months or do a cross-region SKU bundling. That requires legal + CFO sign-off. Could be worth it if roadmap shows 40%+ APAC growth.
+
+Maya (infra): OK — action items I took: 1) @Kevin produce per-region per-GPU effective cost table (1yr & 3yr amortized) by EOD; 2) @Jon check SKU availability/quota & list risky regions; 3) @Priya run the network egress/latency probe and post results; 4) @Sara give perf delta table for cold vs warm cache across regions. I'll compile a recommendation doc for leadership. :thumbsup:
+
+Kevin (finance): On it — will include a small sensitivity sheet (demand +/-20%).
+
+Priya (sre): Running probes now, will ping when finished.
+
+Maya (infra): Thanks — please keep replies short here; I'll post the synthesized decision thread later. :eyes:

@@ -1,0 +1,52 @@
+support
+
+Jamie (Support): Hey team — customer hitting intermittent 502s and large tail latency on text-generation. They gave a request_id: abc123-req-0007 and timestamp 2026-03-16T18:22:03Z. Can SRE/Logs grab the server-side trace and confirm whether this hit the backend or timed out upstream?
+
+Alex (SRE): @Jamie got it. Can you confirm the full request_id exactly as the customer pasted (any dashes/case matters) and the customer account/org id + region? Also does customer have an API key we can repro with or should we use a test key?
+
+Jamie (Support): Full id is exactly "abc123-req-0007" (lowercase). Customer org: redwood-corp-42, region: us-west-2. They can't share their API key. Asked for curl we can run from our side to try reproduce.
+
+Riley (Logs): Starting log hunt. Quick reminder: hot logs retained ~30 days, cold/archived ~365 days; if it's older than 30d we may need a restore (6-8h). For this timestamp it's within hot retention. Use this Kibana/KQL snippet in Discover:
+
+```
+message.request_id : "abc123-req-0007" or trace.id : "abc123-req-0007"
+| sort @timestamp desc
+```
+If you prefer Lucene: `request_id:\"abc123-req-0007\"`
+
+Riley (Logs): Also checking edge/gateway logs and backend ring buffers. Common pattern: gateway returns 502 when upstream returns invalid response or connection reset. I'll paste the matching lines if I find any.
+
+SupportBot: Log search job started: search_id=logjob-236789-01. Results will update in-thread when Riley posts. :gear:
+
+Alex (SRE): If you want to reproduce locally, run a minimal curl that mirrors the customer's call (without their key). Example we use in support sandbox:
+
+```
+curl -v -X POST "https://api.redwood.ai/v1/generate" \
+  -H "Authorization: Bearer $REDWOOD_TEST_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"short test", "request_id":"abc123-req-0007", "model":"gpt-small"}'
+```
+Note: do not paste customer key in public channels.
+
+Jamie (Support): I'll ask customer for a debug bundle and a minimal repro curl they ran. Requesting: full request_id, timestamp (already have), their client IP if they can share, and the exact body they sent. Also ask them to run with `X-Debug: true` header if possible.
+
+Riley (Logs): Found 3 matching entries. Pasting sanitized snippets:
+
+```
+[2026-03-16T18:22:03.112Z] svc=edge-gateway pid=2211 req_id=abc123-req-0007 upstream=10.2.1.45:8080 status=502 proto=http/1.1 duration_ms=1421
+[2026-03-16T18:22:03.113Z] svc=upstream-gen pid=4432 req_id=abc123-req-0007 error="connection reset by peer" attempt=1
+```
+Riley (Logs): Looks like gateway saw a connection reset from the upstream generator; not an auth or billing failure. I'll keep tailing around that time +/- 2s for correlated traces.
+
+Alex (SRE): Thanks. If we confirm repeated connection resets, we'll escalate to infra to check GPU host and model worker health. For now, ask customer for a debug bundle (instructions below) and whether they saw retries or only a single failure.
+
+Jamie (Support): Copying the debug bundle instruction (send to customer):
+
+```
+1) Re-run the API call and note the request_id and timestamp.
+2) If possible, run the small repro curl above replacing request_id and capture the `curl -v` output.
+3) In the RedWood Console -> Support -> Create Debug Bundle, include: request_id, timestamps, region (us-west-2), and a short description. Mark it "support-only".
+```
+Jamie (Support): I'll collect their bundle and the curl output, then re-post here. Thanks all. :+1:
+
+SupportBot: search_id=logjob-236789-01 completed, results=3 (sanitized). Attachment available in private logs console.

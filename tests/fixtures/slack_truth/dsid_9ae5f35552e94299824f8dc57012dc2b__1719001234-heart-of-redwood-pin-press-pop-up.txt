@@ -1,0 +1,37 @@
+1719001234-heart-of-redwood-pin-press-pop-up.json
+
+Maya (People Ops): Hey team — thinking of doing a small on-site enamel pin press called "Heart of Redwood" for people to get a free custom pin + on-the-spot spot-award sticker when they show kudos. Would love volunteers and quick budget check. :sparkles:
+Jordan (Events): love it. dates? table size?
+Maya (People Ops): aiming for Wed June 12, 11–2 in kitchen commons. vendor can do a rolling press, 1 minute per pin. we can hand out up to 250 pins.
+Ben (Finance): 250 ok but need a cost estimate. what's unit cost + press rental? charge code?
+Maya (People Ops): vendor quote: $0.90/pin + $150 flat press fee. expecting ~$375 total incl. tax/shipping. will use program budget (GL 4102).
+Eli (Ops): do we need to log recipients for spot awards (so payroll/tax rules)?
+Maya (People Ops): short answer: yes. we treat >$100/year gifts differently but these are <$10 each. still want to tag in recognition portal for recordkeeping. recognition-bot will capture entries if we use the digital form.
+recognition-bot: Reminder — please submit any on-the-spot awards via /recognize with #heart-of-redwood tag so entries flow into payroll reports.
+Sam (Facilities): table and power ok. I'll reserve the island and put floor tape. any mobility/accessibility needs?
+Maya (People Ops): good call. we'll leave a chair and lower table for accessibility. also will have an alternative sticker-only station for folks who prefer not to press a pin.
+Jordan (Events): volunteers? I can cover 11–12. Maya can you do 12–1?
+Maya (People Ops): I can do 12–1. need 1 more 1–2 slot. @Eli?
+Eli (Ops): I can take 1–2. count me in.
+Ben (Finance): confirm vendor payment timeline — if invoice comes after event we need PO # ahead or prepay.
+Maya (People Ops): vendor accepts Stripe or invoice. I'll prepay with company card then submit expense. Ben can you confirm that's fine?
+Ben (Finance): fine. please upload receipt to Concur within 5 business days and tag GL 4102.
+Maya (People Ops): notes for volunteers: 1) use paper checklist to record name + email 2) enter recognition in portal (quick form) 3) hand sticker for spot-award code if manager approves 4) limit 1 pin/person.
+Jordan (Events): quick schedule draft:
+```
+11:00 setup (Sam)
+11:15 volunteers arrive
+11:30 open to folks
+13:50 last press
+14:00 teardown
+```
+Maya (People Ops): will make a small sign and QR code to the recognition form. also printing a tiny FAQ: "Is this taxable?" -> "Under $10 gift, recorded for records; not payrolled as comp."
+Eli (Ops): can we tie a small micro-grant? like winners of a daily raffle get a $25 credit? that would need approval from finance and might have tax implications.
+Ben (Finance): micro-grant ok but different path — we'd need supplier or gift card program. prefer to avoid adding taxable items on the fly. keep this event simple: pin + sticker only.
+Maya (People Ops): agreed. keep it non-cash. maybe a follow-up raffle we plan separately.
+Jordan (Events): signage and volunteers list — I'll post a signup link in #people-ops later today.
+Maya (People Ops): action items: Jordan post signup; Sam reserve table; Ben confirm prepay process; Eli final volunteer; I'll order 250 pins and create QR form.
+recognition-bot: Note: Any entries tagged #heart-of-redwood will auto-attach to the June recognition report.
+Maya (People Ops): tiny reminder — payroll cutoff for June approvals is June 20. if anything needs payroll handling (we hope not) escalate before then.
+Eli (Ops): understood.
+Jordan (Events): cool. excited for pin press. :pinching_hand:

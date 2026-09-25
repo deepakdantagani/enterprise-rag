@@ -1,0 +1,54 @@
+eng-infra
+
+deploy-bot: terraform apply INITIATED for path=infra/dc6/gpupool
+commit: 5f4a2bf7 tag: release-v1.7.2
+env: production (dc6)
+plan: <https://ci.internal/plan/1901239999>
+changes: ~3 resources
+started_by: kyle
+
+sasha: copying notes from change window doc — window open till 03:00 UTC :white_check_mark:
+
+kyle: pinning module `gpu_pool` to v2.3.1 per last incident. added to tfvars.
+
+tian: quick double-check — did we include the security group rule cleanup? that was the risky bit.
+
+maria: yes, referenced in plan, only removing a stale sg rule (id: sg-0a1b2c3d)
+
+deploy-bot: PLAN SUMMARY:
+```diff
++ aws_instance.gpu_node (count=3)
+- aws_security_group.stale_rule
+~ aws_autoscaling_policy.scale_up
+```
+
+deploy-bot: apply started at 1901239999
+
+kyle: i'll watch logs, canary rollout after apply for 10 minutes
+
+deploy-bot: APPLY COMPLETE at 1901240120
+summary: 3 to add, 1 to change, 0 to destroy
+apply_log: <https://ci.internal/apply/1901239999>
+
+maria: smoke tests passing on canary, but noticing latency bump in dc6-for-spot - checking
+
+sasha: saw same in tracing: tail latency +140ms for 95th percentile during canary
+
+tian: rolling back canary manually - switching route to previous pool
+
+kyle: agreed, initiate rollback to tag release-v1.7.1
+
+deploy-bot: rollback started: target tag=release-v1.7.1 commit=aa9c4e6
+rollback_plan: <https://ci.internal/plan/rollback/1901240200>
+
+deploy-bot: ROLLBACK COMPLETE at 1901240290
+summary: reverted gpu_node count, restored sg rule
+post-check: smoke tests green, latency returned to baseline
+
+maria: leaving monitoring alerts muted for 15m while we watch :hourglass_flowing_sand:
+
+kyle: follow-up: create a postmortem + file an action to run canary load test next deploy
+
+sasha: noted. will add to release checklist to run perf-runner prior to canary
+
+deploy-bot: thread closed. logs: <https://ci.internal/logs/1901239999>

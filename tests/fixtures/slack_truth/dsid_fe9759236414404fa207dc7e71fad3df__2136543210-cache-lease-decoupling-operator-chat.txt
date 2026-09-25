@@ -1,0 +1,51 @@
+architecture
+
+ravi: thinking out loud — proposal to decouple KV cache lease ownership from the region leader process and represent it as a k8s-style operator-managed resource.
+linh: can you sketch the motivation? is this to simplify failover or to address residency constraints?
+ravi: both. current tight coupling means leader swaps also need in-proc lease handoffs -> long window where prefix cache isn't owned. with an operator CRD we can 1) surface lease state for audits (helps residency), 2) do async handoffs with safer quiesce, 3) make eviction policies pluggable.
+abby: big question: how do we enforce data residency rules? e.g., tenant that must stay in eu-west — operator can't move lease unless tenant consent or admin override.
+sam: +1. Also worried about split-brain — operator must coordinate with site SLOs. how do we keep ordering for inflight requests trying to claim same prefix?
+ravi: proposal details:
+- lease CRD: {owner_region, epoch, expires_at, tombstone}
+- operator runs leader-election per-region, but lease changes are decided via a CAS against epoch
+- handoff flow: current owner sets tombstone + forward pointer, new owner creates lease with higher epoch after verifying KV snapshot
+- TTL-based fallback: if owner misses heartbeat, other region can create lease with higher epoch after a short randomized backoff
+
+linh: sounds like classic lease with epochs. Where's the snapshot/sync step? doing a full snapshot per handoff will be too slow for large caches.
+ravi: agree. plan is to rely on write-forwarding + prefix-level incremental transfers. operator will publish a small 'handoff plan' object listing prefixes to stream; streaming is async and responses include routing header until transfer completes.
+abby: what about privacy? the handoff plan would list tenant prefixes — that's sensitive. we should encrypt operator state at rest and restrict read to security group.
+sam: also need fast abort path: if handoff fails repeatedly, fall back to proxying to active region (higher latency) instead of broken lease.
+infra-bot: deploy-check: new operator will require changes in iam-policies, k8s-rbac, and a new config flag `lease.operator.enabled=true`.
+linh: ops question: how do we test race scenarios? we need a chaos job that kills both leader and operator to see double-claim windows.
+ravi: test matrix:
+- sim: epoch bump on concurrent claims
+- integration: handoff plan streaming with packet loss
+- e2e: tenant-residency test verifying no data is observed outside allowed regions during handoff
+
+abby: API implications for the runtime: should expose `lease_status` in routing decisions. simple enum: OWNED / HANDOFF_IN_PROGRESS / FORWARDED.
+sam: can we do non-blocking reads during handoff? runtime could consult `FORWARDED` and attach `x-forwarded-prefetch: true` header to request to let receiving side prewarm cache.
+linh: config snippet idea (very rough):
+
+```
+leaseOperator:
+  enabled: true
+  epochWindowMs: 500
+  handoff:
+    maxParallelPrefixes: 16
+    snapshotMode: incremental
+  residency:
+    enforceTenantLabels: true
+    allowedRegionsLabel: tenant.allowed_regions
+```
+
+ravi: open questions we should capture in RFC follow-up:
+- legal: does exposing lease metadata to operator violate any residency attestations?
+- metrics: what SLO signals to track during handoff (p99 latency spike, forwarding ratio)
+- rollback: how to revert a partial handoff if new owner misbehaves
+- perf: epoch window and randomized backoff tuning
+
+abby: for rollback: operator should keep a short-term changelog (signed) that lets previous owner replay ownership if necessary.
+sam: ok, next steps: ravi to draft follow-up RFC with state machine, abort paths, and test plan. linh + abby to review residency & security implications.
+ravi: I’ll put the draft up tomorrow. tagging @linh @abby for review. :thumbsup:
+infra-bot: note — created task infra/lease-operator/prototype (tracking id: LEASEOP-42)
+sam: thanks, will add chaos test to LEASEOP-42 once RFC lands.

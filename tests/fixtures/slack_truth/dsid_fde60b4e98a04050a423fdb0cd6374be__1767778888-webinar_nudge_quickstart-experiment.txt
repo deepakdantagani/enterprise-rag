@@ -1,0 +1,24 @@
+slack/marketing/1767778888-webinar_nudge_quickstart-experiment.json
+
+Rhea (growth): Quick idea: tie a tiny PLG experiment to next week's webinar. Give attendees a one-click import of curated prompt packs + a small token grant + a 3-step activation email series to nudge first-gen. lightweight, measurable.
+Ben (content): sounds good. two packs? what would they be named?
+Rhea (growth): propose "Quickstart Pack" (5 general starter prompts) and "Niche Playbook" (3 industry-specific templates).
+Tasha (product): landing flow plan: unique landing with buttons to import a pack into Console. param: ?src=webinar_nudge. non-attendees hitting the page get default CTA.
+Eli (analytics): metrics: primary = % who generate >=1 output within 24h; secondary = 7-day active, email open->click rates, cost per activation. I'll instrument.
+Rhea (growth): budget: A/B token levels 100 vs 300 tokens, 1k users per arm. target uplift +12% activation vs baseline. cap spend to $9 per activation.
+Ivy (devex): can implement 1-click import that instantiates prompt JSON into workspace. need template payloads + flag. will also surface a small toast: "You received X tokens".
+OpsBot: feature-flag created: exp.webinar_nudge_1767778888.
+Tasha (product): add micro-benchmark on landing: sample expected latency and per-token cost for Redwood models vs BYO. short copy only.
+Ben (content): I'll draft two hero variants: emphasis on speed vs emphasis on templates + examples. Also draft the 3-email sequence: day0 welcome+how-to, day2 examples, day5 case study + CTA.
+Eli (analytics): measurement spec: activation = first generation >=10 tokens within 24h; retention = any gen on day7. will add tracking hooks for url param, feature flag, pack id, and token grant amount.
+Ivy (devex): URL import path: /console/import?flag=exp.webinar_nudge_1767778888&pack=quickstart. Will gate with flag.
+Rhea (growth): timeline: lander + copy by Tue EOD, console import + flag by Wed, QA Thu, soft flip Fri morning. webinar Fri afternoon. post-event email send Mon.
+Ben (content): where to put assets? uploading drafts to /Marketing/Experiments/webinar_nudge/
+Tasha (product): FAQ additions: token expiry (30 days), billing question (tokens are trial credit not billed), how to remove pack.
+Eli (analytics): creating experiment dashboard and cohort table. link will be posted here when ready.
+Ivy (devex): quick perf ask to infra: can we reserve a small burst pool for the weekend window? pinging infra separately.
+Rhea (growth): final checklist: copy (Ben), pack JSONs (Ben+Tasha), import impl + flag (Ivy), tracking (Eli), infra pool (Ops). 30-min sync tomorrow to confirm. :rocket:
+Ben (content): on it. will include two sample prompts outputs to use in emails.
+Tasha (product): adding tiny success criteria to PRD: +12% activation, < $9 CPA, no regressions in Console UX.
+Eli (analytics): will post the tracking doc: https://redwood-internal/analytics/webinar_nudge_1767778888
+Rhea (growth): awesome. lean experiment, quick learn. keep updates in this thread and I'll run the sync.

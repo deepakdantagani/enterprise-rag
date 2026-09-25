@@ -1,0 +1,33 @@
+eng-platform
+
+sam: FYI console alert — large jump in 'compat.fallback_rate' around 00:10 UTC. looks like a batch of old clients are being hard-routed to v2 fallbacks :eyes:
+ana: saw the alert, digging into route logs. linking dashboard: https://console.redwood.internal/d/compat-rollups?orgId=1 :mag_right:
+michael: is this the change we merged to the fallback threshold last week? I thought we bumped to 0.95 for stricter fallback.
+sam: yeah we applied `fallback_threshold: 0.95` in the rollout, but the metric suggests many tokens still considered incompatible — could be a header-coercion mismatch or sequencelen difference.
+tara: quick check — samples from logs: `x-client-proto: v1`, `x-model: redwood-base`, and route decided fallback -> v2-shim. payloads show legacy metadata fields present.
+nana: pasting a small routing rule snippet I pulled from prod-config: ```routing:
+  prefer_v2: false
+  fallback_threshold: 0.95
+  header_precedence:
+    - x-client-version
+    - x-api-key
+```
+michael: that `prefer_v2: false` plus 0.95 might be causing noisy fallbacks when header entropy is high. if header signal is weak, threshold calc becomes unstable.
+sam: suggestion: temporarily smooth the signal by using a moving-average on the compatibility score for tenancy-level decisions (window ~30s). lower ops blast if we flip fallback.
+tara: agree. Also we should exempt high-throughput tenants from the hard threshold change until console shows a steady signal. we can add a console tag: "grace_exempt" per tenant.
+nana: console UX note — currently the rollouts page only exposes a raw numeric threshold. ops asked for a toggle: "apply smoothing" + small tooltip explaining impact. can we ship that quick?
+michael: UI + backend change. backend quick patch: accept `fallback_smoothing: {window_seconds: 30, method: ema}` in config. frontend shows toggle and preview of effective fallback rate.
+nana: ops-bot shows recent deploys: "deploy-service v2.14.1 -> routing-config update" at 23:58 UTC. maybe we need to rollback.
+ara: (typo)
+sam: not rollback yet — propose incremental: set `fallback_threshold` back to 0.90 for 10m in console for affected tenants, enable `fallback_smoothing: ema(0.2)`, watch `compat.fallback_rate` and `latency.p95`.
+tara: on it. I'm going to run the console patch now for tenants: @high-volume-prod, @billing-prod.
+nana: if we do the temporary threshold change, can we auto-notify customers via the contract-aware banner? want to reduce support churn.
+michael: yes — console has "change notify" API. I'll call it after we flip. snippet: ```POST /api/notify-change
+{ "tenants": ["high-volume-prod"], "msg": "compatibility fallback threshold adjusted for stability" }
+```
+ops-bot: [alert cleared] routing-fallback spike reduced after partial config change.
+infra-bot: FYI metric retention window updated to 2m for compatibility score series to support smoothing calculations.
+sam: thanks everyone. follow-ups: (1) ana -> add smoothing backend + short CI test (2) michael -> add notify workflow hook to rollout page (3) tara -> apply temporary threshold changes and list tenants flipped (4) nana -> add UX toggle + tooltip copy.
+nana: I'll draft tooltip: "Smoothing averages recent compatibility signals to reduce noisy fallbacks. Use when clients have intermittent header/seqlen divergence"
+michael: let's sync in 30m. if metrics stable after 15m we can promote smoothing to default for beta cohort.
+sam: :thumbsup:

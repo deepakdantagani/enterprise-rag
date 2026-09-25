@@ -1,0 +1,48 @@
+eng-platform
+
+sam.platform: Heads up — saw cross-org metrics showing up in Console Insights when I toggled a canary on my account. Not a full bleed but some panels show another org's event counts. :thinking:
+ana-console: seriously? reproduction steps?
+sam.platform: quick steps:
+1) Login as org-A user
+2) open Console -> Insights -> select 'Canary preview' toggle for feature-flag X
+3) Open the traffic-preview panel, then quick-switch to org-B via the header switcher
+4) Some charts still show org-B metrics appended to org-A's view (counts doubled)
+ana-console: do you have an example query or curl we can run against the insights internal API?
+sam.platform: yeah here's what I traced from the frontend devtools: the quick-switch sets cookie org_id=B, but the internal call to /internal/insights/preview is coming through router-edge without X-Org-ID header (we rely on cookie for most routes). patchy behavior when cookie + header mismatch. curl example I used:
+
+curl -i -H 'Authorization: Bearer <token-A>' \
+  -H 'Cookie: org_id=B; session=xyz' \
+  https://internal.redwood/insights/preview?panel=traffic
+
+response contains results for org=A and meta.items: [{org: A, count: 120}, {org: B, count: 30}]
+mike-runtime: interesting — router-edge has a recent commit that strips forwarded headers for routes marked as 'public-read' to avoid leaking customer headers to third-party backends. Could be overzealous. @ryan-infra any config changes around 6154300000? :eyes:
+dryan-infra: we flipped a header sanitization flag on the proxy pool at 6154301000, intended to remove X-Forwarded-* headers for external services. I can see the change log, but insights is internal. Maybe the route classification matched incorrectly.
+ana-console: can reproduce locally with a mock — if the request arrives with a missing X-Org-ID header but cookie present, our service merges session org with cookie org in a single result set instead of rejecting the header mismatch. That's the bug.
+leah-product: impact? do customers see this in production or only in preview?
+sam.platform: I've only seen it in canary/preview flows so far, but it could hit saved dashboards if the header/cookie race happens during a fast org switch. Early detection is important.
+mike-runtime: quick triage plan:
+- rollback proxy sanitization rule for internal routes (hotfix)
+- add guard in insights service: if cookie.org_id != header.X-Org-ID, fail-fast and log rather than merging
+- add unit/integration tests around header+cookie precedence
+- add a rollout gate in the console that verifies X-Org-ID appears on internal calls
+leah-product: +1 on failing fast. UX of merged results is dangerous. We should also create an alert in telemetry if a request returns mixed-org payloads.
+dryan-infra: rolling back the sanitization for internal cluster now (will ping deploy-bot).
+devops-bot: rollback triggered: proxy-pool/sanitizer v2 -> v1 at 6154321032 by ryan-infra.
+sam.platform: after rollback, I repro'd again — the merged results stopped. Confirmed.
+mike-runtime: creating PR: insights:guard-header-cookie (will add logs and a metric insights.header_cookie_mismatch). Putting it to canary.
+mike-runtime: Code snippet I'll add to the request middleware:
+
+if (headerOrg && cookieOrg && headerOrg !== cookieOrg) {
+  log.warn('org mismatch', {headerOrg, cookieOrg, path: req.path});
+  return res.status(409).json({error: 'org routing mismatch'});
+}
+
+ana-console: also add a small client-side check before switching orgs: ensure outstanding previews are cancelled so we don't leave stale requests.
+leah-product: add a short note on rollout-UX page about this race condition and guidance for feature flag previews.
+dryan-infra: added a temporary alarm to infra/insights-route-mismatch for any 409 spikes at 6154321048.
+sam.platform: thanks all. Can we follow up with a postmortem if we find any customer-facing incidents? Reassigning to eng-platform runbook.
+mike-runtime: will own the follow-up and collect traces. I'll post the PR link once CI passes.
+leah-product: nice quick ops. :thumbsup:
+ryan-infra: also adding an integration test in proxy config CI to ensure internal routes are never classified as 'external-sanitize' again.
+nana-console: leaving notes in the console repo about cancelling previews during quick-switch. small UX tweak, big safety win.
+sam.platform: closing the thread for now — reopen if you see anomalies after the canary. Thanks all. :rocket:

@@ -1,0 +1,79 @@
+incidents
+
+incident-bot: :rotating_light: Automatic pager: elevated 5xx + latency detected in eu-central-1 affecting Hosted API and Dedicated pools. Incident ID: RWD-INC-2026-0521. Paging oncall.
+
+alice (sre): I'm taking first look. Metrics show a sudden rise in 502/504 responses originating from our regional auth proxy and observability egress endpoints. p50 latency up ~2x, p95 up ~3x for requests routed to eu-central-1.
+
+bob (oncall): Oncall here. What quick mitigation checks do we have?
+
+alice (sre): Quick checks I ran:
+```
+# verifying regional reachability
+ping -c 5 eu-central-1.elb.amazonaws.com
+# many packets lost, TCP handshake resets observed
+```
+Also checked control-plane logs: token exchange timeouts around the same timeframe. Dedicated pool controller shows worker restart loops for some model workers in az-a.
+
+carla (eng-runtime): Runtime traces show KV-cache refreshes stalling because our obs-exporter and token validation endpoints are timing out. This creates request queueing and causes gateway timeouts upstream.
+
+paul (infra): AWS Health/Status shows a partial network degradation in eu-central-1 affecting several NLB/ELB nodes and intermittent control-plane connectivity in some AZs. Not a full outage but packet loss and increased RTTs.
+
+dev-support: Any active customer tickets?
+
+customer-success: Yes: two Hosted API customers in EU region reporting spike in 5xxs; one Dedicated tenant reporting degraded throughput. CS has notified them we're investigating and offered guidance on cross-region failover.
+
+alice (sre): Proposed immediate mitigations:
+- Gradual cross-region routing shift for new Hosted API sessions from eu-central-1 to eu-west-1 (5% -> 25% -> 75%). Keep existing in-flight sessions where possible.
+- For Dedicated pools: prevent new allocations in eu-central-1 and start warm up in eu-west-1.
+- Reduce egress pressure by disabling non-critical observability exporters in eu-central-1.
+- Increase token cache TTL to reduce STS calls temporarily (120s -> 300s) where safe.
+
+carla (eng-runtime): I'll kick off a routing canary to eu-west-1. Command:
+```
+curl -X POST https://controlplane.internal/api/v1/routing/failover -d '{"from":"eu-central-1","to":"eu-west-1","percent":5}' -H "Authorization: Bearer $CTRL"
+```
+Starting canary for 5% at ts 2759994390.
+
+bob (oncall): Watching the canary. If errors drop for canary within 90s, expand to 25%.
+
+paul (infra): Disabling obs-exporter now in eu-central-1 to reduce egress. kubectl scale deployment/obs-exporter --replicas=0 --context=eu-central-1.
+
+incident-bot: Oncall handover scheduled to eve (next shift) in 25m. Incident declared P1-regional.
+
+carla (eng-runtime): Canary results: initial 5% showed error rate reduced to baseline. Expanding to 25% at 2759994455.
+
+later - carla (eng-runtime): 25% stable for 3m. Expanding to 75%.
+
+paul (infra): Dedicated pool controller: marking eu-central-1 as degraded for new allocations, initiating scale-up in eu-west-1 (launched 4 nodes). ETA ~3m for warm workers.
+
+customer-success: Notified impacted customers, offered region migration. One customer accepted immediate migration and requested a hard cutover. Concern about cache stampede.
+
+alice (sre): For hard cutover, advise staged DNS/routing shift and pre-warm model workers. We'll prefer staged to avoid massive concurrent token validation.
+
+bob (oncall): I'll coordinate staged failover for the Dedicated customer if they still want it. Leaving notes for eve for handover.
+
+carla (eng-runtime): Also implemented a temporary safety: model-variant fallback enabled so workers use smaller-memory variants to reduce churn while nodes warm.
+
+alice (sre): After routing changes and disabling obs-exporter, regional 5xxs dropped ~65% and latency improved. Still seeing intermittent 504s for token exchange hitting affected AZs.
+
+paul (infra): Opening AWS support case for NLB/ELB node connectivity in eu-central-1, referencing affected AZs and packet loss traces.
+
+dev-support: Recording affected products: hosted-api (eu-central-1), dedicated-tenant-77 (eu-central-1). Tickets created for each customer.
+
+incident-bot: Incident page created RWD-INC-2026-0521, status: mitigated (partial). Postmortem required.
+
+alice (sre): Next actions:
+- Keep cross-region routing in place until AWS confirms region healthy or for 2 hours, whichever is sooner.
+- Keep token TTL elevated for 2 hours, then revert if stable.
+- Re-enable observability exporters only after confirming egress capacity.
+- Compile customer impact summary and runbook updates for the postmortem.
+
+customer-success: Consolidating customer notes and required follow-ups. No escalations as of now.
+
+bob (oncall): Handoff to eve in 20m. Leaving canary and routing state, plus the AWS support ticket number. :thumbsup:
+
+eve (oncall-next): Acknowledged. I'll take over watch and escalate to infra if dedicated migrations are requested.
+
+alice (sre): Good work team. Closing emergency page, incident remains open for monitoring until AWS clears the network flap.
+
+-- end of thread

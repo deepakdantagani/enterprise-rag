@@ -54,7 +54,8 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-6  `split_messages` | ✅ |
 | SLACK-7  `parse_speaker` | ✅ |
 | SLACK-8  `parse_thread` | ✅ |
-| SLACK-8b  truth set | ⬜ |
+| SLACK-8b  truth set | ✅ |
+| SLACK-6b  label words from the truth set | ⬜ |
 | SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ⬜ |
 | SLACK-10  `SlackMessageChunker` | ⬜ |
 | SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
@@ -863,47 +864,104 @@ APIs data contracts: SLACK-5, SLACK-6, SLACK-7 · Service Bus: N/A · Database: 
 
 ---
 
-## SLACK-8b  The truth set ⬜
+## SLACK-8b  The truth set ✅
 
-**Status** To do
+**Status** Done
 **As a** pipeline that will trust the parser 285,605 times
-**I want to** ~50 hand-checked threads that prove `parse_thread` right
+**I want to** 50 hand-checked threads that prove `parse_thread` right
 **So that** a parsing regression fails a test instead of quietly poisoning the index
 
-Split out of SLACK-8 so each PR stays one function. Follows PARSE-17's pattern: hand-decide
-the correct output on real files first, then assert against it. Sample the 50 across both
-layouts, the `unknown` channel case, threads with fenced code, and the bot-heavy ones.
+Split out of SLACK-8 so each PR stays one function. Follows PARSE-17's pattern: decide the
+correct output on real files first, then assert against it.
 
-**Carried over from SLACK-6: labels the table does not know yet.** `split_messages` blocks
-the 112 label words in `NOT_SPEAKERS`, but a new one (`pin:`, `endpoint:`, `Avoid:`) still
-opens a false message. A sample put that at about 3 in 78 one-off single-word speakers, or
-roughly 11,000 of 5,741,020 message starts (0.2%); no text is lost, one line just becomes its
-own message. This story turns that estimate into a measured precision on the truth set, and
-reports the most frequent speakers that open only one line in their thread, so a new label
-stands out among the one-off bots (`deploy-bot`, 39,740) and costs one word in the table.
-Requiring every speaker to appear twice was rejected: it would drop about 295,000 real
-one-off messages, mostly bots.
+**The set.** `tests/fixtures/slack_truth/`: 50 real threads copied from `data/slack/clean/`
+(so the test runs without the corpus) and `expected.json`, one entry per thread with `why`
+(the reason it was sampled), `starts` ({line: [name, team_or_role, is_bot]} for every
+message start) and `known_gaps` ({line: {reason, parser_says}}). The sample is seeded and
+stratified: both layouts and mixed, `unknown` channel, export path, code blocks with blank
+lines inside, bot-heavy threads, team-first lines, one-off capitalised speakers, a thread with
+no speaker and a one-message thread. 862 message starts in all.
 
-**Carried over from SLACK-7: team-first speaker lines.** `Legal - Priya:` is read as written,
-name `Legal`, `team_or_role` `Priya` (roughly 800 lines by a first-name check, not pinned).
-Measure on the truth set how often a line is the wrong way round, and decide whether a rule
-is worth it.
+**How the truth was decided.** Five annotators labelled the threads blind: they read every
+line and never saw the parser, its code or its output. Every disagreement with the parser
+was then read in context by hand; in all 25 the annotator was right. A review agent then
+re-read 23 threads (373 starts) line by line and found no wrong or missing start.
+
+**Result:**
+
+| | |
+|---|---|
+| message starts found by the parser | 871 |
+| true message starts | 862 |
+| parser starts that are true (precision) | 862 = 98.97% |
+| true starts the parser found (recall) | 862 = 100% |
+| speaker fields right on a true start | 846 of 862 |
+
+The 25 known gaps:
+
+| gap | lines | decision |
+|---|---|---|
+| a label word opens a false message: `Details:`, `Commands:`, `Files:`, `Expect:` | 4 | SLACK-6b: add the words |
+| a lowercase key inside a bot notice: `started_by: kyle`, `apply_log:`, `rollback_plan:` | 5 | SLACK-6b |
+| team written first: `IT - Priya:`, `CSM - Lena:`, `Facilities - Marco:` (3 threads) | 13 | accepted: about 800 of 5.74M lines (0.014%) across the corpus, so a swap rule is not worth its risk |
+| a bot named in brackets: `Sam (ops-bot):` | 2 | accepted for now: 1,782 messages have a `(x-bot)` role on a non-bot name, and whether `ana (ops-bot)` is a person or the bot is unclear |
+| `later - carla (eng-runtime):`, a time word read as the name | 1 | accepted: one line |
+
+**Blind spot.** The truth is per line, so a message that starts mid-line cannot be marked:
+one squashed thread joins about 15 messages on two lines (`...; chloe_sdk: ...`), and the
+parser misses them too. The team-first rate on this set (13 lines) is inflated on purpose: 3
+threads were sampled for it.
+
+**Carried over from SLACK-6, now measured.** Across the corpus, 2,994 capitalised
+single-word names (6,739 messages) never speak twice in any thread; the most frequent are
+labels, not people: `Fallback` 71 threads, `Retry-After` 70, `Expect` 60, `Behavior` 59,
+`Outputs` 49, `Rationale` 32, `User-Agent` 30. They are the input for SLACK-6b. A real
+one-off speaker also lands in that list, so it is a list to read, not a rule.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: the truth set holds
-  Given 50 hand-checked threads under tests/golden/slack_truth.json
-  Then parse_thread reproduces every message boundary and speaker in them
+  Given 50 hand-checked threads under tests/fixtures/slack_truth/expected.json
+  Then parse_thread reproduces every message start and speaker in them
+  Except the known gaps, where it says exactly what the gap records
 ```
 
 ### Non-functional Requirements
 
-Shared list.
+Shared list. The fixtures are real data committed to the repo: 50 files, about 140 KB.
 
 ### Dependencies
 
 APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## SLACK-6b  Label words measured by the truth set ⬜
+
+**Status** To do
+**As a** splitter that should not open a message on a label
+**I want to** the label words SLACK-8b measured added to `NOT_SPEAKERS`
+**So that** the known gaps close and the corpus pins move by a counted amount
+
+From SLACK-8b: `Expect` (60 threads), `Details` (44), `Commands` (17), `Files` (6), and the
+lowercase keys in bot notices (`changes`, `started_by`, `apply_log`, `rollback_plan`,
+`post-check`). Read SLACK-8b's never-speaks-twice list (`Fallback`, `Retry-After`,
+`Behavior`, `Outputs`, `Rationale`, `User-Agent` ...) and add only words that are labels in
+every thread checked. Each word is a row plus a test; the SLACK-6/7/8 corpus pins and the
+SLACK-8b known gaps change by the measured amount, stated in the PR.
+
+### Acceptance Criteria
+
+```gherkin
+Scenario: a measured label no longer opens a message
+  Given "ana: design uploaded\nFiles: a.svg\n"
+  Then split_messages returns one message
+```
+
+### Dependencies
+
+APIs data contracts: SLACK-6, SLACK-8b · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 

@@ -1,0 +1,4820 @@
+{
+ "dsid_083b52be7627442e9e1caa0a39d41461__3777771234-shape-affinity-credit-auction-proto.txt": {
+  "why": "channel from the export path",
+  "starts": {
+   "3": [
+    "sylvia",
+    null,
+    false
+   ],
+   "4": [
+    "ben",
+    null,
+    false
+   ],
+   "5": [
+    "sylvia",
+    null,
+    false
+   ],
+   "6": [
+    "omar",
+    null,
+    false
+   ],
+   "7": [
+    "sylvia",
+    null,
+    false
+   ],
+   "8": [
+    "tia",
+    null,
+    false
+   ],
+   "9": [
+    "sylvia",
+    null,
+    false
+   ],
+   "10": [
+    "ben",
+    null,
+    false
+   ],
+   "11": [
+    "sylvia",
+    null,
+    false
+   ],
+   "12": [
+    "omar",
+    null,
+    false
+   ],
+   "13": [
+    "sylvia",
+    null,
+    false
+   ],
+   "14": [
+    "tia",
+    null,
+    false
+   ],
+   "15": [
+    "sylvia",
+    null,
+    false
+   ],
+   "16": [
+    "ben",
+    null,
+    false
+   ],
+   "17": [
+    "omar",
+    null,
+    false
+   ],
+   "18": [
+    "stia",
+    null,
+    false
+   ],
+   "19": [
+    "sylvia",
+    null,
+    false
+   ],
+   "20": [
+    "ops-bot",
+    null,
+    true
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_0ac201eca572469ead3ec1ebf3a9bc09__1769999990-deprec-fallback-threshold-smoothing-bugbash.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "sam",
+    null,
+    false
+   ],
+   "4": [
+    "ana",
+    null,
+    false
+   ],
+   "5": [
+    "michael",
+    null,
+    false
+   ],
+   "6": [
+    "sam",
+    null,
+    false
+   ],
+   "7": [
+    "tara",
+    null,
+    false
+   ],
+   "8": [
+    "nana",
+    null,
+    false
+   ],
+   "15": [
+    "michael",
+    null,
+    false
+   ],
+   "16": [
+    "sam",
+    null,
+    false
+   ],
+   "17": [
+    "tara",
+    null,
+    false
+   ],
+   "18": [
+    "nana",
+    null,
+    false
+   ],
+   "19": [
+    "michael",
+    null,
+    false
+   ],
+   "20": [
+    "nana",
+    null,
+    false
+   ],
+   "21": [
+    "ara",
+    null,
+    false
+   ],
+   "22": [
+    "sam",
+    null,
+    false
+   ],
+   "23": [
+    "tara",
+    null,
+    false
+   ],
+   "24": [
+    "nana",
+    null,
+    false
+   ],
+   "25": [
+    "michael",
+    null,
+    false
+   ],
+   "28": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "29": [
+    "infra-bot",
+    null,
+    true
+   ],
+   "30": [
+    "sam",
+    null,
+    false
+   ],
+   "31": [
+    "nana",
+    null,
+    false
+   ],
+   "32": [
+    "michael",
+    null,
+    false
+   ],
+   "33": [
+    "sam",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_11fff6d477a4495287184a58e7da4ef7__2334455667.txt": {
+  "why": "lowercase full name speaker",
+  "starts": {
+   "3": [
+    "incidents-bot",
+    null,
+    true
+   ],
+   "5": [
+    "morgan lee",
+    null,
+    false
+   ],
+   "7": [
+    "tarun patel",
+    null,
+    false
+   ],
+   "9": [
+    "elena garcia",
+    null,
+    false
+   ],
+   "11": [
+    "kai wong",
+    null,
+    false
+   ],
+   "13": [
+    "tarun patel",
+    null,
+    false
+   ],
+   "15": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "17": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "19": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "21": [
+    "incidents-bot",
+    null,
+    true
+   ],
+   "23": [
+    "morgan lee",
+    null,
+    false
+   ],
+   "25": [
+    "elena garcia",
+    null,
+    false
+   ],
+   "27": [
+    "kai wong",
+    null,
+    false
+   ],
+   "29": [
+    "tarun patel",
+    null,
+    false
+   ],
+   "31": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "33": [
+    "morgan lee",
+    null,
+    false
+   ],
+   "35": [
+    "elena garcia",
+    null,
+    false
+   ],
+   "37": [
+    "tarun patel",
+    null,
+    false
+   ],
+   "39": [
+    "incidents-bot",
+    null,
+    true
+   ],
+   "41": [
+    "kai wong",
+    null,
+    false
+   ],
+   "43": [
+    "morgan lee",
+    null,
+    false
+   ],
+   "45": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "47": [
+    "incidents-bot",
+    null,
+    true
+   ],
+   "49": [
+    "elena garcia",
+    null,
+    false
+   ],
+   "51": [
+    "kai wong",
+    null,
+    false
+   ],
+   "53": [
+    "tarun patel",
+    null,
+    false
+   ],
+   "55": [
+    "morgan lee",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_1535569449944c3b907fc0d5d060de49__1790123456-infra-region-cost-probe.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "Maya",
+    "infra",
+    false
+   ],
+   "5": [
+    "Kevin",
+    "finance",
+    false
+   ],
+   "7": [
+    "Jon",
+    "eng-infra",
+    false
+   ],
+   "9": [
+    "Priya",
+    "sre",
+    false
+   ],
+   "11": [
+    "Sara",
+    "eng-ml",
+    false
+   ],
+   "13": [
+    "Kevin",
+    "finance",
+    false
+   ],
+   "15": [
+    "Jon",
+    "eng-infra",
+    false
+   ],
+   "17": [
+    "Priya",
+    "sre",
+    false
+   ],
+   "19": [
+    "capacity-bot",
+    null,
+    true
+   ],
+   "21": [
+    "Jon",
+    "eng-infra",
+    false
+   ],
+   "23": [
+    "Kevin",
+    "finance",
+    false
+   ],
+   "25": [
+    "Maya",
+    "infra",
+    false
+   ],
+   "27": [
+    "Kevin",
+    "finance",
+    false
+   ],
+   "29": [
+    "Priya",
+    "sre",
+    false
+   ],
+   "31": [
+    "Maya",
+    "infra",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_1887e95026bd41cfbfd0cadbf59a6d30__2759994321-eu-central1-nlb-network-flap-failover.txt": {
+  "why": "a dash line that is not team-first: 'later - carla (eng-runtime)', a time word before the name",
+  "starts": {
+   "3": [
+    "incident-bot",
+    null,
+    true
+   ],
+   "5": [
+    "alice",
+    "sre",
+    false
+   ],
+   "7": [
+    "bob",
+    "oncall",
+    false
+   ],
+   "9": [
+    "alice",
+    "sre",
+    false
+   ],
+   "17": [
+    "carla",
+    "eng-runtime",
+    false
+   ],
+   "19": [
+    "paul",
+    "infra",
+    false
+   ],
+   "21": [
+    "dev-support",
+    null,
+    false
+   ],
+   "23": [
+    "customer-success",
+    null,
+    false
+   ],
+   "25": [
+    "alice",
+    "sre",
+    false
+   ],
+   "31": [
+    "carla",
+    "eng-runtime",
+    false
+   ],
+   "37": [
+    "bob",
+    "oncall",
+    false
+   ],
+   "39": [
+    "paul",
+    "infra",
+    false
+   ],
+   "41": [
+    "incident-bot",
+    null,
+    true
+   ],
+   "43": [
+    "carla",
+    "eng-runtime",
+    false
+   ],
+   "45": [
+    "carla",
+    "eng-runtime",
+    false
+   ],
+   "47": [
+    "paul",
+    "infra",
+    false
+   ],
+   "49": [
+    "customer-success",
+    null,
+    false
+   ],
+   "51": [
+    "alice",
+    "sre",
+    false
+   ],
+   "53": [
+    "bob",
+    "oncall",
+    false
+   ],
+   "55": [
+    "carla",
+    "eng-runtime",
+    false
+   ],
+   "57": [
+    "alice",
+    "sre",
+    false
+   ],
+   "59": [
+    "paul",
+    "infra",
+    false
+   ],
+   "61": [
+    "dev-support",
+    null,
+    false
+   ],
+   "63": [
+    "incident-bot",
+    null,
+    true
+   ],
+   "65": [
+    "alice",
+    "sre",
+    false
+   ],
+   "71": [
+    "customer-success",
+    null,
+    false
+   ],
+   "73": [
+    "bob",
+    "oncall",
+    false
+   ],
+   "75": [
+    "eve",
+    "oncall-next",
+    false
+   ],
+   "77": [
+    "alice",
+    "sre",
+    false
+   ]
+  },
+  "known_gaps": {
+   "45": {
+    "reason": "SLACK-6/7: 'later - carla (eng-runtime)'; 'later' is a time word, read as the name",
+    "parser_says": [
+     "later",
+     "eng-runtime",
+     false
+    ]
+   }
+  }
+ },
+ "dsid_1c48469636984c3e82f4683345b7d2c8__3476543210-launch-wedge-preflight.txt": {
+  "why": "channel unknown",
+  "starts": {
+   "3": [
+    "maria",
+    null,
+    false
+   ],
+   "4": [
+    "sam",
+    null,
+    false
+   ],
+   "5": [
+    "devin",
+    null,
+    false
+   ],
+   "6": [
+    "ana",
+    null,
+    false
+   ],
+   "7": [
+    "marIA",
+    null,
+    false
+   ],
+   "8": [
+    "sam",
+    null,
+    false
+   ],
+   "9": [
+    "tony",
+    null,
+    false
+   ],
+   "10": [
+    "ana",
+    null,
+    false
+   ],
+   "11": [
+    "devin",
+    null,
+    false
+   ],
+   "12": [
+    "maria",
+    null,
+    false
+   ],
+   "13": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "14": [
+    "sam",
+    null,
+    false
+   ],
+   "15": [
+    "maria",
+    null,
+    false
+   ],
+   "16": [
+    "tony",
+    null,
+    false
+   ],
+   "17": [
+    "devin",
+    null,
+    false
+   ],
+   "18": [
+    "ana",
+    null,
+    false
+   ],
+   "19": [
+    "sam",
+    null,
+    false
+   ],
+   "20": [
+    "maria",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_1f626e44ddf14fe385d6e2c41602d688__1902501234-lisbon-temp-assignment-prescription-and-claims.txt": {
+  "why": "Name - Team speaker line",
+  "starts": {
+   "3": [
+    "Leo T.",
+    null,
+    false
+   ],
+   "5": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "7": [
+    "Benefits Bot",
+    null,
+    true
+   ],
+   "9": [
+    "Ivy",
+    "Benefits",
+    false
+   ],
+   "15": [
+    "Leo T.",
+    null,
+    false
+   ],
+   "17": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "26": [
+    "Benefits Bot",
+    null,
+    true
+   ],
+   "28": [
+    "Leo T.",
+    null,
+    false
+   ],
+   "30": [
+    "Ivy",
+    "Benefits",
+    false
+   ],
+   "32": [
+    "Leo T.",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_20d6f353fbbe45adab6b8cfd861a5556__1793214321-quick-swap-ops-handoff.txt": {
+  "why": "bot-heavy (half or more from bots)",
+  "starts": {
+   "3": [
+    "deploybot",
+    null,
+    true
+   ],
+   "5": [
+    "nora",
+    null,
+    false
+   ],
+   "7": [
+    "deploybot",
+    null,
+    true
+   ],
+   "9": [
+    "ops-lee",
+    null,
+    false
+   ],
+   "11": [
+    "oncall-bot",
+    null,
+    true
+   ],
+   "13": [
+    "samir",
+    null,
+    false
+   ],
+   "15": [
+    "nora",
+    null,
+    false
+   ],
+   "17": [
+    "releasebot",
+    null,
+    true
+   ],
+   "19": [
+    "ops-lee",
+    null,
+    false
+   ],
+   "21": [
+    "deploybot",
+    null,
+    true
+   ],
+   "23": [
+    "deploybot",
+    null,
+    true
+   ],
+   "24": [
+    "deploybot",
+    null,
+    true
+   ],
+   "26": [
+    "samir",
+    null,
+    false
+   ],
+   "27": [
+    "deploybot",
+    null,
+    true
+   ],
+   "28": [
+    "deploybot",
+    null,
+    true
+   ],
+   "30": [
+    "ops-lee",
+    null,
+    false
+   ],
+   "32": [
+    "nora",
+    null,
+    false
+   ],
+   "34": [
+    "releasebot",
+    null,
+    true
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_2616de25ecb7443f942494643f5fc627__1769456789.txt": {
+  "why": "one-off capitalised single-word speaker (label candidate)",
+  "starts": {
+   "3": [
+    "incident-bot",
+    null,
+    true
+   ],
+   "6": [
+    "Maya Patel",
+    null,
+    false
+   ],
+   "8": [
+    "Samir Rao",
+    null,
+    false
+   ],
+   "10": [
+    "Maya Patel",
+    null,
+    false
+   ],
+   "12": [
+    "Ena Li",
+    null,
+    false
+   ],
+   "14": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "16": [
+    "Tony Nguyen",
+    null,
+    false
+   ],
+   "18": [
+    "Maya Patel",
+    null,
+    false
+   ],
+   "29": [
+    "Samir Rao",
+    null,
+    false
+   ],
+   "34": [
+    "support-bot",
+    null,
+    true
+   ],
+   "36": [
+    "Tony Nguyen",
+    null,
+    false
+   ],
+   "38": [
+    "Maya Patel",
+    null,
+    false
+   ],
+   "40": [
+    "Samir Rao",
+    null,
+    false
+   ],
+   "47": [
+    "Maya Patel",
+    null,
+    false
+   ],
+   "50": [
+    "Tony Nguyen",
+    null,
+    false
+   ],
+   "52": [
+    "Ena Li",
+    null,
+    false
+   ],
+   "54": [
+    "Tony Nguyen",
+    null,
+    false
+   ],
+   "56": [
+    "Samir Rao",
+    null,
+    false
+   ],
+   "63": [
+    "incident-bot",
+    null,
+    true
+   ],
+   "65": [
+    "Maya Patel",
+    null,
+    false
+   ],
+   "67": [
+    "Ena Li",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {
+   "4": {
+    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
+    "parser_says": [
+     "Details",
+     null,
+     false
+    ]
+   },
+   "61": {
+    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
+    "parser_says": [
+     "Commands",
+     null,
+     false
+    ]
+   }
+  }
+ },
+ "dsid_297332094f044c928a6789f9f5d60b6d__1888881234-billing-followup-action-items.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "Priya",
+    "Finance",
+    false
+   ],
+   "5": [
+    "Ashwin",
+    "Eng-ML",
+    false
+   ],
+   "7": [
+    "Maya",
+    "Billing",
+    false
+   ],
+   "9": [
+    "Sam",
+    "Eng-SRE",
+    false
+   ],
+   "11": [
+    "Leo",
+    "Platform",
+    false
+   ],
+   "13": [
+    "LedgerBot",
+    null,
+    true
+   ],
+   "15": [
+    "Priya",
+    "Finance",
+    false
+   ],
+   "17": [
+    "Ashwin",
+    "Eng-ML",
+    false
+   ],
+   "19": [
+    "Sam",
+    "Eng-SRE",
+    false
+   ],
+   "21": [
+    "Maya",
+    "Billing",
+    false
+   ],
+   "23": [
+    "Priya",
+    "Finance",
+    false
+   ],
+   "25": [
+    "LedgerBot",
+    null,
+    true
+   ],
+   "27": [
+    "Priya",
+    "Finance",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_2e70cfb2462a4b3d97c19d093fde79e1__1763209987-setup-dock-monitor-logistics-reroute.txt": {
+  "why": "team-first speaker line (Legal - Priya)",
+  "starts": {
+   "3": [
+    "Liam O'Connor",
+    null,
+    false
+   ],
+   "5": [
+    "Priya",
+    "IT",
+    false
+   ],
+   "7": [
+    "Liam O'Connor",
+    null,
+    false
+   ],
+   "9": [
+    "Priya",
+    "IT",
+    false
+   ],
+   "11": [
+    "Liam O'Connor",
+    null,
+    false
+   ],
+   "13": [
+    "Rachel",
+    "People Ops",
+    false
+   ],
+   "15": [
+    "Logistics Bot",
+    null,
+    true
+   ],
+   "17": [
+    "Theo",
+    "Facilities",
+    false
+   ],
+   "19": [
+    "Priya",
+    "IT",
+    false
+   ],
+   "21": [
+    "Liam O'Connor",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {
+   "5": {
+    "reason": "SLACK-7: team written first (IT - Priya); read as written, name 'IT'",
+    "parser_says": [
+     "IT",
+     "Priya",
+     false
+    ]
+   },
+   "9": {
+    "reason": "SLACK-7: team written first (IT - Priya); read as written, name 'IT'",
+    "parser_says": [
+     "IT",
+     "Priya",
+     false
+    ]
+   },
+   "19": {
+    "reason": "SLACK-7: team written first (IT - Priya); read as written, name 'IT'",
+    "parser_says": [
+     "IT",
+     "Priya",
+     false
+    ]
+   }
+  }
+ },
+ "dsid_2f2b42f072d04f0a836b1604507418e6__3312334444-emergency-runway-handoff.txt": {
+  "why": "bot-heavy (half or more from bots)",
+  "starts": {
+   "3": [
+    "deploybot",
+    null,
+    true
+   ],
+   "5": [
+    "megan",
+    null,
+    false
+   ],
+   "7": [
+    "deploybot",
+    null,
+    true
+   ],
+   "9": [
+    "ops-tom",
+    null,
+    false
+   ],
+   "11": [
+    "oncall-bot",
+    null,
+    true
+   ],
+   "13": [
+    "cs-jules",
+    null,
+    false
+   ],
+   "15": [
+    "megan",
+    null,
+    false
+   ],
+   "17": [
+    "deploybot",
+    null,
+    true
+   ],
+   "19": [
+    "deploybot",
+    null,
+    true
+   ],
+   "21": [
+    "deploybot",
+    null,
+    true
+   ],
+   "23": [
+    "ops-tom",
+    null,
+    false
+   ],
+   "25": [
+    "cs-jules",
+    null,
+    false
+   ],
+   "27": [
+    "releasebot",
+    null,
+    true
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_362210c3cdd44b3eb43714d4bb51946a__1805001234-rc2-integration-flake-pin-retry.txt": {
+  "why": "bot-heavy (half or more from bots)",
+  "starts": {
+   "3": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "4": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "5": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "6": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "7": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "8": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "14": [
+    "maya",
+    null,
+    false
+   ],
+   "15": [
+    "alex",
+    null,
+    false
+   ],
+   "16": [
+    "cheng",
+    null,
+    false
+   ],
+   "17": [
+    "priya",
+    null,
+    false
+   ],
+   "18": [
+    "maya",
+    null,
+    false
+   ],
+   "19": [
+    "alex",
+    null,
+    false
+   ],
+   "20": [
+    "cheng",
+    null,
+    false
+   ],
+   "21": [
+    "maya",
+    null,
+    false
+   ],
+   "22": [
+    "alex",
+    null,
+    false
+   ],
+   "23": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "24": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "25": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "26": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "27": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "28": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "29": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "30": [
+    "maya",
+    null,
+    false
+   ],
+   "31": [
+    "priya",
+    null,
+    false
+   ],
+   "32": [
+    "alex",
+    null,
+    false
+   ],
+   "33": [
+    "cheng",
+    null,
+    false
+   ],
+   "34": [
+    "maya",
+    null,
+    false
+   ],
+   "35": [
+    "ci-bot",
+    null,
+    true
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_3dab7ea1d12349b885614042fef2236d__1871112222.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "incident-bot",
+    null,
+    true
+   ],
+   "5": [
+    "alex",
+    null,
+    false
+   ],
+   "7": [
+    "lee",
+    null,
+    false
+   ],
+   "9": [
+    "lee",
+    null,
+    false
+   ],
+   "17": [
+    "lee",
+    null,
+    false
+   ],
+   "19": [
+    "maria",
+    null,
+    false
+   ],
+   "21": [
+    "lee",
+    null,
+    false
+   ],
+   "23": [
+    "sam",
+    null,
+    false
+   ],
+   "28": [
+    "sam",
+    null,
+    false
+   ],
+   "37": [
+    "sam",
+    null,
+    false
+   ],
+   "42": [
+    "lee",
+    null,
+    false
+   ],
+   "44": [
+    "alex",
+    null,
+    false
+   ],
+   "46": [
+    "lee",
+    null,
+    false
+   ],
+   "48": [
+    "lee",
+    null,
+    false
+   ],
+   "50": [
+    "maria",
+    null,
+    false
+   ],
+   "57": [
+    "maria",
+    null,
+    false
+   ],
+   "59": [
+    "lee",
+    null,
+    false
+   ],
+   "61": [
+    "incident-bot",
+    null,
+    true
+   ],
+   "63": [
+    "lee",
+    null,
+    false
+   ],
+   "70": [
+    "lee",
+    null,
+    false
+   ],
+   "72": [
+    "alex",
+    null,
+    false
+   ],
+   "74": [
+    "maria",
+    null,
+    false
+   ],
+   "76": [
+    "lee",
+    null,
+    false
+   ],
+   "78": [
+    "sam",
+    null,
+    false
+   ],
+   "80": [
+    "oncall-bot",
+    null,
+    true
+   ],
+   "82": [
+    "maria",
+    null,
+    false
+   ],
+   "84": [
+    "alex",
+    null,
+    false
+   ],
+   "86": [
+    "lee",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_42cb0de0a43343e190ee90f823243f74__1743305555-ephemeral-audit-timeout-quick-incident.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "riley",
+    null,
+    false
+   ],
+   "5": [
+    "ada",
+    null,
+    false
+   ],
+   "7": [
+    "riley",
+    null,
+    false
+   ],
+   "9": [
+    "chris",
+    null,
+    false
+   ],
+   "11": [
+    "ada",
+    null,
+    false
+   ],
+   "13": [
+    "riley",
+    null,
+    false
+   ],
+   "15": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "17": [
+    "chris",
+    null,
+    false
+   ],
+   "19": [
+    "ada",
+    null,
+    false
+   ],
+   "21": [
+    "riley",
+    null,
+    false
+   ],
+   "23": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "25": [
+    "chris",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_4941d5f3f9fa4b95b9a67b05eda24599__1750101234-zenbyte-collections-escalation-plan.txt": {
+  "why": "Name - Team speaker line",
+  "starts": {
+   "3": [
+    "Ava",
+    "Finance",
+    false
+   ],
+   "5": [
+    "Liam",
+    "AE",
+    false
+   ],
+   "7": [
+    "Maya",
+    "CS",
+    false
+   ],
+   "9": [
+    "Ava",
+    "Finance",
+    false
+   ],
+   "11": [
+    "Liam",
+    "AE",
+    false
+   ],
+   "13": [
+    "Ava",
+    "Finance",
+    false
+   ],
+   "15": [
+    "Raj",
+    "Legal",
+    false
+   ],
+   "17": [
+    "Maya",
+    "CS",
+    false
+   ],
+   "19": [
+    "Liam",
+    "AE",
+    false
+   ],
+   "21": [
+    "Ava",
+    "Finance",
+    false
+   ],
+   "23": [
+    "CollectionsBot",
+    null,
+    true
+   ],
+   "25": [
+    "Liam",
+    "AE",
+    false
+   ],
+   "27": [
+    "Maya",
+    "CS",
+    false
+   ],
+   "29": [
+    "Ava",
+    "Finance",
+    false
+   ],
+   "31": [
+    "Raj",
+    "Legal",
+    false
+   ],
+   "33": [
+    "Liam",
+    "AE",
+    false
+   ],
+   "35": [
+    "Ava",
+    "Finance",
+    false
+   ],
+   "37": [
+    "Maya",
+    "CS",
+    false
+   ],
+   "39": [
+    "CollectionsBot",
+    null,
+    true
+   ],
+   "41": [
+    "Liam",
+    "AE",
+    false
+   ],
+   "43": [
+    "Ava",
+    "Finance",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_4a6fa3c7764a4792b3ded1a88689c38c__1787654321-autoscale-burst-cta-labels-a11y.txt": {
+  "why": "channel unknown",
+  "starts": {
+   "3": [
+    "maya",
+    null,
+    false
+   ],
+   "4": [
+    "liam",
+    null,
+    false
+   ],
+   "5": [
+    "alex",
+    null,
+    false
+   ],
+   "6": [
+    "jordan",
+    null,
+    false
+   ],
+   "12": [
+    "maya",
+    null,
+    false
+   ],
+   "13": [
+    "zoe",
+    null,
+    false
+   ],
+   "14": [
+    "liam",
+    null,
+    false
+   ],
+   "15": [
+    "alex",
+    null,
+    false
+   ],
+   "16": [
+    "maya",
+    null,
+    false
+   ],
+   "17": [
+    "jordan",
+    null,
+    false
+   ],
+   "18": [
+    "zoe",
+    null,
+    false
+   ],
+   "19": [
+    "maya",
+    null,
+    false
+   ],
+   "20": [
+    "liam",
+    null,
+    false
+   ],
+   "21": [
+    "alex",
+    null,
+    false
+   ],
+   "22": [
+    "maya",
+    null,
+    false
+   ],
+   "23": [
+    "jordan",
+    null,
+    false
+   ],
+   "24": [
+    "maya",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_4ab806be2ba745099172e95444e143c8__1812345678-sneaky-sushi-and-trivia.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "Maya",
+    null,
+    false
+   ],
+   "4": [
+    "Noah",
+    null,
+    false
+   ],
+   "5": [
+    "Olivia",
+    null,
+    false
+   ],
+   "6": [
+    "Maya",
+    null,
+    false
+   ],
+   "7": [
+    "Sam",
+    null,
+    false
+   ],
+   "8": [
+    "ops-bot",
+    null,
+    true
+   ],
+   "9": [
+    "Noah",
+    null,
+    false
+   ],
+   "10": [
+    "Olivia",
+    null,
+    false
+   ],
+   "11": [
+    "Sam",
+    null,
+    false
+   ],
+   "12": [
+    "Maya",
+    null,
+    false
+   ],
+   "13": [
+    "Noah",
+    null,
+    false
+   ],
+   "14": [
+    "Olivia",
+    null,
+    false
+   ],
+   "15": [
+    "Maya",
+    null,
+    false
+   ],
+   "16": [
+    "Sam",
+    null,
+    false
+   ],
+   "17": [
+    "Maya",
+    null,
+    false
+   ],
+   "25": [
+    "Sam",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_584be872f10e4f1595e58d4854cee3cd__1901239999-dc6-apply-pin-canary-rollback.txt": {
+  "why": "mixed layout",
+  "starts": {
+   "3": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "10": [
+    "sasha",
+    null,
+    false
+   ],
+   "12": [
+    "kyle",
+    null,
+    false
+   ],
+   "14": [
+    "tian",
+    null,
+    false
+   ],
+   "16": [
+    "maria",
+    null,
+    false
+   ],
+   "18": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "25": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "27": [
+    "kyle",
+    null,
+    false
+   ],
+   "29": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "33": [
+    "maria",
+    null,
+    false
+   ],
+   "35": [
+    "sasha",
+    null,
+    false
+   ],
+   "37": [
+    "tian",
+    null,
+    false
+   ],
+   "39": [
+    "kyle",
+    null,
+    false
+   ],
+   "41": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "44": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "48": [
+    "maria",
+    null,
+    false
+   ],
+   "50": [
+    "kyle",
+    null,
+    false
+   ],
+   "52": [
+    "sasha",
+    null,
+    false
+   ],
+   "54": [
+    "deploy-bot",
+    null,
+    true
+   ]
+  },
+  "known_gaps": {
+   "7": {
+    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
+    "parser_says": [
+     "changes",
+     null,
+     false
+    ]
+   },
+   "8": {
+    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
+    "parser_says": [
+     "started_by",
+     null,
+     false
+    ]
+   },
+   "31": {
+    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
+    "parser_says": [
+     "apply_log",
+     null,
+     false
+    ]
+   },
+   "42": {
+    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
+    "parser_says": [
+     "rollback_plan",
+     null,
+     false
+    ]
+   },
+   "46": {
+    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
+    "parser_says": [
+     "post-check",
+     null,
+     false
+    ]
+   }
+  }
+ },
+ "dsid_5a2cb66f3fcf4d97b6c40e9d32523f17__1958123456-nimbus-artifact-finalization-workflow.txt": {
+  "why": "one-off capitalised single-word speaker (label candidate)",
+  "starts": {
+   "3": [
+    "Sophie",
+    null,
+    false
+   ],
+   "5": [
+    "Sophie",
+    null,
+    false
+   ],
+   "7": [
+    "Mike",
+    null,
+    false
+   ],
+   "9": [
+    "Ravi",
+    null,
+    false
+   ],
+   "11": [
+    "Ana",
+    null,
+    false
+   ],
+   "15": [
+    "Bethany",
+    null,
+    false
+   ],
+   "17": [
+    "DesignBot",
+    null,
+    true
+   ],
+   "19": [
+    "Mike",
+    null,
+    false
+   ],
+   "21": [
+    "Ravi",
+    null,
+    false
+   ],
+   "23": [
+    "Ana",
+    null,
+    false
+   ],
+   "25": [
+    "Bethany",
+    null,
+    false
+   ],
+   "27": [
+    "PartnerOps",
+    null,
+    false
+   ],
+   "29": [
+    "DesignBot",
+    null,
+    true
+   ],
+   "31": [
+    "Sophie",
+    null,
+    false
+   ],
+   "38": [
+    "Ravi",
+    null,
+    false
+   ],
+   "40": [
+    "Mike",
+    null,
+    false
+   ],
+   "42": [
+    "Sophie",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {
+   "12": {
+    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
+    "parser_says": [
+     "Files",
+     null,
+     false
+    ]
+   }
+  }
+ },
+ "dsid_5e556ff416614b848ca4a75c406354a3__1798456780-evidence-demo-access-sideband-log-capture-ask.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "auditor_jones",
+    null,
+    false
+   ],
+   "5": [
+    "maria",
+    "Security",
+    false
+   ],
+   "7": [
+    "auditor_jones",
+    null,
+    false
+   ],
+   "9": [
+    "kevin",
+    "Infra",
+    false
+   ],
+   "11": [
+    "maria",
+    "Security",
+    false
+   ],
+   "13": [
+    "auditor_jones",
+    null,
+    false
+   ],
+   "15": [
+    "kevin",
+    "Infra",
+    false
+   ],
+   "21": [
+    "maria",
+    "Security",
+    false
+   ],
+   "26": [
+    "compliance-bot",
+    null,
+    true
+   ],
+   "28": [
+    "kevin",
+    "Infra",
+    false
+   ],
+   "30": [
+    "maria",
+    "Security",
+    false
+   ],
+   "32": [
+    "auditor_jones",
+    null,
+    false
+   ],
+   "34": [
+    "kevin",
+    "Infra",
+    false
+   ],
+   "36": [
+    "maria",
+    "Security",
+    false
+   ],
+   "46": [
+    "auditor_jones",
+    null,
+    false
+   ],
+   "48": [
+    "maria",
+    "Security",
+    false
+   ],
+   "50": [
+    "kevin",
+    "Infra",
+    false
+   ],
+   "52": [
+    "opsbot",
+    null,
+    true
+   ],
+   "54": [
+    "auditor_jones",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_64c57d3702be4c00b03caceb5cfd2c21__1785006789-afterglow-oncall-checkins-and-slo-notes.txt": {
+  "why": "one-off capitalised single-word speaker (label candidate)",
+  "starts": {
+   "3": [
+    "Priya",
+    null,
+    false
+   ],
+   "8": [
+    "Jordan",
+    null,
+    false
+   ],
+   "10": [
+    "Priya",
+    null,
+    false
+   ],
+   "16": [
+    "Mateo",
+    null,
+    false
+   ],
+   "18": [
+    "Linh",
+    null,
+    false
+   ],
+   "20": [
+    "Sam",
+    "ops-bot",
+    true
+   ],
+   "22": [
+    "Jordan",
+    null,
+    false
+   ],
+   "24": [
+    "Priya",
+    null,
+    false
+   ],
+   "26": [
+    "Mateo",
+    null,
+    false
+   ],
+   "28": [
+    "Linh",
+    null,
+    false
+   ],
+   "30": [
+    "Ops-admin",
+    "ops-bot",
+    true
+   ],
+   "32": [
+    "Priya",
+    null,
+    false
+   ],
+   "34": [
+    "Jordan",
+    null,
+    false
+   ],
+   "36": [
+    "Mateo",
+    null,
+    false
+   ],
+   "38": [
+    "Priya",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {
+   "20": {
+    "reason": "SLACK-7: bot named in brackets (ops-bot); team_or_role_is_bot only fires on exactly 'bot'",
+    "parser_says": [
+     "Sam",
+     "ops-bot",
+     false
+    ]
+   },
+   "30": {
+    "reason": "SLACK-7: bot named in brackets (ops-bot); team_or_role_is_bot only fires on exactly 'bot'",
+    "parser_says": [
+     "Ops-admin",
+     "ops-bot",
+     false
+    ]
+   }
+  }
+ },
+ "dsid_79012a758f454c4aa53cfd5d7aa2cb45__1777771234-cypressai-cost-qbr-triage.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "lee_csm",
+    null,
+    false
+   ],
+   "5": [
+    "tay",
+    null,
+    false
+   ],
+   "7": [
+    "ana_fin",
+    null,
+    false
+   ],
+   "9": [
+    "dev-oncall",
+    null,
+    false
+   ],
+   "11": [
+    "support-bot",
+    null,
+    true
+   ],
+   "13": [
+    "lee_csm",
+    null,
+    false
+   ],
+   "15": [
+    "tay",
+    null,
+    false
+   ],
+   "17": [
+    "ana_fin",
+    null,
+    false
+   ],
+   "19": [
+    "dev-oncall",
+    null,
+    false
+   ],
+   "21": [
+    "lee_csm",
+    null,
+    false
+   ],
+   "23": [
+    "ana_fin",
+    null,
+    false
+   ],
+   "33": [
+    "tay",
+    null,
+    false
+   ],
+   "39": [
+    "lee_csm",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_820de8c3dd7d4efbab50f11521f91956__2367894321-requestid-detective-handoff.txt": {
+  "why": "code block with a blank line inside",
+  "starts": {
+   "3": [
+    "Jamie",
+    "Support",
+    false
+   ],
+   "5": [
+    "Alex",
+    "SRE",
+    false
+   ],
+   "7": [
+    "Jamie",
+    "Support",
+    false
+   ],
+   "9": [
+    "Riley",
+    "Logs",
+    false
+   ],
+   "17": [
+    "Riley",
+    "Logs",
+    false
+   ],
+   "19": [
+    "SupportBot",
+    null,
+    true
+   ],
+   "21": [
+    "Alex",
+    "SRE",
+    false
+   ],
+   "31": [
+    "Jamie",
+    "Support",
+    false
+   ],
+   "33": [
+    "Riley",
+    "Logs",
+    false
+   ],
+   "39": [
+    "Riley",
+    "Logs",
+    false
+   ],
+   "41": [
+    "Alex",
+    "SRE",
+    false
+   ],
+   "43": [
+    "Jamie",
+    "Support",
+    false
+   ],
+   "50": [
+    "Jamie",
+    "Support",
+    false
+   ],
+   "52": [
+    "SupportBot",
+    null,
+    true
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_86f58302893d4c4d88e30d6e83453292__2147654321-buildbot-style-checks-failed-dependency-pin-or-backout.txt": {
+  "why": "bot-heavy (half or more from bots)",
+  "starts": {
+   "3": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "4": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "5": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "6": [
+    "mike_chen",
+    null,
+    false
+   ],
+   "7": [
+    "anya",
+    null,
+    false
+   ],
+   "8": [
+    "sara",
+    null,
+    false
+   ],
+   "9": [
+    "mike_chen",
+    null,
+    false
+   ],
+   "10": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "11": [
+    "anya",
+    null,
+    false
+   ],
+   "16": [
+    "sara",
+    null,
+    false
+   ],
+   "17": [
+    "mike_chen",
+    null,
+    false
+   ],
+   "18": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "19": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "20": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "21": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "22": [
+    "ci-bot",
+    null,
+    true
+   ],
+   "23": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "24": [
+    "anya",
+    null,
+    false
+   ],
+   "25": [
+    "mike_chen",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_8e10c0053a4c44cfbce69248be5874fd__1987654321-poc-export-traceid-collisions-debug.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "hana_sales",
+    null,
+    false
+   ],
+   "4": [
+    "leo_sre",
+    null,
+    false
+   ],
+   "5": [
+    "hana_sales",
+    null,
+    false
+   ],
+   "6": [
+    "mark_runtime",
+    null,
+    false
+   ],
+   "7": [
+    "anya_support",
+    null,
+    false
+   ],
+   "8": [
+    "leo_sre",
+    null,
+    false
+   ],
+   "9": [
+    "mark_runtime",
+    null,
+    false
+   ],
+   "10": [
+    "export-bot",
+    null,
+    true
+   ],
+   "11": [
+    "export-bot",
+    null,
+    true
+   ],
+   "12": [
+    "anya_support",
+    null,
+    false
+   ],
+   "13": [
+    "mark_runtime",
+    null,
+    false
+   ],
+   "14": [
+    "leo_sre",
+    null,
+    false
+   ],
+   "15": [
+    "hana_sales",
+    null,
+    false
+   ],
+   "16": [
+    "mark_runtime",
+    null,
+    false
+   ],
+   "17": [
+    "anya_support",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_9129701d0c844214afc3dd385d39893c__1789001234-project-console-access-regen-role-sync.txt": {
+  "why": "no speaker line at all",
+  "starts": {},
+  "known_gaps": {}
+ },
+ "dsid_931be50a739e4c8ab27b1891540427a0__4998881234-novacare-privatedeploy-connectivity-quick-poc.txt": {
+  "why": "Name - Team speaker lines, name first (sampled as team-first, but none is)",
+  "starts": {
+   "3": [
+    "olivia",
+    "AE",
+    false
+   ],
+   "5": [
+    "sam",
+    "solutions eng",
+    false
+   ],
+   "7": [
+    "tony",
+    "netops",
+    false
+   ],
+   "9": [
+    "mei",
+    "security",
+    false
+   ],
+   "11": [
+    "olivia",
+    "AE",
+    false
+   ],
+   "13": [
+    "tony",
+    "netops",
+    false
+   ],
+   "20": [
+    "sam",
+    "solutions eng",
+    false
+   ],
+   "22": [
+    "mei",
+    "security",
+    false
+   ],
+   "24": [
+    "tony",
+    "netops",
+    false
+   ],
+   "26": [
+    "billing-bot",
+    null,
+    true
+   ],
+   "28": [
+    "olivia",
+    "AE",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_9ae5f35552e94299824f8dc57012dc2b__1719001234-heart-of-redwood-pin-press-pop-up.txt": {
+  "why": "channel unknown",
+  "starts": {
+   "3": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "4": [
+    "Jordan",
+    "Events",
+    false
+   ],
+   "5": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "6": [
+    "Ben",
+    "Finance",
+    false
+   ],
+   "7": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "8": [
+    "Eli",
+    "Ops",
+    false
+   ],
+   "9": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "10": [
+    "recognition-bot",
+    null,
+    true
+   ],
+   "11": [
+    "Sam",
+    "Facilities",
+    false
+   ],
+   "12": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "13": [
+    "Jordan",
+    "Events",
+    false
+   ],
+   "14": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "15": [
+    "Eli",
+    "Ops",
+    false
+   ],
+   "16": [
+    "Ben",
+    "Finance",
+    false
+   ],
+   "17": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "18": [
+    "Ben",
+    "Finance",
+    false
+   ],
+   "19": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "20": [
+    "Jordan",
+    "Events",
+    false
+   ],
+   "28": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "29": [
+    "Eli",
+    "Ops",
+    false
+   ],
+   "30": [
+    "Ben",
+    "Finance",
+    false
+   ],
+   "31": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "32": [
+    "Jordan",
+    "Events",
+    false
+   ],
+   "33": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "34": [
+    "recognition-bot",
+    null,
+    true
+   ],
+   "35": [
+    "Maya",
+    "People Ops",
+    false
+   ],
+   "36": [
+    "Eli",
+    "Ops",
+    false
+   ],
+   "37": [
+    "Jordan",
+    "Events",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_a086ade64ebd4c86a5d20dcbbf0913fd__5100001111-console-obs-mvp-decision-rundown.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "Nora",
+    "Product",
+    false
+   ],
+   "5": [
+    "Ethan",
+    "Eng",
+    false
+   ],
+   "6": [
+    "Zoe",
+    "SRE",
+    false
+   ],
+   "7": [
+    "Diego",
+    "Data",
+    false
+   ],
+   "8": [
+    "Hana",
+    "CS",
+    false
+   ],
+   "9": [
+    "Luca",
+    "Design",
+    false
+   ],
+   "10": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "11": [
+    "Nora",
+    "Product",
+    false
+   ],
+   "12": [
+    "Ethan",
+    "Eng",
+    false
+   ],
+   "13": [
+    "Zoe",
+    "SRE",
+    false
+   ],
+   "14": [
+    "Diego",
+    "Data",
+    false
+   ],
+   "15": [
+    "Hana",
+    "CS",
+    false
+   ],
+   "16": [
+    "Ethan",
+    "Eng",
+    false
+   ],
+   "23": [
+    "Nora",
+    "Product",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_a2a0981b5c914e06be597823fa311ce7__1740298888-provenance-missing-low-severity-pin-or-note.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "release-manager",
+    null,
+    false
+   ],
+   "4": [
+    "deploybot",
+    null,
+    true
+   ],
+   "5": [
+    "anna",
+    null,
+    false
+   ],
+   "6": [
+    "mike",
+    "sec",
+    false
+   ],
+   "7": [
+    "ben",
+    "infra",
+    false
+   ],
+   "8": [
+    "release-manager",
+    null,
+    false
+   ],
+   "9": [
+    "anna",
+    null,
+    false
+   ],
+   "15": [
+    "sre-oncall",
+    null,
+    false
+   ],
+   "16": [
+    "mike",
+    "sec",
+    false
+   ],
+   "17": [
+    "legal",
+    null,
+    false
+   ],
+   "18": [
+    "deploybot",
+    null,
+    true
+   ],
+   "19": [
+    "anna",
+    null,
+    false
+   ],
+   "20": [
+    "ben",
+    "infra",
+    false
+   ],
+   "21": [
+    "release-manager",
+    null,
+    false
+   ],
+   "22": [
+    "mike",
+    "sec",
+    false
+   ],
+   "23": [
+    "release-manager",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_a44ed1b68dcb40bf9149a63b3f6cf2d4__1795007777-gate-pod-wifi-eap-relocate.txt": {
+  "why": "team-first speaker line (Legal - Priya)",
+  "starts": {
+   "3": [
+    "Eli Park",
+    null,
+    false
+   ],
+   "5": [
+    "Security Desk",
+    null,
+    false
+   ],
+   "7": [
+    "Eli Park",
+    null,
+    false
+   ],
+   "9": [
+    "Logistics Bot",
+    null,
+    true
+   ],
+   "11": [
+    "Dana",
+    "People Ops",
+    false
+   ],
+   "13": [
+    "Sasha",
+    "IT",
+    false
+   ],
+   "15": [
+    "Eli Park",
+    null,
+    false
+   ],
+   "17": [
+    "Sasha",
+    "IT",
+    false
+   ],
+   "19": [
+    "Eli Park",
+    null,
+    false
+   ],
+   "21": [
+    "Marco",
+    "Facilities",
+    false
+   ],
+   "23": [
+    "Logistics Bot",
+    null,
+    true
+   ],
+   "25": [
+    "Sasha",
+    "IT",
+    false
+   ],
+   "27": [
+    "Eli Park",
+    null,
+    false
+   ],
+   "29": [
+    "Security Desk",
+    null,
+    false
+   ],
+   "31": [
+    "Eli Park",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {
+   "11": {
+    "reason": "SLACK-7: team written first (People Ops - Dana); read as written, name 'People Ops'",
+    "parser_says": [
+     "People Ops",
+     "Dana",
+     false
+    ]
+   },
+   "13": {
+    "reason": "SLACK-7: team written first (IT - Sasha); read as written, name 'IT'",
+    "parser_says": [
+     "IT",
+     "Sasha",
+     false
+    ]
+   },
+   "17": {
+    "reason": "SLACK-7: team written first (IT - Sasha); read as written, name 'IT'",
+    "parser_says": [
+     "IT",
+     "Sasha",
+     false
+    ]
+   },
+   "21": {
+    "reason": "SLACK-7: team written first (Facilities - Marco); read as written, name 'Facilities'",
+    "parser_says": [
+     "Facilities",
+     "Marco",
+     false
+    ]
+   },
+   "25": {
+    "reason": "SLACK-7: team written first (IT - Sasha); read as written, name 'IT'",
+    "parser_says": [
+     "IT",
+     "Sasha",
+     false
+    ]
+   }
+  }
+ },
+ "dsid_a4e702bd03254699b0e7bed0000972ab__1793045678-novacare-vra-check.txt": {
+  "why": "NovaCare, the running example",
+  "starts": {
+   "3": [
+    "Aisha",
+    "CS",
+    false
+   ],
+   "6": [
+    "Priya",
+    "Onboarding",
+    false
+   ],
+   "8": [
+    "Ben",
+    "Security",
+    false
+   ],
+   "10": [
+    "Tom",
+    "Legal",
+    false
+   ],
+   "12": [
+    "questionnaire-bot",
+    null,
+    true
+   ],
+   "14": [
+    "Aisha",
+    "CS",
+    false
+   ],
+   "16": [
+    "Ben",
+    "Security",
+    false
+   ],
+   "18": [
+    "Tom",
+    "Legal",
+    false
+   ],
+   "20": [
+    "Priya",
+    "Onboarding",
+    false
+   ],
+   "26": [
+    "Aisha",
+    "CS",
+    false
+   ],
+   "28": [
+    "Ben",
+    "Security",
+    false
+   ],
+   "30": [
+    "Tom",
+    "Legal",
+    false
+   ],
+   "32": [
+    "Aisha",
+    "CS",
+    false
+   ],
+   "34": [
+    "Priya",
+    "Onboarding",
+    false
+   ],
+   "42": [
+    "Aisha",
+    "CS",
+    false
+   ],
+   "44": [
+    "questionnaire-bot",
+    null,
+    true
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_a8e74913a9ba4d6988caf95f60875439__1795004321-activation-replay-invite-exec-brief.txt": {
+  "why": "team-first speaker line (Legal - Priya)",
+  "starts": {
+   "3": [
+    "Tara Lim",
+    null,
+    false
+   ],
+   "4": [
+    "Alex Novak",
+    null,
+    false
+   ],
+   "5": [
+    "Tara Lim",
+    null,
+    false
+   ],
+   "6": [
+    "Jorge Mendez",
+    null,
+    false
+   ],
+   "7": [
+    "OpsBot",
+    null,
+    true
+   ],
+   "8": [
+    "Tara Lim",
+    null,
+    false
+   ],
+   "9": [
+    "Lena",
+    "CSM",
+    false
+   ],
+   "10": [
+    "Alex Novak",
+    null,
+    false
+   ],
+   "11": [
+    "Lena",
+    "CSM",
+    false
+   ],
+   "12": [
+    "Lena",
+    "CSM",
+    false
+   ],
+   "13": [
+    "Tara Lim",
+    null,
+    false
+   ],
+   "14": [
+    "Jorge Mendez",
+    null,
+    false
+   ],
+   "15": [
+    "OpsBot",
+    null,
+    true
+   ],
+   "16": [
+    "Alex Novak",
+    null,
+    false
+   ],
+   "17": [
+    "Tara Lim",
+    null,
+    false
+   ],
+   "18": [
+    "Lena",
+    "CSM",
+    false
+   ],
+   "19": [
+    "Alex Novak",
+    null,
+    false
+   ],
+   "20": [
+    "Tara Lim",
+    null,
+    false
+   ],
+   "21": [
+    "Lena",
+    "CSM",
+    false
+   ],
+   "22": [
+    "Jorge Mendez",
+    null,
+    false
+   ],
+   "23": [
+    "Alex Novak",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {
+   "9": {
+    "reason": "SLACK-7: team written first (CSM - Lena); read as written, name 'CSM'",
+    "parser_says": [
+     "CSM",
+     "Lena",
+     false
+    ]
+   },
+   "11": {
+    "reason": "SLACK-7: team written first (CSM - Lena); read as written, name 'CSM'",
+    "parser_says": [
+     "CSM",
+     "Lena",
+     false
+    ]
+   },
+   "12": {
+    "reason": "SLACK-7: team written first (CSM - Lena); read as written, name 'CSM'",
+    "parser_says": [
+     "CSM",
+     "Lena",
+     false
+    ]
+   },
+   "18": {
+    "reason": "SLACK-7: team written first (CSM - Lena); read as written, name 'CSM'",
+    "parser_says": [
+     "CSM",
+     "Lena",
+     false
+    ]
+   },
+   "21": {
+    "reason": "SLACK-7: team written first (CSM - Lena); read as written, name 'CSM'",
+    "parser_says": [
+     "CSM",
+     "Lena",
+     false
+    ]
+   }
+  }
+ },
+ "dsid_ac731cf513e64cfea03195d72c17eb64__1765234567-typegen-param-parity-flag.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "ewa",
+    null,
+    false
+   ],
+   "4": [
+    "sam",
+    null,
+    false
+   ],
+   "5": [
+    "ewa",
+    null,
+    false
+   ],
+   "10": [
+    "jonah",
+    null,
+    false
+   ],
+   "11": [
+    "ewa",
+    null,
+    false
+   ],
+   "12": [
+    "kai",
+    null,
+    false
+   ],
+   "13": [
+    "regen-bot",
+    null,
+    true
+   ],
+   "14": [
+    "sam",
+    null,
+    false
+   ],
+   "15": [
+    "jonah",
+    null,
+    false
+   ],
+   "16": [
+    "kai",
+    null,
+    false
+   ],
+   "17": [
+    "ewa",
+    null,
+    false
+   ],
+   "18": [
+    "sam",
+    null,
+    false
+   ],
+   "19": [
+    "jonah",
+    null,
+    false
+   ],
+   "20": [
+    "ewa",
+    null,
+    false
+   ],
+   "21": [
+    "sam",
+    null,
+    false
+   ],
+   "22": [
+    "kai",
+    null,
+    false
+   ],
+   "23": [
+    "ewa",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_b1387836f6e24a90b64435698b5e6cc6__1967890123-harborcare-azure-marketplace-integration.txt": {
+  "why": "mixed layout",
+  "starts": {
+   "3": [
+    "ellie-partners",
+    null,
+    false
+   ],
+   "4": [
+    "dan",
+    null,
+    false
+   ],
+   "6": [
+    "ellie-partners",
+    null,
+    false
+   ],
+   "8": [
+    "meera-marketing",
+    null,
+    false
+   ],
+   "10": [
+    "josiah-eng",
+    null,
+    false
+   ],
+   "18": [
+    "ellie-partners",
+    null,
+    false
+   ],
+   "20": [
+    "josiah-eng",
+    null,
+    false
+   ],
+   "22": [
+    "infra-bot",
+    null,
+    true
+   ],
+   "24": [
+    "taylor-sec",
+    null,
+    false
+   ],
+   "26": [
+    "meera-marketing",
+    null,
+    false
+   ],
+   "28": [
+    "ellie-partners",
+    null,
+    false
+   ],
+   "30": [
+    "josiah-eng",
+    null,
+    false
+   ],
+   "32": [
+    "infra-bot",
+    null,
+    true
+   ],
+   "34": [
+    "ellie-partners",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_b3318f50240d4b5e8abf79eb686970cd__1751234567-ap-south-canary-rollback-coord.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "maria",
+    null,
+    false
+   ],
+   "4": [
+    "tonY",
+    null,
+    false
+   ],
+   "5": [
+    "leo",
+    null,
+    false
+   ],
+   "6": [
+    "runtime-oncall",
+    null,
+    false
+   ],
+   "7": [
+    "deploybot",
+    null,
+    true
+   ],
+   "8": [
+    "ops",
+    null,
+    false
+   ],
+   "9": [
+    "product",
+    null,
+    false
+   ],
+   "10": [
+    "maria",
+    null,
+    false
+   ],
+   "11": [
+    "leo",
+    null,
+    false
+   ],
+   "12": [
+    "runtime-oncall",
+    null,
+    false
+   ],
+   "13": [
+    "maria",
+    null,
+    false
+   ],
+   "14": [
+    "deploybot",
+    null,
+    true
+   ],
+   "15": [
+    "runtime-oncall",
+    null,
+    false
+   ],
+   "16": [
+    "ops",
+    null,
+    false
+   ],
+   "17": [
+    "product",
+    null,
+    false
+   ],
+   "18": [
+    "maria",
+    null,
+    false
+   ],
+   "19": [
+    "deploybot",
+    null,
+    true
+   ],
+   "20": [
+    "leo",
+    null,
+    false
+   ],
+   "21": [
+    "runtime-oncall",
+    null,
+    false
+   ],
+   "22": [
+    "maria",
+    null,
+    false
+   ],
+   "23": [
+    "tonY",
+    null,
+    false
+   ],
+   "24": [
+    "deploybot",
+    null,
+    true
+   ],
+   "25": [
+    "ops",
+    null,
+    false
+   ],
+   "26": [
+    "runtime-oncall",
+    null,
+    false
+   ],
+   "27": [
+    "leo",
+    null,
+    false
+   ],
+   "28": [
+    "product",
+    null,
+    false
+   ],
+   "29": [
+    "maria",
+    null,
+    false
+   ],
+   "30": [
+    "ops",
+    null,
+    false
+   ],
+   "31": [
+    "deploybot",
+    null,
+    true
+   ],
+   "32": [
+    "product",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_b57a507730324bd790d73ce5bc4f61e7__1867009999-beta-router-misroute-embed-backfill-credit.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "sara_finance",
+    null,
+    false
+   ],
+   "5": [
+    "ingest-sre",
+    null,
+    false
+   ],
+   "7": [
+    "alice_data",
+    null,
+    false
+   ],
+   "9": [
+    "ben_billing",
+    null,
+    false
+   ],
+   "11": [
+    "carol_manager",
+    null,
+    false
+   ],
+   "13": [
+    "finance-bot",
+    null,
+    true
+   ],
+   "15": [
+    "sara_finance",
+    null,
+    false
+   ],
+   "17": [
+    "ingest-sre",
+    null,
+    false
+   ],
+   "19": [
+    "sara_finance",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_b6f0576cebe0439a80d3ab6e4f3adf3c__1835012345-orphaned-span-rows-console-lookup.txt": {
+  "why": "mixed layout",
+  "starts": {
+   "3": [
+    "elaine",
+    null,
+    false
+   ],
+   "5": [
+    "samir",
+    null,
+    false
+   ],
+   "7": [
+    "elaine",
+    null,
+    false
+   ],
+   "9": [
+    "ingest-bot",
+    null,
+    true
+   ],
+   "11": [
+    "mike",
+    null,
+    false
+   ],
+   "20": [
+    "mike",
+    null,
+    false
+   ],
+   "22": [
+    "elaine",
+    null,
+    false
+   ],
+   "24": [
+    "samir",
+    null,
+    false
+   ],
+   "26": [
+    "elaine",
+    null,
+    false
+   ],
+   "28": [
+    "mike",
+    null,
+    false
+   ],
+   "30": [
+    "mike",
+    null,
+    false
+   ],
+   "38": [
+    "elaine",
+    null,
+    false
+   ],
+   "40": [
+    "samir",
+    null,
+    false
+   ],
+   "42": [
+    "mike",
+    null,
+    false
+   ],
+   "44": [
+    "mike",
+    null,
+    false
+   ],
+   "46": [
+    "elaine",
+    null,
+    false
+   ],
+   "48": [
+    "oncall-bot",
+    null,
+    true
+   ],
+   "50": [
+    "samir",
+    null,
+    false
+   ],
+   "52": [
+    "mike",
+    null,
+    false
+   ],
+   "54": [
+    "elaine",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_b7c53f2f259c474c9fb2f39053d5b938__1747779999-bmc-keystore-rotation-bios-emergency-shell-euc1.txt": {
+  "why": "blank-line layout",
+  "starts": {
+   "3": [
+    "maria",
+    null,
+    false
+   ],
+   "5": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "7": [
+    "sam",
+    null,
+    false
+   ],
+   "14": [
+    "jordan",
+    null,
+    false
+   ],
+   "16": [
+    "maria",
+    null,
+    false
+   ],
+   "18": [
+    "lee",
+    null,
+    false
+   ],
+   "20": [
+    "sam",
+    null,
+    false
+   ],
+   "22": [
+    "pavel",
+    null,
+    false
+   ],
+   "24": [
+    "maria",
+    null,
+    false
+   ],
+   "26": [
+    "jordan",
+    null,
+    false
+   ],
+   "28": [
+    "lee",
+    null,
+    false
+   ],
+   "30": [
+    "sam",
+    null,
+    false
+   ],
+   "32": [
+    "maria",
+    null,
+    false
+   ],
+   "34": [
+    "lee",
+    null,
+    false
+   ],
+   "36": [
+    "maria",
+    null,
+    false
+   ],
+   "38": [
+    "pavel",
+    null,
+    false
+   ],
+   "40": [
+    "jordan",
+    null,
+    false
+   ],
+   "48": [
+    "maria",
+    null,
+    false
+   ],
+   "50": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "52": [
+    "lee",
+    null,
+    false
+   ],
+   "54": [
+    "sam",
+    null,
+    false
+   ],
+   "56": [
+    "maria",
+    null,
+    false
+   ],
+   "58": [
+    "pavel",
+    null,
+    false
+   ],
+   "60": [
+    "lee",
+    null,
+    false
+   ],
+   "62": [
+    "maria",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_b912d94c79604a41be1122000eeba4b6__7190001110-late-pr-staged-rebase-ci-hold-request.txt": {
+  "why": "code block with a blank line inside",
+  "starts": {
+   "3": [
+    "ashwin",
+    null,
+    false
+   ],
+   "5": [
+    "maria",
+    null,
+    false
+   ],
+   "7": [
+    "ashwin",
+    null,
+    false
+   ],
+   "14": [
+    "jamie",
+    null,
+    false
+   ],
+   "16": [
+    "ashwin",
+    null,
+    false
+   ],
+   "18": [
+    "maria",
+    null,
+    false
+   ],
+   "20": [
+    "ashwin",
+    null,
+    false
+   ],
+   "22": [
+    "release-bot",
+    null,
+    true
+   ],
+   "24": [
+    "sasha",
+    null,
+    false
+   ],
+   "26": [
+    "ashwin",
+    null,
+    false
+   ],
+   "28": [
+    "jamie",
+    null,
+    false
+   ],
+   "30": [
+    "maria",
+    null,
+    false
+   ],
+   "32": [
+    "jamie",
+    null,
+    false
+   ],
+   "42": [
+    "ashwin",
+    null,
+    false
+   ],
+   "44": [
+    "jamie",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_c7286ccfb7e34081a2420d70925c8528__1778822222-propagation-sso-edge-cache.txt": {
+  "why": "code block with a blank line inside",
+  "starts": {
+   "3": [
+    "Maya",
+    null,
+    false
+   ],
+   "5": [
+    "Raj",
+    null,
+    false
+   ],
+   "7": [
+    "Liam",
+    null,
+    false
+   ],
+   "9": [
+    "Maya",
+    null,
+    false
+   ],
+   "17": [
+    "Zara",
+    null,
+    false
+   ],
+   "19": [
+    "Raj",
+    null,
+    false
+   ],
+   "21": [
+    "Maya",
+    null,
+    false
+   ],
+   "23": [
+    "Liam",
+    null,
+    false
+   ],
+   "25": [
+    "Raj",
+    null,
+    false
+   ],
+   "27": [
+    "Maya",
+    null,
+    false
+   ],
+   "29": [
+    "Zara",
+    null,
+    false
+   ],
+   "36": [
+    "Maya",
+    null,
+    false
+   ],
+   "38": [
+    "Liam",
+    null,
+    false
+   ],
+   "44": [
+    "Raj",
+    null,
+    false
+   ],
+   "46": [
+    "Maya",
+    null,
+    false
+   ],
+   "48": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "50": [
+    "Zara",
+    null,
+    false
+   ],
+   "52": [
+    "Maya",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {
+   "34": {
+    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
+    "parser_says": [
+     "Expect",
+     null,
+     false
+    ]
+   }
+  }
+ },
+ "dsid_ceb121321d194dd08416ff8e56b4c244__5001112222-onboard-stall-renewal-escalation.txt": {
+  "why": "one-off capitalised single-word speaker (label candidate)",
+  "starts": {
+   "3": [
+    "Tess",
+    "CS",
+    false
+   ],
+   "5": [
+    "IncidentBot",
+    null,
+    true
+   ],
+   "7": [
+    "Marco",
+    "SRE",
+    false
+   ],
+   "9": [
+    "Priyanka",
+    "Eng",
+    false
+   ],
+   "11": [
+    "Ana",
+    "SE",
+    false
+   ],
+   "13": [
+    "Hector",
+    "CS Manager",
+    false
+   ],
+   "15": [
+    "Tess",
+    "CS",
+    false
+   ],
+   "17": [
+    "Marco",
+    "SRE",
+    false
+   ],
+   "21": [
+    "Ana",
+    "SE",
+    false
+   ],
+   "23": [
+    "Tess",
+    "CS",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_d6bbfb6677ce419aa039e48ce327f0c7__1767809999-onboard-sprint1-manager-runbook.txt": {
+  "why": "one-off capitalised single-word speaker (label candidate)",
+  "starts": {
+   "3": [
+    "Sam",
+    "People Ops",
+    false
+   ],
+   "5": [
+    "Sam",
+    "People Ops",
+    false
+   ],
+   "14": [
+    "Mia",
+    "Eng Manager",
+    false
+   ],
+   "16": [
+    "Sam",
+    "People Ops",
+    false
+   ],
+   "18": [
+    "Alex",
+    "DevEx",
+    false
+   ],
+   "20": [
+    "Raj",
+    "IT",
+    false
+   ],
+   "22": [
+    "Sam",
+    "People Ops",
+    false
+   ],
+   "24": [
+    "Mia",
+    "Eng Manager",
+    false
+   ],
+   "26": [
+    "Sam",
+    "People Ops",
+    false
+   ],
+   "28": [
+    "Jordan",
+    "new-hire",
+    false
+   ],
+   "30": [
+    "Mia",
+    "Eng Manager",
+    false
+   ],
+   "32": [
+    "Alex",
+    "DevEx",
+    false
+   ],
+   "34": [
+    "OnboardBot",
+    null,
+    true
+   ],
+   "36": [
+    "Sam",
+    "People Ops",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_e181ac732a1b43af805d7a5e830fb7f5__6154321000-insights-routing-header-strip-regression.txt": {
+  "why": "mixed layout",
+  "starts": {
+   "3": [
+    "sam.platform",
+    null,
+    false
+   ],
+   "4": [
+    "ana-console",
+    null,
+    false
+   ],
+   "5": [
+    "sam.platform",
+    null,
+    false
+   ],
+   "10": [
+    "ana-console",
+    null,
+    false
+   ],
+   "11": [
+    "sam.platform",
+    null,
+    false
+   ],
+   "18": [
+    "mike-runtime",
+    null,
+    false
+   ],
+   "19": [
+    "dryan-infra",
+    null,
+    false
+   ],
+   "20": [
+    "ana-console",
+    null,
+    false
+   ],
+   "21": [
+    "leah-product",
+    null,
+    false
+   ],
+   "22": [
+    "sam.platform",
+    null,
+    false
+   ],
+   "23": [
+    "mike-runtime",
+    null,
+    false
+   ],
+   "28": [
+    "leah-product",
+    null,
+    false
+   ],
+   "29": [
+    "dryan-infra",
+    null,
+    false
+   ],
+   "30": [
+    "devops-bot",
+    null,
+    true
+   ],
+   "31": [
+    "sam.platform",
+    null,
+    false
+   ],
+   "32": [
+    "mike-runtime",
+    null,
+    false
+   ],
+   "33": [
+    "mike-runtime",
+    null,
+    false
+   ],
+   "40": [
+    "ana-console",
+    null,
+    false
+   ],
+   "41": [
+    "leah-product",
+    null,
+    false
+   ],
+   "42": [
+    "dryan-infra",
+    null,
+    false
+   ],
+   "43": [
+    "sam.platform",
+    null,
+    false
+   ],
+   "44": [
+    "mike-runtime",
+    null,
+    false
+   ],
+   "45": [
+    "leah-product",
+    null,
+    false
+   ],
+   "46": [
+    "ryan-infra",
+    null,
+    false
+   ],
+   "47": [
+    "nana-console",
+    null,
+    false
+   ],
+   "48": [
+    "sam.platform",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_e2fa4cf2f93d4ad3a67afd5163df9283__1965623456-ardentbank-rollout-clarify-sla-timeline.txt": {
+  "why": "one message per line",
+  "starts": {
+   "3": [
+    "Aisha",
+    null,
+    false
+   ],
+   "4": [
+    "Connor",
+    null,
+    false
+   ],
+   "5": [
+    "Ben",
+    "CS",
+    false
+   ],
+   "6": [
+    "Priya",
+    null,
+    false
+   ],
+   "7": [
+    "Jordan",
+    null,
+    false
+   ],
+   "8": [
+    "Aisha",
+    null,
+    false
+   ],
+   "9": [
+    "Jordan",
+    null,
+    false
+   ],
+   "10": [
+    "Priya",
+    null,
+    false
+   ],
+   "11": [
+    "Ben",
+    "CS",
+    false
+   ],
+   "12": [
+    "Connor",
+    null,
+    false
+   ],
+   "13": [
+    "Aisha",
+    null,
+    false
+   ],
+   "18": [
+    "deploy-bot",
+    null,
+    true
+   ],
+   "19": [
+    "Aisha",
+    null,
+    false
+   ],
+   "20": [
+    "Priya",
+    null,
+    false
+   ],
+   "21": [
+    "Ben",
+    "CS",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_e7a1060ddbc1419a8e56a929ebc2558f__1769998888-acmebio-support-proration-credit-memo.txt": {
+  "why": "code block with a blank line inside",
+  "starts": {
+   "3": [
+    "Maya",
+    null,
+    false
+   ],
+   "5": [
+    "Raj",
+    null,
+    false
+   ],
+   "7": [
+    "Maya",
+    null,
+    false
+   ],
+   "9": [
+    "Lena",
+    null,
+    false
+   ],
+   "11": [
+    "Carlos",
+    null,
+    false
+   ],
+   "13": [
+    "Maya",
+    null,
+    false
+   ],
+   "20": [
+    "billing-bot",
+    null,
+    true
+   ],
+   "22": [
+    "Raj",
+    null,
+    false
+   ],
+   "24": [
+    "Carlos",
+    null,
+    false
+   ],
+   "26": [
+    "Lena",
+    null,
+    false
+   ],
+   "28": [
+    "Maya",
+    null,
+    false
+   ],
+   "30": [
+    "Raj",
+    null,
+    false
+   ],
+   "32": [
+    "Lena",
+    null,
+    false
+   ],
+   "34": [
+    "billing-bot",
+    null,
+    true
+   ],
+   "36": [
+    "Maya",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_ea1ca20566df451f98b7c9f566a8f936__1805550000-structured-output-cleanup-squash.txt": {
+  "why": "squashed: about 15 messages joined on lines 3 and 16 with '; name:'. A line-level truth can mark only the start of line 3, so it cannot see the mid-line messages; the parser misses them too",
+  "starts": {
+   "3": [
+    "lina_docs",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_fde60b4e98a04050a423fdb0cd6374be__1767778888-webinar_nudge_quickstart-experiment.txt": {
+  "why": "channel from the export path",
+  "starts": {
+   "3": [
+    "Rhea",
+    "growth",
+    false
+   ],
+   "4": [
+    "Ben",
+    "content",
+    false
+   ],
+   "5": [
+    "Rhea",
+    "growth",
+    false
+   ],
+   "6": [
+    "Tasha",
+    "product",
+    false
+   ],
+   "7": [
+    "Eli",
+    "analytics",
+    false
+   ],
+   "8": [
+    "Rhea",
+    "growth",
+    false
+   ],
+   "9": [
+    "Ivy",
+    "devex",
+    false
+   ],
+   "10": [
+    "OpsBot",
+    null,
+    true
+   ],
+   "11": [
+    "Tasha",
+    "product",
+    false
+   ],
+   "12": [
+    "Ben",
+    "content",
+    false
+   ],
+   "13": [
+    "Eli",
+    "analytics",
+    false
+   ],
+   "14": [
+    "Ivy",
+    "devex",
+    false
+   ],
+   "15": [
+    "Rhea",
+    "growth",
+    false
+   ],
+   "16": [
+    "Ben",
+    "content",
+    false
+   ],
+   "17": [
+    "Tasha",
+    "product",
+    false
+   ],
+   "18": [
+    "Eli",
+    "analytics",
+    false
+   ],
+   "19": [
+    "Ivy",
+    "devex",
+    false
+   ],
+   "20": [
+    "Rhea",
+    "growth",
+    false
+   ],
+   "21": [
+    "Ben",
+    "content",
+    false
+   ],
+   "22": [
+    "Tasha",
+    "product",
+    false
+   ],
+   "23": [
+    "Eli",
+    "analytics",
+    false
+   ],
+   "24": [
+    "Rhea",
+    "growth",
+    false
+   ]
+  },
+  "known_gaps": {}
+ },
+ "dsid_fe9759236414404fa207dc7e71fad3df__2136543210-cache-lease-decoupling-operator-chat.txt": {
+  "why": "code block with a blank line inside",
+  "starts": {
+   "3": [
+    "ravi",
+    null,
+    false
+   ],
+   "4": [
+    "linh",
+    null,
+    false
+   ],
+   "5": [
+    "ravi",
+    null,
+    false
+   ],
+   "6": [
+    "abby",
+    null,
+    false
+   ],
+   "7": [
+    "sam",
+    null,
+    false
+   ],
+   "8": [
+    "ravi",
+    null,
+    false
+   ],
+   "14": [
+    "linh",
+    null,
+    false
+   ],
+   "15": [
+    "ravi",
+    null,
+    false
+   ],
+   "16": [
+    "abby",
+    null,
+    false
+   ],
+   "17": [
+    "sam",
+    null,
+    false
+   ],
+   "18": [
+    "infra-bot",
+    null,
+    true
+   ],
+   "19": [
+    "linh",
+    null,
+    false
+   ],
+   "20": [
+    "ravi",
+    null,
+    false
+   ],
+   "25": [
+    "abby",
+    null,
+    false
+   ],
+   "26": [
+    "sam",
+    null,
+    false
+   ],
+   "27": [
+    "linh",
+    null,
+    false
+   ],
+   "41": [
+    "ravi",
+    null,
+    false
+   ],
+   "47": [
+    "abby",
+    null,
+    false
+   ],
+   "48": [
+    "sam",
+    null,
+    false
+   ],
+   "49": [
+    "ravi",
+    null,
+    false
+   ],
+   "50": [
+    "infra-bot",
+    null,
+    true
+   ],
+   "51": [
+    "sam",
+    null,
+    false
+   ]
+  },
+  "known_gaps": {}
+ }
+}
