@@ -19,8 +19,9 @@ Slack-specific glossary (the shared one is in [stories.md](../stories.md)):
   and do not rank on recency. There are no per-message timestamps anywhere in the corpus.
 - **Chunk**: what goes to the embedder. One thread, unless the thread is over the token
   ceiling, in which case it splits on a message boundary. About 99% of threads are one chunk.
-- **TextNode**: LlamaIndex's unit. Our chunks become these, and everything downstream of a
-  node is library code — see section 8 of the design.
+- **TextNode**: LlamaIndex's unit. Our custom `NodeParser`s (SLACK-9, 10) make them inside
+  LlamaIndex's `IngestionPipeline`; everything downstream of a node is library code — see
+  section 8 of the design.
 
 ## Index
 
@@ -54,9 +55,9 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-7  `parse_speaker` | ✅ |
 | SLACK-8  `parse_thread` | ✅ |
 | SLACK-8b  truth set | ⬜ |
-| SLACK-9  `chunk_thread` | ⬜ |
-| SLACK-10  `to_text_node` | ⬜ |
-| SLACK-11  Embed + BM25 hybrid index | ⬜ |
+| SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ⬜ |
+| SLACK-10  `SlackMessageChunker` | ⬜ |
+| SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
 | SLACK-12  recall@20 on the benchmark questions | ⬜ |
 
 ---
@@ -428,7 +429,7 @@ cleaners as LlamaIndex `Transformation`s inside an `IngestionPipeline` with an
 `IngestionCache`. We did not: this stage's output is files and a manifest, not nodes;
 `IngestionCache` would hold all 285,605 threads in memory to save a rerun of about a minute;
 and the manifest already proves which raw bytes made which clean bytes. The pipeline belongs
-where nodes first exist (SLACK-10). Observability does use the library: one
+where nodes first exist (SLACK-9 to 11). Observability does use the library: one
 `@dispatcher.span` over the stage and SLACK-3's events on it.
 
 ### Acceptance Criteria
@@ -625,7 +626,7 @@ cannot swallow the messages after it. Checked and rejected: LlamaIndex's `Senten
 and `TokenTextSplitter` cut by size, `MarkdownNodeParser`, `JSONNodeParser` and
 `HTMLNodeParser` by markup, `SemanticSplitterNodeParser` by embedding distance, and
 `SlackReader` reads the live API. None splits chat by speaker. `SentenceSplitter` returns in
-SLACK-9 for over-long threads.
+SLACK-10, only for a single message longer than the ceiling.
 
 **Result:** 5,741,020 messages; 62 threads have none (a bare list of handles, a key-value
 dump, a lone dsid).
@@ -906,42 +907,90 @@ APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-9  `chunk_thread(thread) -> list[Chunk]` ⬜
+## SLACK-9  `SlackThreadParser`: a custom LlamaIndex `NodeParser` ⬜
 
 **Status** To do
-**As a** retrieval index whose unit is the conversation
-**I want to** one chunk per thread, split only when a thread is over budget
-**So that** 99% of threads reach the embedder whole
+**As a** pipeline that runs inside LlamaIndex's `IngestionPipeline`
+**I want to** a `NodeParser` that turns one clean-thread `Document` into one `TextNode`
+**So that** our parsing rules run as a library `Transformation`, and everything after the node is library code
 
-Measured: thread tokens are p50 821, p90 1,256, p99 1,725, max 3,101. At a 2,048-token ceiling
-about 99% of threads never split. Unlike Confluence, where every page was split, splitting here
-is the exception — `SentenceSplitter` runs on the tail only, never by default.
+`pipeline/slack/nodes.py`. A subclass of LlamaIndex's `NodeParser`, so it slots into
+`IngestionPipeline(transformations=[...])` like `SentenceSplitter` does. Its one method,
+`_parse_nodes`, is a thin wrapper: it calls `parse_thread` (SLACK-8) on the Document's text
+and file name, and builds the node. The rules stay in SLACK-5 to 8; this story adds none.
+
+**Checked against the library first (NFR-7).** No LlamaIndex parser splits chat by speaker
+(`SentenceSplitter`, `TokenTextSplitter`, `SemanticSplitter` cut by size or meaning;
+`Markdown`/`JSON`/`HTML` parsers by markup; the add-on `chonkie`, `slide` and `docling`
+parsers are general or document-oriented). A `TextNode` already renders
+`{metadata_str}\n\n{content}` with `{key}: {value}` per line, and
+`excluded_embed_metadata_keys` keeps a field on the node but out of the embedded text. So this
+story sets fields; it does not build a header string.
+
+| node field | value | in the embedded text? |
+|---|---|---|
+| `text` | the messages, speaker lines included (the header is dropped: it is the channel line) | yes |
+| `metadata.channel` | `Thread.channel.name`; left out when `unknown` | yes |
+| `metadata.participants` | `Thread.participants`, joined with `, ` | yes |
+| `metadata.doc_id` | the dsid | no |
+| `metadata.channel_route` | `line1` / `export_path` / `unknown`, for SLACK-12's split | no |
+| `metadata.first_turn`, `last_turn` | `0` and the last turn; SLACK-10 narrows them on a split | no |
+| source relationship | the Document the node came from | not text |
+
+The tension to manage: a header helps the vector carry channel and participants, but an
+identical prefix on every chunk pushes 285,605 vectors toward each other. Only the two keys
+that carry meaning are embedded.
+
+**What a preview run showed** (throwaway code, NovaCare, LlamaIndex 0.14.24): the wrapper works
+inside `IngestionPipeline`, and three things must be handled here or in SLACK-11:
+1. The node must link to its source Document, or the docstore cannot upsert it on a re-run.
+2. `SimpleDirectoryReader` adds `creation_date`, `last_modified_date`, `file_path`,
+   `file_size`, `file_type` to the Document. They are copied to nodes and would land in the
+   embedded text as an invented date. SLACK-11 loads with
+   `file_metadata=lambda path: {"file_name": Path(path).name}`, verified to keep only the name;
+   this story still excludes anything it did not set.
+3. The Document id is a random UUID by default (see SLACK-11).
 
 ### Acceptance Criteria
 
 ```gherkin
-Scenario: a normal thread is one chunk
-  Given a thread of 821 tokens and a ceiling of 2,048
-  Then chunk_thread returns one chunk holding the whole thread
+Scenario: one thread, one node
+  Given the NovaCare Document
+  When SlackThreadParser runs inside an IngestionPipeline
+  Then it returns one TextNode whose embedded text starts
+       "channel: customer-success\nparticipants: Aisha, Priya, Ben, Tom, questionnaire-bot\n\n"
+  And doc_id, channel_route, first_turn and last_turn are on the node but not in that text
+  And the node's source relationship is the Document
 
-Scenario: an over-budget thread splits on a message boundary
-  Given a thread of 3,101 tokens and a ceiling of 2,048
-  Then it splits into 2 chunks
-  And no message is cut in half
-  And every message lands in exactly one chunk
+Scenario: an unknown channel contributes nothing to the text
+  Given a thread whose channel is unknown
+  Then "unknown" does not appear in the embedded text
 
-Scenario: ids are stable
-  Then a chunk id is sha256(doc_id:first_turn:last_turn) and does not change between runs
+Scenario: no date anywhere
+  Then no timestamp appears in the node metadata or the embedded text
+
+Scenario: a thread with no speaker line
+  Then it still becomes one node holding its text, with no participants
 ```
 
 ### Example with real data
 
-`dsid_a4e702bd...__1793045678-novacare-vra-check.txt`, 16 messages, about 780 tokens: one
-chunk, first_turn 0, last_turn 15.
+`get_content(MetadataMode.EMBED)` for NovaCare, from the preview run:
+
+```text
+channel: customer-success
+participants: Aisha, Priya, Ben, Tom, questionnaire-bot
+
+Aisha (CS): Hey team — NovaCare sent an updated vendor risk assessment and DPA follow-up.
+Can someone pick this up? Link: https://files.redwoodinternal/vra/novacare_2026.pdf :eyes:
+...
+```
+
+2,256 characters, 16 messages, one node.
 
 ### Non-functional Requirements
 
-Shared list.
+Shared list, and NFR-7: the rendering and the pipeline plumbing are the library's.
 
 ### Dependencies
 
@@ -949,62 +998,46 @@ APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-10  `to_text_node(chunk) -> TextNode` ⬜
+## SLACK-10  `SlackMessageChunker`: split over-budget threads between messages ⬜
 
 **Status** To do
-**As a** vector that has to carry who spoke and where
-**I want to** a chunk turned into a LlamaIndex `TextNode` with the right metadata and templates
-**So that** channel and participants reach the embedder without us hand-building a header
+**As a** retrieval index whose unit is the conversation
+**I want to** a node over the token ceiling split into nodes on message boundaries
+**So that** ~99% of threads reach the embedder whole and no message is cut in half
 
-**Checked against the library first (NFR-7).** A `TextNode` already renders
-`text_template='{metadata_str}\n\n{content}'` with `metadata_template='{key}: {value}'`, and
-`excluded_embed_metadata_keys` keeps a field on the node but out of the embedded text. So this
-story sets fields and templates; it does not build a string.
+A second custom `NodeParser` (or `TransformComponent`), placed after `SlackThreadParser` in the
+pipeline. A node under the ceiling passes through untouched; an over-budget node is cut
+between messages, never inside one. `SentenceSplitter` alone does not do this: it cuts by
+size wherever the size runs out.
 
-The tension it has to manage: a header helps the vector carry channel and participants, but an
-identical prefix on every chunk pushes 285,605 vectors toward each other. Keep the embedded
-keys to the two that carry meaning, and exclude the bookkeeping ones.
+Measured by the design: thread tokens are p50 821, p90 1,256, p99 1,725, max 3,101. At a
+2,048-token ceiling about 99% of threads never split. Re-measure with the embedding model's
+own tokenizer when it is chosen.
 
 ### Acceptance Criteria
 
 ```gherkin
-Scenario: identity fields ride on the node but not in the embedding
-  Given a chunk of the NovaCare thread
-  Then the node metadata holds channel, participants, doc_id, content_hash
-  And doc_id and content_hash are in excluded_embed_metadata_keys
-  And channel and participants are not
+Scenario: a normal thread passes through
+  Given the NovaCare node, about 780 tokens, and a ceiling of 2,048
+  Then the chunker returns the same node unchanged
 
-Scenario: an unknown channel contributes nothing to the text
-  Given a thread whose channel is unknown
-  Then "unknown" does not appear in the embedded text
+Scenario: an over-budget thread splits on a message boundary
+  Given a thread of 3,101 tokens and a ceiling of 2,048
+  Then it becomes 2 nodes, each with its own first_turn and last_turn
+  And no message is cut in half
+  And every message lands in exactly one node
+  And both keep the thread's channel, participants and doc_id
 
-Scenario: no invented date
-  Then no timestamp appears in the node metadata or the embedded text
-
-Scenario: the node id is stable
-  Then node.id_ is the chunk id from SLACK-9 and survives a re-run
+Scenario: ids are stable
+  Then a node id is sha256(doc_id:first_turn:last_turn) and does not change between runs
 ```
 
-The third scenario is not a style rule. The corpus timestamps are placeholders — 75,272
-distinct values over 285,605 files, years running 2001 to 2513 — so a date would be noise.
-
-### Example with real data
-
-`get_content(MetadataMode.EMBED)` for the NovaCare thread:
-
-```text
-channel: customer-success
-participants: Aisha (CS), Priya (Onboarding), Ben (Security), Tom (Legal), questionnaire-bot
-
-Aisha (CS): Hey team - NovaCare sent an updated vendor risk assessment and DPA follow-up...
-Priya (Onboarding): I can take lead on the questionnaire...
-```
-
-`doc_id` and `content_hash` are on the node, and absent from the text above.
+A single message longer than the ceiling, if any exists, is the one place `SentenceSplitter`
+is allowed; count them first.
 
 ### Non-functional Requirements
 
-Shared list, and NFR-7: the rendering is the library's, not ours.
+Shared list.
 
 ### Dependencies
 
@@ -1012,22 +1045,30 @@ APIs data contracts: SLACK-9 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-11  Embed + BM25 hybrid index ⬜  *(module-level; split when we reach it)*
+## SLACK-11  The ingestion run: reader, pipeline, stores, hybrid retrieval ⬜  *(module-level; split when we reach it)*
 
-Nodes from SLACK-10 go through an `IngestionPipeline` into the vector store, with a docstore
-keyed on the dsid so `refresh_ref_docs` handles re-runs, plus a `BM25Retriever` beside the
-vectors and a `QueryFusionRetriever` over the two. All library code — see section 8 of the
-design for the audit.
+All library code, wired together:
 
-**BM25 is required, not optional.** 72.8% of threads carry an exact-match token — `r_9f8e7d6c`,
-`OF-ACME-001`, `Photon9B-int4` — that dense retrieval alone loses. 56.2% carry a URL and 72.8%
-a fenced code block, which push the same way.
+```text
+SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
+  -> Document per thread, id = the dsid
+  -> IngestionPipeline(transformations=[SlackThreadParser(), SlackMessageChunker(), embed_model],
+                       docstore=..., vector_store=..., cache=IngestionCache)
+  -> vector index  +  BM25Retriever over the same nodes  ->  QueryFusionRetriever
+```
 
-Every node carries `channel`, `participants`, `doc_id`, `content_hash` and `embedding_model`.
-It does **not** carry a date: see SLACK-9.
-
-Channel is also an authority signal available for free: `postmortems` and `incidents` are
-verified outcomes, `random` and `lunch-plans` are not.
+- **Reader.** `SimpleDirectoryReader` reads the clean `.txt` files as they are; no loader of
+  our own. `file_metadata` keeps only `file_name` (verified: no dates reach the Document).
+- **Document id = the dsid.** `filename_as_id=True` gives the full file path, which changes with
+  the checkout location, so the id is set to the dsid after loading. The docstore upserts on
+  it, so a re-run updates a thread's nodes instead of duplicating them.
+- **Cache.** `IngestionCache` + `pipeline.persist()` skip node/transformation pairs already done.
+- **BM25 is required, not optional.** 72.8% of threads carry an exact-match token —
+  `r_9f8e7d6c`, `OF-ACME-001`, `Photon9B-int4` — that dense retrieval alone loses. 56.2% carry
+  a URL and 72.8% a fenced code block, which push the same way.
+- **No date** on any node (design section 5).
+- Channel is also an authority signal available for free: `postmortems` and `incidents` are
+  verified outcomes, `random` and `lunch-plans` are not.
 
 ---
 
@@ -1053,7 +1094,7 @@ questions whose gold thread has a channel and for questions whose gold thread is
 
 If the two rates are about the same, the missing channel does not matter. If `unknown` is
 clearly lower, the channel line is helping search, and recovering more channels (for
-example from the thread's content) becomes worth a story. Two rules follow for SLACK-10 and
+example from the thread's content) becomes worth a story. Two rules follow for SLACK-9 and
 here: every node carries `channel_route` in its metadata (kept out of the embedded text), so
 this split is one group-by; and channel authority is a soft boost, never a filter, so an
 `unknown` thread is never dropped from results.
