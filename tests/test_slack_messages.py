@@ -43,6 +43,11 @@ class SplitMessages(unittest.TestCase):
                 "Retry-After: 30\nstarted_by: kyle\nB: \"Scale inference predictably\"\n")
         self.assertEqual(len(split_messages(text).messages), 1)
 
+    def test_a_new_label_word_blocks_only_the_whole_name(self):
+        text = ("eng\n\nkai: hi\nSDK: node-sdk 1.3.9\nSDK Team: PR #482 is ready\n"
+                "b en: paging oncall\nB: \"Scale inference predictably\"\nb en: can we toggle the flag back?\n")
+        self.assertEqual([m.split(":")[0] for m in split_messages(text).messages], ["kai", "SDK Team", "b en", "b en"])
+
     def test_a_bot_named_like_a_new_label_still_speaks(self):
         text = "eng\n\nkai: hi\nCanary Bot: Canary deploy scheduled for rerank/v2 to 1% traffic.\n"
         self.assertEqual(len(split_messages(text).messages), 2)
@@ -104,7 +109,7 @@ class RealCorpus(unittest.TestCase):
             totals["threads"] += 1
             totals["messages"] += len(split.messages)
             totals["threads_without_messages"] += not split.messages
-        self.assertEqual(totals, {"threads": 285_605, "messages": 5_739_617, "threads_without_messages": 64})
+        self.assertEqual(totals, {"threads": 285_605, "messages": 5_739_653, "threads_without_messages": 64})
 
 
 if __name__ == "__main__":

@@ -3,11 +3,11 @@
 The input is a message from `split_messages` (SLACK-6), or just its first line. SLACK-6 has
 already decided the line opens a message, so this only reads its parts. It reuses SLACK-6's
 SPEAKER_AT_LINE_START, so the two can never disagree on what a speaker line looks like.
-Measured over the 5,739,617 messages:
+Measured over the 5,739,653 messages:
 
-    tom_ae:                   4,977,632   name only
-    Aisha (CS):                 744,605   in brackets
-    Noah - AE:                   17,246   after a dash
+    tom_ae:                   4,977,665   name only
+    Aisha (CS):                 744,607   in brackets
+    Noah - AE:                   17,247   after a dash
     Dan - HelixEdge (SI):           134   both; the brackets win
 
 What sits beside the name is kept as written in `team_or_role`, not classified: the corpus

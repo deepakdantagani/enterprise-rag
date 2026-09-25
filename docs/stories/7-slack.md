@@ -680,7 +680,7 @@ Shared list, plus:
 - **Byte-preserving:** tested on every thread of the corpus.
 - **Maintainable:** `NOT_SPEAKERS` is the label table; a new label is a word in it.
 - **Corpus counts as tests:** 5,741,020 messages, 62 threads without one, NovaCare 16.
-  *After SLACK-6b's 38 label words: 5,739,617 messages, 64 threads without one, NovaCare 16.*
+  *After SLACK-6b's 38 label words: 5,739,653 messages, 64 threads without one, NovaCare 16.*
 
 ### Dependencies
 
@@ -715,8 +715,8 @@ team_or_role, is_bot)` out. It reuses SLACK-6's `SPEAKER_AT_LINE_START`, now wit
 5,741,020 messages parses.
 
 **Shapes, measured (messages):** name only 4,978,937 · in brackets 744,702 · after a dash
-17,247 · both 134. 762,083 messages carry a `team_or_role`. *After SLACK-6b: 4,977,632 ·
-744,605 · 17,246 · 134, and 761,985 with a `team_or_role`; the bot counts do not move.*
+17,247 · both 134. 762,083 messages carry a `team_or_role`. *After SLACK-6b: 4,977,665 ·
+744,607 · 17,247 · 134, and 761,988 with a `team_or_role`; the bot counts do not move.*
 
 **Decisions:**
 - **`team_or_role`, not `role`.** What sits beside the name is kept as written and not
@@ -812,7 +812,7 @@ walks, years 2001 to 2513), so it is not a field anyone could misuse as one.
 byte for byte.
 
 **Result, all 285,605 files:** every name parses, 285,605 distinct `doc_id`s, 5,741,020
-messages, 6,199 without a slug; every thread round-trips. Pinned in a real-data test. *After SLACK-6b: 5,739,617 messages.*
+messages, 6,199 without a slug; every thread round-trips. Pinned in a real-data test. *After SLACK-6b: 5,739,653 messages.*
 
 **Decisions:** the story was split; the truth set is SLACK-8b, so this PR stays one function.
 The signature takes the name and text instead of a path, to stay pure. `messages` and
@@ -946,8 +946,9 @@ APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 **I want to** the label words SLACK-8b measured added to `NOT_SPEAKERS`
 **So that** the known gaps close and the corpus pins move by a counted amount
 
-`NOT_SPEAKERS` in `pipeline/slack/messages.py` grows from 112 to 150 words, in a block of its
-own with the rule that admitted them.
+`pipeline/slack/messages.py` gets a second table, `LABEL_NAMES`: 38 words that block a speaker
+line only when the label is the **whole name**. `NOT_SPEAKERS` (112 words) still matches the
+first word.
 
 **How a word got in.** The candidates were the 9 SLACK-8b caught (`Expect`, `Details`,
 `Commands`, `Files`, and the bot-notice keys `changes`, `started_by`, `apply_log`,
@@ -965,18 +966,19 @@ a label in all of them:
 **Not added:** `CI` (`CI (docs-bot): PR #5240 opened...` is a bot speaking) and `Everyone`
 (`Everyone: ack?` addresses people; not a label in every context read).
 
-**The first word decides.** `Start Date:`, `Start Time:` and `Bank Note:` are blocked too, and
-they are labels. `Canary Bot:` still speaks (a name ending in `Bot` always does). A bot named
-only in brackets with one of these words (`Canary (deploy-bot):`) would be blocked; the corpus
-has none.
+**Why whole name, not first word.** A first-word match (the first version of this PR) also
+silenced real speakers that start with one of these words and speak again in their thread:
+`SDK Team:`, `SDK Lead:`, `SDK CI:`, and names typed with a stray space, `b en:`, `c raig:`.
+Matching the whole name keeps them, at the cost of a few multi-word labels (`Start Date:`,
+`Bank Note:`) still opening a message: 36 messages between the two versions.
 
 **Result, all 285,605 threads:**
 
 | | before | after |
 |---|---|---|
-| messages | 5,741,020 | 5,739,617 (1,403 false starts gone) |
+| messages | 5,741,020 | 5,739,653 (1,367 false starts gone) |
 | threads with no message | 62 | 64 |
-| messages with a `team_or_role` | 762,083 | 761,985 |
+| messages with a `team_or_role` | 762,083 | 761,988 |
 | messages from bots | 573,797 | 573,797 |
 | SLACK-8b parser starts / precision | 871 / 98.97% | 862 / 100% |
 | SLACK-8b known gaps | 25 | 16 (the team-first, bracket-bot and `later` ones) |
@@ -991,6 +993,10 @@ NovaCare still has 16 messages.
 Scenario: a measured label no longer opens a message
   Given "ana: design uploaded\nFiles: a.svg\nExpect: 0 errors\nH1: ...\nRetry-After: 30\n"
   Then split_messages returns one message
+
+Scenario: a new label word blocks only the whole name
+  Given "kai: hi\nSDK: node-sdk 1.3.9\nSDK Team: PR #482 is ready\n"
+  Then "SDK:" stays inside kai's message and "SDK Team" opens its own
 
 Scenario: a bot named like a label still speaks
   Given "kai: hi\nCanary Bot: Canary deploy scheduled for rerank/v2 to 1% traffic.\n"
