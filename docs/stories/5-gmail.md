@@ -59,7 +59,8 @@ pipeline/gmail/
 | 2 | GMAIL-2 clean corpus | write `data/gmail/clean/` + manifest, one row per thread |
 | 3 | GMAIL-3 split_messages | cut a clean thread on `From:` at line start; a thread with none is one message |
 | 4 | GMAIL-4 parse_headers | `From`/`To`/`Cc`/`Date`/`Subject` out of one block, addresses split on commas |
-| 5 | GMAIL-5 normalise_date | every `Date:` to one UTC instant; stdlib covers 98.21%, a third rule covers the rest |
+| 5a | GMAIL-5a normalise_date (ISO, RFC 2822) | 568,479 dates to one UTC instant; the colon-offset trap; 126 stay unreadable |
+| 5b | GMAIL-5b normalise_date (Gmail display) | 8,595 dates with named zones and a 12-hour clock |
 | 6 | GMAIL-6 strip_quotes | drop the `On … wrote:` block and its `>` lines |
 | 7 | GMAIL-7 attachments | filenames from `Attachment(s):`; **never** from prose `Attached:` |
 | 8 | GMAIL-8 message_records | assemble the ten fields per message, thread fields from the filename and line 1 |
@@ -190,6 +191,8 @@ it is a fit, not an independent test.
 
 **Open:** whether to use that rule, what `was_escaped` means for a partly repaired thread, and
 what to do with the 37 double-escaped `\\n`. Decided when this story starts.
+
+**Found while building GMAIL-5a:** a literal `\r` (backslash and `r`, not a carriage return) survives `clean_thread`. Measured after `parse_headers`: 126 senders, 126 subjects, 125 recipient lists, 126 dates and 143 bodies carry it, for example the subject `procurement — DPA, SOC 2 & PO workflow\r`. `\r` is not decoded because the current rule treats it as a code-example case. GMAIL-5a strips it from the date only, as a stop-gap; the fix belongs here, in `clean_thread`, after which that stop-gap can go.
 
 ---
 
@@ -351,61 +354,65 @@ Shared rules apply. Pure, no state. Never parses the date: `date_raw` is GMAIL-5
 
 ---
 
-## GMAIL-5  normalise_date: 575,915 headers, one instant each  ⬜
+## GMAIL-5a  normalise_date: the ISO and RFC 2822 dates  ✅
 
-**Status:** To do.
+**Status:** Done. `pipeline/gmail/dates.py`, 18 tests. Of 577,200 dates: 414,691 read by the RFC 2822 rule, 153,788 by the ISO rule, 8,721 left for GMAIL-5b (8,595) or unreadable (126).
 
 **Background**
-Measured over every `Date:` header in the corpus. The Python standard library parses
-**565,582 of 575,915 (98.21%)** with two calls: `datetime.fromisoformat` for the ISO
-family and `email.utils.parsedate_to_datetime` for RFC-2822. The remaining **10,333
-headers in 2,012 distinct shapes** need a third rule, and the SLO budget for unparsed
-dates is zero, so the rule is required, not optional.
-
-The stragglers are three families:
-
-| Family | Count (top shapes) | Example |
-|---|---:|---|
-| ISO date with a space instead of `T`, seconds optional | 2,119 + 1,236 | `2026-09-17 09:12 -0400` · `2026-04-15 09:12:05 -0700` |
-| Named US/EU zone instead of an offset | 959 + 481 + 39 + 19 | `2026-10-20 09:12 PDT` · `2026-02-12 15:07 PST` · `2026-11-15 13:12 UTC` · `2026-11-24 08:12 CET` |
-| Gmail's display format, 12-hour clock | 91 + 54 + 25 + 22 | `2027-04-18 09:12 AM -0700` · `Tue, Feb 10, 2026 at 10:04 AM PST` · `Tue, Feb 24, 2026 at 3:10 PM` |
-
-Note `-07:00` with a colon appears in RFC-2822-shaped values, and `Tue, Feb 24, 2026 at
-3:10 PM` carries no zone at all.
+Measured over every date `parse_headers` returns (`Date:` plus 2,704 `Sent:`), the standard library is right on 454,737 of 577,200 (78.8%), not the 98.21% the first draft of this story claimed. That figure counted **111,029 colon-offset dates** (`Thu, 25 Jun 2026 11:05:00 -07:00`) as parsed, but `parsedate_to_datetime` silently drops their zone and returns a wrong, zone-less time. It also reads `Mon, Apr 28, 2025 4:40 PM` as 04:40, silently dropping the PM (handled in GMAIL-5b). The space form `2026-09-17 09:12 -0400` needs no rule of its own: `fromisoformat` reads it on Python 3.11+.
 
 **As a** pipeline developer
-**I want to** turn any `Date:` value into one UTC instant
-**So that** two date families and 2,012 stray shapes do not become two kinds of metadata
+**I want to** turn an ISO or RFC 2822 `Date:` text into one UTC instant, the sender's offset and an assumed flag
+**So that** every message can be sorted and filtered on one clock, and its local time rebuilt
+
+**What is returned** (`NormalisedDate`)
+
+| Field | Meaning |
+|---|---|
+| `sent_at` | The instant on the UTC clock, `2026-06-25T16:12:00+00:00` |
+| `utc_offset_minutes` | How far the sender's clock was from UTC, `-420` for `-0700`; empty when the text gave no zone, and for `-0000` (UTC, sender zone unknown) |
+| `assumed_utc` | True only when the text had no zone and UTC was assumed; `-0000` is not an assumption |
+| `rule` | `iso` or `rfc2822` (`loose` in GMAIL-5b) |
+
+Later stories store `sent_at` for sorting and filtering, and `sent_at` as whole seconds (`sent_at_ts`) when indexing, because many vector stores only range-filter on numbers. The original `date_raw` is kept beside them.
 
 **Acceptance Criteria (Gherkin)**
-- Given `2026-06-25T09:12:00-07:00`, Then the result is `2026-06-25T16:12:00+00:00`
+- Given `2026-06-25T09:12:00-07:00`, Then `sent_at` is `2026-06-25T16:12:00+00:00`, the offset is `-420`, `assumed_utc` is false
 - Given `Thu, 25 Jun 2026 09:12:00 -0700`, Then the result is the same instant
-- Given `Thu, 25 Jun 2026 11:05:00 -07:00` (colon in the offset), Then it parses
+- Given `Thu, 25 Jun 2026 11:05:00 -07:00` (colon in the offset), Then it is `2026-06-25T18:05:00+00:00`, not the zone-less 11:05
 - Given `2026-09-17 09:12 -0400`, Then it parses (space form, no seconds)
-- Given `2026-10-20 09:12 PDT`, Then the named zone resolves to `-0700`
-- Given `Tue, Feb 24, 2026 at 3:10 PM` with no zone, Then it is read as UTC and the record is flagged `date_assumed_utc`
-- Given an unparseable value, Then the function raises; it never returns a default
-- Given the corpus, Then all 575,915 headers parse and the count of `date_assumed_utc` is reported
+- Given a date with no zone such as `2027-04-03 09:12`, Then it is read as UTC and `assumed_utc` is true
+- Given `-0000`, Then it is UTC, the offset is empty and `assumed_utc` is false
+- Given a trailing `(PST)` comment or a literal `\r`, Then it is ignored
+- Given an unparseable value, a bare date with no time of day, or a day that does not exist (`29 Feb 2027`), Then it raises `ValueError` naming the date; it never returns a default
 
-**Example with real data**
-```
-'Thu, 25 Jun 2026 09:12:00 -0700'      → '2026-06-25T16:12:00+00:00'   (parsedate_to_datetime)
-'2026-09-05T15:08:00Z'                 → '2026-09-05T15:08:00+00:00'   (fromisoformat)
-'2026-10-20 09:12 PDT'                 → '2026-10-20T16:12:00+00:00'   (third rule)
-'Tue, Feb 10, 2026 at 10:04 AM PST'    → '2026-02-10T18:04:00+00:00'   (third rule)
-```
+**Measured on the real corpus (577,200 dates)**
+- RFC 2822 rule 414,691 · ISO rule 153,788 · `assumed_utc` 226 · offset unknown 3,048 (226 plus 2,822 `-0000`)
+- 8,721 raise here: the 8,595 that GMAIL-5b reads, plus **126 that stay unreadable** (about 44 rare shapes, 12 bare dates such as `2027-03-18`, 14 days that do not exist). The first draft said all dates parse; 126 (0.02%) will not. GMAIL-8 already falls back to the date in the file name when a message has no readable date.
+
+**Found in review, not fixed here:** a literal `\r` also sits in 126 senders, 126 subjects, 125 recipient lists and 143 bodies (cleaning residue). This story only strips it from the date; the root cause belongs to GMAIL-1b (`clean_thread`).
 
 **Non-functional Requirements**
-Shared rules apply. Pure, offline, no `dateutil` dependency unless the third rule proves
-longer than the library call it would replace — decide in the PR with both written.
+Shared rules apply. Pure, offline, standard library only.
 
-*Maintainability:* the three rules are three functions tried in order, each with its own
-doctests, so a new shape is a new rule and its own test — never a longer regex.
-*Observability:* the record carries which rule parsed it and `date_assumed_utc`. Audit row
-`date_rule` reports the split across the three rules and must show zero failures; if the
-third rule's share moves after a change, the number says so.
+*Maintainability:* one function per rule, each returning a result or `None`, tried in order.
+*Observability:* the result carries which rule read it and `assumed_utc`. Audit row `date_rule` reports the split and the unreadable count.
 
 **Dependencies** APIs data contracts: GMAIL-4 · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## GMAIL-5b  normalise_date: Gmail display dates and named zones  ⬜
+
+**Status:** To do. Built on GMAIL-5a. Measured, 8,595 dates: 8,595 in Gmail's display style (`Thu, May 20, 2027 at 09:12 AM PDT`, `2026-11-15 13:12 UTC`, `Fri, 25 Sep 2026 at 16:12`).
+
+Adds a third rule `loose` to `normalise_date`:
+- **Named zones** from one written table (PDT, PST, EDT, EST, CDT, CET, CEST, GMT, UTC, SGT, JST; BST read as British and IST as India, 20 blocks); `PT` and `ET` switch between summer and winter by the date (needs the `tzdata` package).
+- **12-hour clock**: `4:40 PM` is 16:40 (the standard library silently drops the PM); a stray PM on a 24-hour time (`13:56 PM`, `00:30 PM`) is ignored.
+- **No zone** (about 2,784 dates): read as UTC with `assumed_utc` true.
+- Full weekday and month names, `Sept`, a missing comma after the day, and misspelled month or weekday names raise.
+
+Decisions already made: no zone means UTC plus the flag; `-0000` is UTC without the flag; one written zone table rather than `dateutil` (which can ignore an unknown zone name silently).
 
 ---
 
