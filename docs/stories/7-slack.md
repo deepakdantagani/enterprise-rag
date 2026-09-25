@@ -55,7 +55,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-7  `parse_speaker` | ✅ |
 | SLACK-8  `parse_thread` | ✅ |
 | SLACK-8b  truth set | ✅ |
-| SLACK-6b  label words from the truth set | ⬜ |
+| SLACK-6b  label words from the truth set | ✅ |
 | SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ⬜ |
 | SLACK-10  `SlackMessageChunker` | ⬜ |
 | SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
@@ -680,6 +680,7 @@ Shared list, plus:
 - **Byte-preserving:** tested on every thread of the corpus.
 - **Maintainable:** `NOT_SPEAKERS` is the label table; a new label is a word in it.
 - **Corpus counts as tests:** 5,741,020 messages, 62 threads without one, NovaCare 16.
+  *After SLACK-6b's 38 label words: 5,739,617 messages, 64 threads without one, NovaCare 16.*
 
 ### Dependencies
 
@@ -714,7 +715,8 @@ team_or_role, is_bot)` out. It reuses SLACK-6's `SPEAKER_AT_LINE_START`, now wit
 5,741,020 messages parses.
 
 **Shapes, measured (messages):** name only 4,978,937 · in brackets 744,702 · after a dash
-17,247 · both 134. 762,083 messages carry a `team_or_role`.
+17,247 · both 134. 762,083 messages carry a `team_or_role`. *After SLACK-6b: 4,977,632 ·
+744,605 · 17,246 · 134, and 761,985 with a `team_or_role`; the bot counts do not move.*
 
 **Decisions:**
 - **`team_or_role`, not `role`.** What sits beside the name is kept as written and not
@@ -810,7 +812,7 @@ walks, years 2001 to 2513), so it is not a field anyone could misuse as one.
 byte for byte.
 
 **Result, all 285,605 files:** every name parses, 285,605 distinct `doc_id`s, 5,741,020
-messages, 6,199 without a slug; every thread round-trips. Pinned in a real-data test.
+messages, 6,199 without a slug; every thread round-trips. Pinned in a real-data test. *After SLACK-6b: 5,739,617 messages.*
 
 **Decisions:** the story was split; the truth set is SLACK-8b, so this PR stays one function.
 The signature takes the name and text instead of a path, to stay pure. `messages` and
@@ -891,9 +893,9 @@ re-read 23 threads (373 starts) line by line and found no wrong or missing start
 
 | | |
 |---|---|
-| message starts found by the parser | 871 |
+| message starts found by the parser | 871 (862 after SLACK-6b) |
 | true message starts | 862 |
-| parser starts that are true (precision) | 862 = 98.97% |
+| parser starts that are true (precision) | 862 = 98.97% (100% after SLACK-6b) |
 | true starts the parser found (recall) | 862 = 100% |
 | speaker fields right on a true start | 846 of 862 |
 
@@ -901,8 +903,8 @@ The 25 known gaps:
 
 | gap | lines | decision |
 |---|---|---|
-| a label word opens a false message: `Details:`, `Commands:`, `Files:`, `Expect:` | 4 | SLACK-6b: add the words |
-| a lowercase key inside a bot notice: `started_by: kyle`, `apply_log:`, `rollback_plan:` | 5 | SLACK-6b |
+| a label word opens a false message: `Details:`, `Commands:`, `Files:`, `Expect:` | 4 | closed by SLACK-6b |
+| a lowercase key inside a bot notice: `started_by: kyle`, `apply_log:`, `rollback_plan:` | 5 | closed by SLACK-6b |
 | team written first: `IT - Priya:`, `CSM - Lena:`, `Facilities - Marco:` (3 threads) | 13 | accepted: about 800 of 5.74M lines (0.014%) across the corpus, so a swap rule is not worth its risk |
 | a bot named in brackets: `Sam (ops-bot):` | 2 | accepted for now: 1,782 messages have a `(x-bot)` role on a non-bot name, and whether `ana (ops-bot)` is a person or the bot is unclear |
 | `later - carla (eng-runtime):`, a time word read as the name | 1 | accepted: one line |
@@ -937,26 +939,62 @@ APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-6b  Label words measured by the truth set ⬜
+## SLACK-6b  Label words measured by the truth set ✅
 
-**Status** To do
+**Status** Done
 **As a** splitter that should not open a message on a label
 **I want to** the label words SLACK-8b measured added to `NOT_SPEAKERS`
 **So that** the known gaps close and the corpus pins move by a counted amount
 
-From SLACK-8b: `Expect` (60 threads), `Details` (44), `Commands` (17), `Files` (6), and the
-lowercase keys in bot notices (`changes`, `started_by`, `apply_log`, `rollback_plan`,
-`post-check`). Read SLACK-8b's never-speaks-twice list (`Fallback`, `Retry-After`,
-`Behavior`, `Outputs`, `Rationale`, `User-Agent` ...) and add only words that are labels in
-every thread checked. Each word is a row plus a test; the SLACK-6/7/8 corpus pins and the
-SLACK-8b known gaps change by the measured amount, stated in the PR.
+`NOT_SPEAKERS` in `pipeline/slack/messages.py` grows from 112 to 150 words, in a block of its
+own with the rule that admitted them.
+
+**How a word got in.** The candidates were the 9 SLACK-8b caught (`Expect`, `Details`,
+`Commands`, `Files`, and the bot-notice keys `changes`, `started_by`, `apply_log`,
+`rollback_plan`, `post-check`) and the most frequent capitalised names that never open two
+lines in any thread. Each was read in 3 random real contexts; a word went in only if it was
+a label in all of them:
+
+| added | example |
+|---|---|
+| HTTP headers: `Retry-After`, `User-Agent`, `Request-ID`, `Transfer-Encoding` | `Retry-After: 30` after `HTTP/1.1 429` |
+| findings after a code block: `Behavior`, `Outputs`, `Pattern`, `Notable`, `Interpretation`, `Conclusion`, `Responses` | `Pattern: intermittent 1–4s gaps in clusters.` |
+| plan and review words: `Fallback`, `Canary`, `Start`, `Window`, `Rationale`, `Recommendation`, `Problem`, `Baseline`, `Dashboard`, `Bank`, `SDK`, `Python`, `FP16` | `Fallback: route -> eu-west4 on gate fail.` |
+| option and hypothesis markers: `B`, `C`, `H1`, `H2`, `H3` | `H2: Redis cluster experienced a GC/backpressure...` |
+
+**Not added:** `CI` (`CI (docs-bot): PR #5240 opened...` is a bot speaking) and `Everyone`
+(`Everyone: ack?` addresses people; not a label in every context read).
+
+**The first word decides.** `Start Date:`, `Start Time:` and `Bank Note:` are blocked too, and
+they are labels. `Canary Bot:` still speaks (a name ending in `Bot` always does). A bot named
+only in brackets with one of these words (`Canary (deploy-bot):`) would be blocked; the corpus
+has none.
+
+**Result, all 285,605 threads:**
+
+| | before | after |
+|---|---|---|
+| messages | 5,741,020 | 5,739,617 (1,403 false starts gone) |
+| threads with no message | 62 | 64 |
+| messages with a `team_or_role` | 762,083 | 761,985 |
+| messages from bots | 573,797 | 573,797 |
+| SLACK-8b parser starts / precision | 871 / 98.97% | 862 / 100% |
+| SLACK-8b known gaps | 25 | 16 (the team-first, bracket-bot and `later` ones) |
+
+The two new threads with no message were read by hand: neither has a speaker, and their only
+"speaker" line was a label (`SDK: go-sdk v0.9.8`), so the old count held a fake message each.
+NovaCare still has 16 messages.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: a measured label no longer opens a message
-  Given "ana: design uploaded\nFiles: a.svg\n"
+  Given "ana: design uploaded\nFiles: a.svg\nExpect: 0 errors\nH1: ...\nRetry-After: 30\n"
   Then split_messages returns one message
+
+Scenario: a bot named like a label still speaks
+  Given "kai: hi\nCanary Bot: Canary deploy scheduled for rerank/v2 to 1% traffic.\n"
+  Then split_messages returns two messages
 ```
 
 ### Dependencies

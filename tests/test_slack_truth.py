@@ -10,7 +10,7 @@ runs without the corpus) and expected.json, one entry per thread:
 
 The starts were labelled blind: by readers who never saw the parser or its output. Every
 disagreement with the parser was then checked by hand; in all 25 the reader was right, and
-each is a known gap with its reason.
+each is a known gap with its reason. SLACK-6b closed the 9 false starts; 16 remain.
 
 Blind spot: the truth is per line, so a message that starts mid-line (one squashed thread
 joins about 15 messages on two lines) cannot be marked, and the parser misses it too.
@@ -76,7 +76,7 @@ class TruthSet(unittest.TestCase):
         for name, entry in load_truth().items():
             parsed, truth = parsed_starts(parse_fixture(name)), truth_starts(entry)
             found, true, right = found + len(parsed), true + len(truth), right + len(parsed.keys() & truth.keys())
-        self.assertEqual((found, true, right), (871, 862, 862))  # precision 98.97%, recall 100%
+        self.assertEqual((found, true, right), (862, 862, 862))  # precision and recall 100% (871 found before SLACK-6b)
 
     def test_parsed_starts_on_a_small_thread(self):
         thread = parse_thread("dsid_a4e702bd03254699b0e7bed0000972ab__1.txt", "eng\n\nkai: a\nb\n\nbuild-bot: c\n")

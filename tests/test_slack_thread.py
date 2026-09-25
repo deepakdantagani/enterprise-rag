@@ -89,7 +89,7 @@ class RealCorpus(unittest.TestCase):
             totals["threads"] += 1
             totals["messages"] += len(thread.messages)
             totals["without_slug"] += thread.slug is None
-        self.assertEqual(totals, {"threads": 285_605, "messages": 5_741_020, "without_slug": 6_199})
+        self.assertEqual(totals, {"threads": 285_605, "messages": 5_739_617, "without_slug": 6_199})
         self.assertEqual(len(doc_ids), 285_605)
 
 
