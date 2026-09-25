@@ -33,9 +33,9 @@
 | FR-6 | Every thread splits into its messages, in both export layouts, without cutting a message | SLACK-6 |
 | FR-7 | Every message yields its speaker, team or role, and whether the speaker is a bot | SLACK-7 |
 | FR-8 | Every thread becomes one record: channel, participants, ordered messages, doc id | SLACK-8 (record), SLACK-8b (truth set) |
-| FR-9 | A thread becomes one chunk, split on a message boundary only when over budget | SLACK-9 |
-| FR-10 | A chunk becomes a `TextNode` carrying channel and participants into the embedded text | SLACK-10 |
-| FR-11 | Chunks are embedded and indexed for both dense and lexical retrieval | SLACK-11 |
+| FR-9 | A thread `Document` becomes a `TextNode` carrying channel and participants into the embedded text, via a custom `NodeParser` | SLACK-9 |
+| FR-10 | A node over the token ceiling splits on a message boundary; ~99% pass through whole | SLACK-10 |
+| FR-11 | An `IngestionPipeline` embeds and indexes the nodes for both dense and lexical retrieval | SLACK-11 |
 | FR-12 | Retrieval quality is measured as recall@20 on the benchmark's Slack questions | SLACK-12 |
 
 ### 1.2 Non-functional requirements
@@ -227,13 +227,19 @@ story rather than one line inside another.
 flowchart LR
     R["archives/<br/>58 zips, 285,605 .txt"] --> C["clean<br/>unescape, whitespace"]
     C --> CL["clean/ + _manifest.json"]
-    CL --> P["parse<br/>channel, speakers, messages"]
-    P --> T["parsed/<br/>one record per thread"]
-    T --> K["chunk<br/>thread = chunk, ~99% unsplit"]
-    K --> N["TextNode<br/>metadata + templates"]
-    N --> E["embed + BM25"]
-    E --> V[("hybrid index")]
+    CL --> RD["SimpleDirectoryReader<br/>Document per thread, id = dsid"]
+    subgraph IP["IngestionPipeline (LlamaIndex)"]
+        P["SlackThreadParser<br/>ours: parse_thread -> TextNode"] --> K["SlackMessageChunker<br/>ours: split over-budget, between messages"]
+        K --> E["embed model"]
+    end
+    RD --> P
+    E --> V[("vector store + docstore")]
+    V --> B["BM25Retriever + QueryFusionRetriever"]
 ```
+
+Nothing is written between the clean files and the index: `parse_thread` runs in memory
+inside `SlackThreadParser` (the whole corpus parses in about 35 s), and the pipeline's
+docstore and cache are the persisted state.
 
 Ours: the cleaning rules, the parsing rules, and turning a thread into nodes. Library:
 the cutting, the indexing, the retrieval.
@@ -244,24 +250,27 @@ verified outcomes, `random` and `lunch-plans` are not.
 
 ## 8. What we reuse from LlamaIndex
 
-Checked against the LlamaIndex docs on 2026-09-23 (NFR-7).
+Checked against the LlamaIndex docs on 2026-09-23, re-checked 2026-09-24 (NFR-7).
 
 | Need | LlamaIndex component | Verdict |
 |---|---|---|
-| Read Slack | `SlackReader` (`llama-index-readers-slack`) | **Not usable.** It calls the Slack Web API for a live workspace. Our input is a static `.txt` export, so the reader has nothing to talk to. This is the one place we write our own loader. |
-| Run cleaning + parsing as a pipeline | `IngestionPipeline` + `Transformation` | **Use it.** Our cleaner and parser implement `Transformation`, so they compose with the library stages instead of sitting in a bespoke runner. |
+| Read Slack | `SlackReader` (`llama-index-readers-slack`) | **Not usable.** It calls the Slack Web API for a live workspace. Our input is a static `.txt` export, so the reader has nothing to talk to. |
+| Read the clean files | `SimpleDirectoryReader` | **Use it** (re-checked 2026-09-24). It reads the clean `.txt` files as they are, so we write no loader. `file_metadata` keeps only `file_name`: by default it adds `creation_date` and `last_modified_date`, which would reach the embedded text as invented dates. `filename_as_id` gives the full path, so the Document id is set to the dsid. |
+| Run parsing + chunking + embedding as a pipeline | `IngestionPipeline` + `NodeParser` / `TransformComponent` | **Use it.** Our parser (SLACK-9) and chunker (SLACK-10) are custom `NodeParser`s: thin wrappers whose insides are SLACK-5 to 8. Cleaning is not in it (SLACK-4): its output is files and a manifest, not nodes. |
+| Split chat by speaker | node parsers: `SentenceSplitter`, `TokenTextSplitter`, `SemanticSplitter`, `Markdown`/`JSON`/`HTML`, `Hierarchical`; add-ons `chonkie`, `slide`, `docling` | **None fits**, re-checked 2026-09-24: they cut by size, meaning or markup, and none knows a speaker line. So the parser is ours, wrapped as a `NodeParser`. |
 | Skip work already done on a re-run (NFR-3) | `IngestionCache`, `pipeline.persist()` / `.load()` | **Use it.** Each node+transformation pair is hashed and cached. This is most of what a hand-written resume would do. |
 | Dedup and upsert by document id | docstore + `refresh_ref_docs()`, `upsert` | **Use it** for index-side identity, keyed on the dsid. Our `_manifest.json` stays, because it answers a different question — which raw bytes produced which clean bytes — and the docstore does not track that. |
-| Split an over-budget thread | `SentenceSplitter` | **Use it**, on the ~1% tail only. |
-| Put channel and participants into the embedded text | `TextNode.metadata` + `text_template` + `metadata_template` + `excluded_embed_metadata_keys` | **Use it.** A node already renders `{metadata_str}\n\n{content}` with `{key}: {value}` per line, and can exclude a key from the embedded text while keeping it on the node. So SLACK-9 sets fields and templates; it does **not** hand-build a header string, which is what it originally said. |
+| Split an over-budget thread | `SentenceSplitter` | **Not for the thread**: it cuts wherever the size runs out, mid-message. SLACK-10 cuts between messages; `SentenceSplitter` only for a single message longer than the ceiling, if any exists. |
+| Put channel and participants into the embedded text | `TextNode.metadata` + `text_template` + `metadata_template` + `excluded_embed_metadata_keys` | **Use it.** A node already renders `{metadata_str}\n\n{content}` with `{key}: {value}` per line, and can exclude a key from the embedded text while keeping it on the node. So SLACK-9's parser sets fields; it does **not** hand-build a header string. |
 | Lexical retrieval | `BM25Retriever` | **Use it.** |
 | Combine dense and lexical | `QueryFusionRetriever` (reciprocal rank fusion, relative score fusion) | **Use it.** |
 | Rerank the top candidates | node postprocessors / rerankers | **Use it**, when SLACK-12 says reranking earns its cost. |
 | Trace what a run did (NFR-9) | `instrumentation`: `Dispatcher`, `BaseEvent`, `BaseEventHandler`, `BaseSpan`, `@dispatcher.span` | **Use it.** Shipped in `llama-index-core` since 0.10.20; we pin 0.14.24, so it costs no new dependency. We define our events and one handler — we do not write a tracing framework. Our stages emit on the same dispatcher the library's do, so one run is one trace across both. |
 | Export traces to a backend | `llama-index-observability-otel` | **Not now.** OpenTelemetry needs a collector running, which is a lot of apparatus for a local benchmark pipeline. The dispatcher above is the seam: if we ever want OTel, we attach their handler instead of writing anything. |
 
-Net: we write a loader, the cleaning rules, the parsing rules, and the node construction.
-Everything downstream of a `TextNode` is library code.
+Net: we write the cleaning rules, the parsing rules, and two thin `NodeParser` wrappers
+(SLACK-9, 10) that run them inside an `IngestionPipeline`. The reader and everything
+downstream of a `TextNode` is library code.
 
 ## 9. Observability
 
