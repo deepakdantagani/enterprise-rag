@@ -21,6 +21,7 @@ pipeline/                 active ingestion code (a Python package), pure functio
     channel.py            SLACK-5: channel_of(text) -> Channel(name, route): line 1, export path, or unknown
     messages.py           SLACK-6: split_messages(text) -> Split(header, messages), cut at speaker lines outside code
     speaker.py            SLACK-7: parse_speaker(line) -> Speaker(name, team_or_role, is_bot)
+    thread.py             SLACK-8: parse_thread(file_name, text) -> Thread(doc_id, slug, channel, header, messages, participants)
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
 tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings
 tools/                    audit and measurement scripts, outside pipeline/: slack_profile.py (SLACK-0); planned PARSE-11, PARSE-14

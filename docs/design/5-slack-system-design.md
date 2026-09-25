@@ -32,7 +32,7 @@
 | FR-5 | Every thread resolves to a channel, or to `unknown` when the corpus does not carry one | SLACK-5 |
 | FR-6 | Every thread splits into its messages, in both export layouts, without cutting a message | SLACK-6 |
 | FR-7 | Every message yields its speaker, team or role, and whether the speaker is a bot | SLACK-7 |
-| FR-8 | Every thread becomes one record: channel, participants, ordered messages, doc id | SLACK-8 |
+| FR-8 | Every thread becomes one record: channel, participants, ordered messages, doc id | SLACK-8 (record), SLACK-8b (truth set) |
 | FR-9 | A thread becomes one chunk, split on a message boundary only when over budget | SLACK-9 |
 | FR-10 | A chunk becomes a `TextNode` carrying channel and participants into the embedded text | SLACK-10 |
 | FR-11 | Chunks are embedded and indexed for both dense and lexical retrieval | SLACK-11 |
@@ -175,14 +175,24 @@ So the channel rule is three steps: clean line 1, else the `slack/<channel>/` pa
 
 | | |
 |---|---|
-| distinct `thread_ts` values | 73,578 for 285,605 files |
-| files sharing a timestamp with another file | 205,827 |
-| most-reused value | `1765432100`, on 1,063 files |
+| distinct `thread_ts` values | 75,272 for 285,605 files |
+| files sharing a timestamp with another file | 235,169 |
+| most-reused value | `1765432100`, on 1,069 files |
 | year range | 2001 to 2513 |
-| in a plausible range (2024-2027) | 129,436 = 46.3% |
+| in a plausible range (2024-2027) | 132,283 = 46.3% |
+| year agrees with the most common year written in the thread | 22.6% of the 54,076 threads that contain an ISO date |
+| a date in the text within 30 days of the timestamp (2024-2027 only) | 9.6%, against 4.6% for a shuffled pairing |
 
 The values are keyboard walks — `1912345678`, `1923456789`, `2960001111`. They are
 placeholders the generator wrote, not times anything happened.
+
+*Re-measured by SLACK-8 over all 285,605 names. The first count read only the 279,405 names
+with a slug (`__<ts>-<slug>`), hence 73,578 distinct and 1,063 on `1765432100`. The
+timestamp carries a weak signal, a little above chance against dates in the text, but in about
+nine threads out of ten it does not date the conversation. Messages have no timestamps of
+their own: the 320 threads with lines like `[12:45 UTC] sophia:` are incident timelines and
+agendas written inside a message. If time matters to a question, the dates written in the
+text are the signal, and they are already in the embedded and BM25 text.*
 
 So `thread_ts` is neither a date nor an identifier. **Use the dsid as the id, and keep the
 timestamp out of chunk metadata.** Recency ranking is unavailable on this corpus; it is
