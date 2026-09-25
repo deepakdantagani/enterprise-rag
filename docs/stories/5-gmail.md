@@ -402,15 +402,16 @@ Shared rules apply. Pure, offline, standard library only.
 
 ---
 
-## GMAIL-5b  normalise_date: Gmail display dates and named zones  ⬜
+## GMAIL-5b  normalise_date: Gmail display dates and named zones  ✅
 
-**Status:** To do. Built on GMAIL-5a. Measured, 8,595 dates: 8,595 in Gmail's display style (`Thu, May 20, 2027 at 09:12 AM PDT`, `2026-11-15 13:12 UTC`, `Fri, 25 Sep 2026 at 16:12`).
+**Status:** Done. `pipeline/gmail/dates.py` `loose` rule, 36 tests in total for GMAIL-5. Real corpus: 8,595 read by `loose`; 126 dates (0.02%) still raise; `assumed_utc` 3,010 in all (226 ISO plus 2,784 display-style); offset unknown 5,832 (3,010 plus 2,822 `-0000`). Built on GMAIL-5a. The 8,595 are in Gmail's display style (`Thu, May 20, 2027 at 09:12 AM PDT`, `2026-11-15 13:12 UTC`, `Fri, 25 Sep 2026 at 16:12`).
 
 Adds a third rule `loose` to `normalise_date`:
 - **Named zones** from one written table (PDT, PST, EDT, EST, CDT, CET, CEST, GMT, UTC, SGT, JST; BST read as British and IST as India, 20 blocks); `PT` and `ET` switch between summer and winter by the date (needs the `tzdata` package).
 - **12-hour clock**: `4:40 PM` is 16:40 (the standard library silently drops the PM); a stray PM on a 24-hour time (`13:56 PM`, `00:30 PM`) is ignored.
 - **No zone** (about 2,784 dates): read as UTC with `assumed_utc` true.
-- Full weekday and month names, `Sept`, a missing comma after the day, and misspelled month or weekday names raise.
+- Full weekday and month names, `Sept`, a missing comma after the day; misspelled month or weekday names (`Marxxx`, `Foo`) raise, found in review. Month and weekday names come from a written table, so the standard library's locale is never involved.
+- 12 bare dates such as `2027-03-18` are no longer read as midnight UTC (the ISO rule now needs a time of day, found in review); with 14 impossible days and rare shapes that makes the 126 unreadable.
 
 Decisions already made: no zone means UTC plus the flag; `-0000` is UTC without the flag; one written zone table rather than `dateutil` (which can ignore an unknown zone name silently).
 
