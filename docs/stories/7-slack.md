@@ -14,7 +14,7 @@ Slack-specific glossary (the shared one is in [stories.md](../stories.md)):
   optional team or role in brackets or after ` - `, colon, space.
 - **dsid**: the document id in the filename, `dsid_<32 hex>__<unix_ts>-<slug>.txt`. Unique
   across all 285,605 files, so it is the id. The timestamp beside it is **not** a date: only
-  73,578 distinct values cover the corpus, 1,063 files share `1765432100`, the years run from
+  75,272 distinct values cover the corpus, 1,069 files share `1765432100`, the years run from
   2001 to 2513, and the values are keyboard walks (`1923456789`). Do not treat it as a time,
   and do not rank on recency. There are no per-message timestamps anywhere in the corpus.
 - **Chunk**: what goes to the embedder. One thread, unless the thread is over the token
@@ -985,7 +985,7 @@ Scenario: the node id is stable
   Then node.id_ is the chunk id from SLACK-9 and survives a re-run
 ```
 
-The third scenario is not a style rule. The corpus timestamps are placeholders — 73,578
+The third scenario is not a style rule. The corpus timestamps are placeholders — 75,272
 distinct values over 285,605 files, years running 2001 to 2513 — so a date would be noise.
 
 ### Example with real data
