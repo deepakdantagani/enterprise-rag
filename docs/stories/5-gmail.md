@@ -39,7 +39,8 @@ tools/
     gmail_profile.py  GMAIL-0    profile: counts only, no rules
 pipeline/gmail/
     cleaning.py    GMAIL-1a,1b clean_thread
-    messages.py    GMAIL-3,4,6,7  split_messages, parse_headers, strip_quotes, attachments
+    messages.py    GMAIL-3,6,7    split_messages, strip_quotes, attachments
+    headers.py     GMAIL-4    parse_headers
     dates.py       GMAIL-5    normalise_date
     records.py     GMAIL-8    MessageRecord, message_records
     corpus.py      GMAIL-2,9  write_clean_corpus, write_messages_corpus
@@ -294,24 +295,35 @@ A plain cut at `From:` (GMAIL-3) leaves three real cases as they are, measured o
 
 ---
 
-## GMAIL-4  parse_headers: the five fields of one block  ⬜
+## GMAIL-4  parse_headers: the five fields of one block  ✅
 
-**Status:** To do.
+**Status:** Done. `pipeline/gmail/headers.py`, 24 tests. Over all 578,443 blocks: 189 have no headers (every field empty), 577,200 have a date (574,496 `Date:` plus 2,704 `Sent:`).
 
 **Background**
-Header order is `From → To → [Cc] → Date → Subject` in 99.6% of blocks. `Cc` is absent in
-19%. `Bcc` (79 occurrences), `Reply-To` (2) and `References` (56) appear and are ignored.
-Addresses are comma-separated and mix `Name <addr>` with bare `addr@host`.
+Measured on the 578,255 blocks that have header lines:
+- The order `From → To → [Cc] → Date → Subject` holds in **98.5%** (569,509). The design doc said 99.6%. The next most common order puts `Date` and `Subject` before `To` (3,433 blocks). Order does not matter to the rule: every field is found wherever it sits.
+- `Cc` is absent in **21.6%** (125,155), not 19%.
+- `Bcc` appears in **500** blocks (not 79), `Reply-To` in 3 (not 2). Both are ignored. `References` (story said 56) was not re-counted.
+- **2,704 blocks use `Sent:` instead of `Date:`**, and none has both. Not in the original story.
+- **1,331 blocks have an `Attachments:` line right after `Subject:`**. So only known header names count as headers; anything else ends the header lines and stays in the body for GMAIL-7.
+- 418 blocks have no blank line after the headers. Counting the 189 with no headers, 1,157 blocks end with no `To`, 445 with no `Subject`.
+- Long recipient lists sometimes wrap onto a second line (about 17 fields). Python's `email.parser.HeaderParser` handles that but drops the first body line when there is no blank line (31 blocks, e.g. `[attachment: cloudledger_registrants_0621.csv]`), so it was not used. The rule joins wrapped lines itself.
+- Comma names such as `Ruiz, Elena <a@b>`: 138 pieces; `(none)`, `none` and `;` lists: 2,801 pieces with no address.
 
 **As a** pipeline developer
-**I want to** read the header block of one message into a typed record
+**I want to** read the header lines of one message block into a typed record
 **So that** sender, recipients, date and subject are metadata rather than text
 
 **Acceptance Criteria (Gherkin)**
-- Given a block, When `parse_headers` runs, Then it returns `from_`, `to`, `cc`, `date_raw`, `subject` and the body with header lines removed
+- Given a block, When `parse_headers` runs, Then it returns `from_`, `to`, `cc`, `date_raw`, `subject` and the body with the header lines removed
 - Given `To: A <a@x>, B <b@y>`, Then `to == ["A <a@x>", "B <b@y>"]`, split on commas outside angle brackets
+- Given `To: Ruiz, Elena <e@x>`, Then `to == ["Ruiz", "Elena <e@x>"]`: the fragment without an address stays as a name only, nothing is invented or lost. `from_` is never split
+- Given `(none)` or `Ana; Raj`, Then it is kept as one raw entry; a trailing comma leaves no empty entry
+- Given a header line wrapped onto an indented next line, Then the two are joined
 - Given a block with no `Cc:`, Then `cc == []`
-- Given a header key we ignore (`Bcc`, `Reply-To`, `References`), Then it is removed from the body and not returned
+- Given a block with `Sent:` and no `Date:`, Then `date_raw` is the `Sent:` value; if both exist, `Date:` wins
+- Given `Bcc`, `Reply-To` or `References`, Then the line is removed from the body and not returned
+- Given a line such as `Attachments: plan.pdf` after `Subject:`, Then it stays in the body
 - Given a block whose headers are out of order, Then all five are still found
 - Given a block with no headers (GMAIL-3's 189), Then all fields are empty and the body is the whole block
 
@@ -322,24 +334,18 @@ To: Amal Khan <amal.khan@greenlinehealth.com>
 Cc: Kimberly Park <kimberly_park@redwood.ai>, Marissa Cole <marissa_cole@redwood.ai>
 Date: Thu, 25 Jun 2026 11:05:00 -07:00
 Subject: Re: Invoice & VAT approach for multi-entity pilot (Greenline)
-→ from_='Vivek Kulkarni <vivek.kulkarni@redwood.ai>'
-  to=['Amal Khan <amal.khan@greenlinehealth.com>']
-  cc=['Kimberly Park <kimberly_park@redwood.ai>', 'Marissa Cole <marissa_cole@redwood.ai>']
-  date_raw='Thu, 25 Jun 2026 11:05:00 -07:00'
-  subject='Re: Invoice & VAT approach for multi-entity pilot (Greenline)'
+-> from_='Vivek Kulkarni <vivek.kulkarni@redwood.ai>'
+   to=['Amal Khan <amal.khan@greenlinehealth.com>']
+   cc=['Kimberly Park <kimberly_park@redwood.ai>', 'Marissa Cole <marissa_cole@redwood.ai>']
+   date_raw='Thu, 25 Jun 2026 11:05:00 -07:00'
+   subject='Re: Invoice & VAT approach for multi-entity pilot (Greenline)'
 ```
 
 **Non-functional Requirements**
-Shared rules apply. Pure.
+Shared rules apply. Pure, no state. Never parses the date: `date_raw` is GMAIL-5's input, and the `Sent:` style (`Thu, Apr 24, 2025 9:12 AM`) is GMAIL-5's to read.
 
-*Maintainability:* one function, no state; the id scheme is documented beside it because
-changing it invalidates every stored vector.
-*Observability:* audit row `duplicate_chunk_id` must be 0 over the corpus. Never parses the date here — that is GMAIL-5.
-
-*Maintainability:* header keys we ignore are listed in one constant, so adding `Bcc`
-handling later is a one-line change with a test, not a hunt.
-*Observability:* audit row `header_order` counts blocks whose order is not the 99.6% shape,
-and `header_missing_field` counts blocks short a field — both with three real examples.
+*Maintainability:* the header names live in two constants (`USED_KEYS`, `IGNORED_KEYS`), so handling `Bcc` later is a one-line change with a test.
+*Observability:* audit row `header_order` counts blocks whose order is not the 98.5% shape, and `header_missing_field` counts blocks short a field, both with three real examples.
 
 **Dependencies** APIs data contracts: GMAIL-3 · Service Bus: N/A · Database: N/A · UI: N/A
 
