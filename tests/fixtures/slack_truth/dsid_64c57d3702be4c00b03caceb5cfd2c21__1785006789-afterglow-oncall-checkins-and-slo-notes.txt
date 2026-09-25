@@ -1,0 +1,38 @@
+eng-sre
+
+Priya: Quick afterglow async — standup for my shift:
+- Did: tuned alert debounce for kv-cache (reduced noisy 504s), rolled config to canary (gcp-pool-3)
+- Blocker: observed occasional spike when batcher backlog > 10k, need further throttling test
+- Plan: run load repro later tonight, open PR for autoscaler backoff
+
+Jordan: Thanks — can you paste the alert query you used?
+
+Priya: Sure, pasted below and added a 2m mute for canary nodes:
+```
+sum(rate(http_server_errors_total{component="batcher",code=504}[5m])) by (instance) > 0.5
+```
+Runbook link: https://go/redwood/runbooks/kv-evict (see "canary mitigation")
+
+Mateo: I'll pick up the autoscaler backoff PR review tomorrow. Also saw a pager from oncall earlier — @Linh can you follow up on INC-4592 and attach any profiles?
+
+Linh: On it. Initial triage shows heap growth on gcp-pool-3 coinciding with high prefix-cache misses. Suspect eviction thrash + GC pressure. Collecting heap and perf traces now, will add to the ticket.
+
+Sam (ops-bot): INC-4592 created by Linh — https://go/redwood/inc/4592 (priority: P2)
+
+Jordan: Small CR ping: left comments on https://go/redwood/pr/1234 about safer default batch_size when seq_len > 1024. Recommend a guard: `if seq_len > 1024 -> cap batch_size=8`
+
+Priya: Thanks — I'll make the fix tomorrow AM. For tonight's load test, please notify oncall to mute the kv 504 alert if canary nodes spike to >95% CPU for <5m (expected during the synthetic run).
+
+Mateo: Copy. I'll add a single-line handoff note in the oncall doc and a checklist: mute rule, watch queue depth, cancel run if disk IO > 80%
+
+Linh: One blocker: I need temporary read access to the customer cluster logs to correlate request traces. @ops-admins can someone grant access?
+
+Ops-admin (ops-bot): Granted read access to Linh for project `redwood-canary` for 4 hours. Audit entry ID: audit-2026-04-07-9987
+
+Priya: Closing note — after the run I'd like to replay with kv-cache warmup enabled to confirm 95th latency SLO < 120ms. If we miss, fallback to smaller model variant and re-evaluate batching.
+
+Jordan: Sounds good. Small followup for tomorrow: can we add a dashboard tile for "batcher backlog > 5k" and an annotation when autoscaler kicks? That will help post-mortem.
+
+Mateo: Will add tile and an alert with noisier threshold for now.
+
+Priya: Thanks team — will post the repro steps + PR link once the load job finishes. Good night :wave:

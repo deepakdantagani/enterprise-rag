@@ -14,13 +14,14 @@ Slack-specific glossary (the shared one is in [stories.md](../stories.md)):
   optional team or role in brackets or after ` - `, colon, space.
 - **dsid**: the document id in the filename, `dsid_<32 hex>__<unix_ts>-<slug>.txt`. Unique
   across all 285,605 files, so it is the id. The timestamp beside it is **not** a date: only
-  73,578 distinct values cover the corpus, 1,063 files share `1765432100`, the years run from
+  75,272 distinct values cover the corpus, 1,069 files share `1765432100`, the years run from
   2001 to 2513, and the values are keyboard walks (`1923456789`). Do not treat it as a time,
   and do not rank on recency. There are no per-message timestamps anywhere in the corpus.
 - **Chunk**: what goes to the embedder. One thread, unless the thread is over the token
   ceiling, in which case it splits on a message boundary. About 99% of threads are one chunk.
-- **TextNode**: LlamaIndex's unit. Our chunks become these, and everything downstream of a
-  node is library code — see section 8 of the design.
+- **TextNode**: LlamaIndex's unit. Our custom `NodeParser`s (SLACK-9, 10) make them inside
+  LlamaIndex's `IngestionPipeline`; everything downstream of a node is library code — see
+  section 8 of the design.
 
 ## Index
 
@@ -52,10 +53,12 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-5  `channel_of` | ✅ |
 | SLACK-6  `split_messages` | ✅ |
 | SLACK-7  `parse_speaker` | ✅ |
-| SLACK-8  `parse_thread` + truth set | ⬜ |
-| SLACK-9  `chunk_thread` | ⬜ |
-| SLACK-10  `to_text_node` | ⬜ |
-| SLACK-11  Embed + BM25 hybrid index | ⬜ |
+| SLACK-8  `parse_thread` | ✅ |
+| SLACK-8b  truth set | ✅ |
+| SLACK-6b  label words from the truth set | ⬜ |
+| SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ⬜ |
+| SLACK-10  `SlackMessageChunker` | ⬜ |
+| SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
 | SLACK-12  recall@20 on the benchmark questions | ⬜ |
 
 ---
@@ -427,7 +430,7 @@ cleaners as LlamaIndex `Transformation`s inside an `IngestionPipeline` with an
 `IngestionCache`. We did not: this stage's output is files and a manifest, not nodes;
 `IngestionCache` would hold all 285,605 threads in memory to save a rerun of about a minute;
 and the manifest already proves which raw bytes made which clean bytes. The pipeline belongs
-where nodes first exist (SLACK-10). Observability does use the library: one
+where nodes first exist (SLACK-9 to 11). Observability does use the library: one
 `@dispatcher.span` over the stage and SLACK-3's events on it.
 
 ### Acceptance Criteria
@@ -624,13 +627,13 @@ cannot swallow the messages after it. Checked and rejected: LlamaIndex's `Senten
 and `TokenTextSplitter` cut by size, `MarkdownNodeParser`, `JSONNodeParser` and
 `HTMLNodeParser` by markup, `SemanticSplitterNodeParser` by embedding distance, and
 `SlackReader` reads the live API. None splits chat by speaker. `SentenceSplitter` returns in
-SLACK-9 for over-long threads.
+SLACK-10, only for a single message longer than the ceiling.
 
 **Result:** 5,741,020 messages; 62 threads have none (a bare list of handles, a key-value
 dump, a lone dsid).
 
 **Reviewed** by a code-review agent that sampled real threads, since there is no truth set
-yet (SLACK-8 builds one). Precision of message starts was 298 of 300. It found about 54,000
+yet (SLACK-8b builds one). Precision of message starts was 298 of 300. It found about 54,000
 missed speaker lines (lowercase full names, `Name - Team`, unclosed fences, 33 label words);
 all are fixed, each with a test.
 
@@ -722,7 +725,7 @@ team_or_role, is_bot)` out. It reuses SLACK-6's `SPEAKER_AT_LINE_START`, now wit
 - Both brackets and a dash (`Dan - HelixEdge (SI):`, 134): the brackets win. `HelixEdge` is
   not lost, since the speaker line stays in the message text.
 - Team first (`Legal - Priya:`, roughly 800 by a first-name check, not pinned): read as
-  written, name `Legal`. Nothing in the line says which part is the person. SLACK-8's truth
+  written, name `Legal`. Nothing in the line says which part is the person. SLACK-8b's truth
   set can measure whether it matters.
 - A line that is not a speaker line raises `ValueError`: it would mean a caller bug, since
   SLACK-6 only hands over speaker lines.
@@ -759,7 +762,7 @@ Scenario: naming styles that appear in the corpus
 ```
 
 A line SLACK-6 would not have cut on is outside this contract. The check that SLACK-6 cut in
-the right places (labels such as `Due:` left inside a message) belongs to SLACK-8.
+the right places (labels such as `Due:` left inside a message) belongs to SLACK-8b.
 
 ### Example with real data
 
@@ -780,60 +783,80 @@ APIs data contracts: SLACK-6 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-8  `parse_thread(path) -> Thread` + the truth set ⬜
+## SLACK-8  `parse_thread(file_name, text) -> Thread` ✅
 
-**Status** To do
-**As a** pipeline that will trust the parser 285,605 times
-**I want to** one record per thread, and ~50 hand-checked threads that prove the parser right
-**So that** a parsing regression fails a test instead of quietly poisoning the index
+**Status** Done
+**As a** pipeline that chunks and indexes threads
+**I want to** one record per thread: its id, slug, channel, header and messages with speakers
+**So that** later stories read fields instead of re-parsing text
 
-Follows PARSE-17's pattern: hand-decide the correct output on real files first, then assert
-against it. Sample the 50 across both layouts, the `unknown` channel case, threads with
-fenced code, and the bot-heavy ones.
+`pipeline/slack/thread.py`. Pure, like SLACK-5, 6 and 7: the clean file's name and text in,
+`Thread` out; the caller reads the file (SLACK-4 is the only story that touches disk). It
+glues `channel_of` (SLACK-5), `split_messages` (SLACK-6) and `parse_speaker` (SLACK-7).
 
-**Carried over from SLACK-6: labels the table does not know yet.** `split_messages` blocks
-the 112 label words in `NOT_SPEAKERS`, but a new one (`pin:`, `endpoint:`, `Avoid:`) still
-opens a false message. A sample put that at about 3 in 78 one-off single-word speakers, or
-roughly 11,000 of 5,741,020 message starts (0.2%); no text is lost, one line just becomes its
-own message. This story turns that estimate into a measured precision on the truth set, and
-reports the most frequent speakers that open only one line in their thread, so a new label
-stands out among the one-off bots (`deploy-bot`, 39,740) and costs one word in the table.
-Requiring every speaker to appear twice was rejected: it would drop about 295,000 real
-one-off messages, mostly bots.
+| field | from | notes |
+|---|---|---|
+| `doc_id` | file name, `dsid_<32 hex>__` | unique across 285,605 files; the id everywhere downstream |
+| `slug` | file name, after the timestamp and `-` | `None` for the 6,199 files that have none (`dsid_…__2987654321.txt`, 26 of them ending `_1`); one name lacks the dash (`__1931234000Region-…` gives `Region-…`) |
+| `channel` | `channel_of` | `Channel(name, route)`, `unknown` included |
+| `header` | `split_messages` | text before the first message |
+| `messages` | `split_messages` + `parse_speaker` | `Message(turn, speaker, text)`; `text` is the whole message, speaker line included |
+| `participants` | the speakers | distinct names in the order they first speak |
+
+**Not kept: the timestamp in the file name.** It is not a time (design section 5: keyboard
+walks, years 2001 to 2513), so it is not a field anyone could misuse as one.
+
+**The text survives whole:** `header + "".join(m.text for m in messages)` is the file text,
+byte for byte.
+
+**Result, all 285,605 files:** every name parses, 285,605 distinct `doc_id`s, 5,741,020
+messages, 6,199 without a slug; every thread round-trips. Pinned in a real-data test.
+
+**Decisions:** the story was split; the truth set is SLACK-8b, so this PR stays one function.
+The signature takes the name and text instead of a path, to stay pure. `messages` and
+`participants` are lists, like SLACK-6's `Split`; a `Thread` is not hashable, which nothing
+needs yet.
+
+**Reviewed** by a code-review agent that ran the name pattern over every file: no
+correctness bugs; it asked for the exact em dash in the example, the odd slug shapes in the
+field table, and a stronger no-timestamp test; all done.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: one thread becomes one record
   When I parse dsid_a4e702bd...__1793045678-novacare-vra-check.txt
-  Then the record has channel "customer-success", thread_ts 1793045678,
-       slug "novacare-vra-check", 5 participants and 16 messages
+  Then the record has doc_id "a4e702bd03254699b0e7bed0000972ab", slug "novacare-vra-check",
+       channel "customer-success", 16 messages and participants
+       Aisha, Priya, Ben, Tom, questionnaire-bot
 
-Scenario: the truth set holds
-  Given 50 hand-checked threads under tests/golden/slack_truth.json
-  Then parse_thread reproduces every message boundary and speaker in them
+Scenario: a file name without a slug
+  When I parse dsid_5badc87efd7a49128d67b0234f809fa1__2987654321.txt
+  Then slug is None
+
+Scenario: a thread with no speaker line
+  Then messages and participants are empty and the header is the whole text
 ```
 
 ### Example with real data
 
 ```json
 { "doc_id": "a4e702bd03254699b0e7bed0000972ab",
-  "channel": "customer-success",
-  "thread_ts": 1793045678,
   "slug": "novacare-vra-check",
-  "participants": ["Aisha", "Ben", "Priya", "Tom", "questionnaire-bot"],
-  "message_count": 16,
+  "channel": {"name": "customer-success", "route": "line1"},
+  "header": "customer-success\n\n",
+  "participants": ["Aisha", "Priya", "Ben", "Tom", "questionnaire-bot"],
   "messages": [
-    {"turn": 0, "speaker": "Aisha", "team_or_role": "CS", "is_bot": false,
-     "text": "Hey team - NovaCare sent an updated vendor risk assessment..."},
-    {"turn": 4, "speaker": "questionnaire-bot", "team_or_role": null, "is_bot": true,
-     "text": "Received nova-care_vra_2026.pdf. Extracted fields: ..."}
+    {"turn": 0, "speaker": {"name": "Aisha", "team_or_role": "CS", "is_bot": false},
+     "text": "Aisha (CS): Hey team — NovaCare sent an updated vendor risk assessment..."},
+    {"turn": 4, "speaker": {"name": "questionnaire-bot", "team_or_role": null, "is_bot": true},
+     "text": "questionnaire-bot: Received nova-care_vra_2026.pdf. Extracted fields: ..."}
   ] }
 ```
 
 ### Non-functional Requirements
 
-Shared list.
+Shared list. Pure; the SLACK-5/6/7 corpus pins must not move.
 
 ### Dependencies
 
@@ -841,42 +864,72 @@ APIs data contracts: SLACK-5, SLACK-6, SLACK-7 · Service Bus: N/A · Database: 
 
 ---
 
-## SLACK-9  `chunk_thread(thread) -> list[Chunk]` ⬜
+## SLACK-8b  The truth set ✅
 
-**Status** To do
-**As a** retrieval index whose unit is the conversation
-**I want to** one chunk per thread, split only when a thread is over budget
-**So that** 99% of threads reach the embedder whole
+**Status** Done
+**As a** pipeline that will trust the parser 285,605 times
+**I want to** 50 hand-checked threads that prove `parse_thread` right
+**So that** a parsing regression fails a test instead of quietly poisoning the index
 
-Measured: thread tokens are p50 821, p90 1,256, p99 1,725, max 3,101. At a 2,048-token ceiling
-about 99% of threads never split. Unlike Confluence, where every page was split, splitting here
-is the exception — `SentenceSplitter` runs on the tail only, never by default.
+Split out of SLACK-8 so each PR stays one function. Follows PARSE-17's pattern: decide the
+correct output on real files first, then assert against it.
+
+**The set.** `tests/fixtures/slack_truth/`: 50 real threads copied from `data/slack/clean/`
+(so the test runs without the corpus) and `expected.json`, one entry per thread with `why`
+(the reason it was sampled), `starts` ({line: [name, team_or_role, is_bot]} for every
+message start) and `known_gaps` ({line: {reason, parser_says}}). The sample is seeded and
+stratified: both layouts and mixed, `unknown` channel, export path, code blocks with blank
+lines inside, bot-heavy threads, team-first lines, one-off capitalised speakers, a thread with
+no speaker and a one-message thread. 862 message starts in all.
+
+**How the truth was decided.** Five annotators labelled the threads blind: they read every
+line and never saw the parser, its code or its output. Every disagreement with the parser
+was then read in context by hand; in all 25 the annotator was right. A review agent then
+re-read 23 threads (373 starts) line by line and found no wrong or missing start.
+
+**Result:**
+
+| | |
+|---|---|
+| message starts found by the parser | 871 |
+| true message starts | 862 |
+| parser starts that are true (precision) | 862 = 98.97% |
+| true starts the parser found (recall) | 862 = 100% |
+| speaker fields right on a true start | 846 of 862 |
+
+The 25 known gaps:
+
+| gap | lines | decision |
+|---|---|---|
+| a label word opens a false message: `Details:`, `Commands:`, `Files:`, `Expect:` | 4 | SLACK-6b: add the words |
+| a lowercase key inside a bot notice: `started_by: kyle`, `apply_log:`, `rollback_plan:` | 5 | SLACK-6b |
+| team written first: `IT - Priya:`, `CSM - Lena:`, `Facilities - Marco:` (3 threads) | 13 | accepted: about 800 of 5.74M lines (0.014%) across the corpus, so a swap rule is not worth its risk |
+| a bot named in brackets: `Sam (ops-bot):` | 2 | accepted for now: 1,782 messages have a `(x-bot)` role on a non-bot name, and whether `ana (ops-bot)` is a person or the bot is unclear |
+| `later - carla (eng-runtime):`, a time word read as the name | 1 | accepted: one line |
+
+**Blind spot.** The truth is per line, so a message that starts mid-line cannot be marked:
+one squashed thread joins about 15 messages on two lines (`...; chloe_sdk: ...`), and the
+parser misses them too. The team-first rate on this set (13 lines) is inflated on purpose: 3
+threads were sampled for it.
+
+**Carried over from SLACK-6, now measured.** Across the corpus, 2,994 capitalised
+single-word names (6,739 messages) never speak twice in any thread; the most frequent are
+labels, not people: `Fallback` 71 threads, `Retry-After` 70, `Expect` 60, `Behavior` 59,
+`Outputs` 49, `Rationale` 32, `User-Agent` 30. They are the input for SLACK-6b. A real
+one-off speaker also lands in that list, so it is a list to read, not a rule.
 
 ### Acceptance Criteria
 
 ```gherkin
-Scenario: a normal thread is one chunk
-  Given a thread of 821 tokens and a ceiling of 2,048
-  Then chunk_thread returns one chunk holding the whole thread
-
-Scenario: an over-budget thread splits on a message boundary
-  Given a thread of 3,101 tokens and a ceiling of 2,048
-  Then it splits into 2 chunks
-  And no message is cut in half
-  And every message lands in exactly one chunk
-
-Scenario: ids are stable
-  Then a chunk id is sha256(doc_id:first_turn:last_turn) and does not change between runs
+Scenario: the truth set holds
+  Given 50 hand-checked threads under tests/fixtures/slack_truth/expected.json
+  Then parse_thread reproduces every message start and speaker in them
+  Except the known gaps, where it says exactly what the gap records
 ```
-
-### Example with real data
-
-`dsid_a4e702bd...__1793045678-novacare-vra-check.txt`, 16 messages, about 780 tokens: one
-chunk, first_turn 0, last_turn 15.
 
 ### Non-functional Requirements
 
-Shared list.
+Shared list. The fixtures are real data committed to the repo: 50 files, about 140 KB.
 
 ### Dependencies
 
@@ -884,62 +937,165 @@ APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-10  `to_text_node(chunk) -> TextNode` ⬜
+## SLACK-6b  Label words measured by the truth set ⬜
 
 **Status** To do
-**As a** vector that has to carry who spoke and where
-**I want to** a chunk turned into a LlamaIndex `TextNode` with the right metadata and templates
-**So that** channel and participants reach the embedder without us hand-building a header
+**As a** splitter that should not open a message on a label
+**I want to** the label words SLACK-8b measured added to `NOT_SPEAKERS`
+**So that** the known gaps close and the corpus pins move by a counted amount
 
-**Checked against the library first (NFR-7).** A `TextNode` already renders
-`text_template='{metadata_str}\n\n{content}'` with `metadata_template='{key}: {value}'`, and
-`excluded_embed_metadata_keys` keeps a field on the node but out of the embedded text. So this
-story sets fields and templates; it does not build a string.
-
-The tension it has to manage: a header helps the vector carry channel and participants, but an
-identical prefix on every chunk pushes 285,605 vectors toward each other. Keep the embedded
-keys to the two that carry meaning, and exclude the bookkeeping ones.
+From SLACK-8b: `Expect` (60 threads), `Details` (44), `Commands` (17), `Files` (6), and the
+lowercase keys in bot notices (`changes`, `started_by`, `apply_log`, `rollback_plan`,
+`post-check`). Read SLACK-8b's never-speaks-twice list (`Fallback`, `Retry-After`,
+`Behavior`, `Outputs`, `Rationale`, `User-Agent` ...) and add only words that are labels in
+every thread checked. Each word is a row plus a test; the SLACK-6/7/8 corpus pins and the
+SLACK-8b known gaps change by the measured amount, stated in the PR.
 
 ### Acceptance Criteria
 
 ```gherkin
-Scenario: identity fields ride on the node but not in the embedding
-  Given a chunk of the NovaCare thread
-  Then the node metadata holds channel, participants, doc_id, content_hash
-  And doc_id and content_hash are in excluded_embed_metadata_keys
-  And channel and participants are not
+Scenario: a measured label no longer opens a message
+  Given "ana: design uploaded\nFiles: a.svg\n"
+  Then split_messages returns one message
+```
+
+### Dependencies
+
+APIs data contracts: SLACK-6, SLACK-8b · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## SLACK-9  `SlackThreadParser`: a custom LlamaIndex `NodeParser` ⬜
+
+**Status** To do
+**As a** pipeline that runs inside LlamaIndex's `IngestionPipeline`
+**I want to** a `NodeParser` that turns one clean-thread `Document` into one `TextNode`
+**So that** our parsing rules run as a library `Transformation`, and everything after the node is library code
+
+`pipeline/slack/nodes.py`. A subclass of LlamaIndex's `NodeParser`, so it slots into
+`IngestionPipeline(transformations=[...])` like `SentenceSplitter` does. Its one method,
+`_parse_nodes`, is a thin wrapper: it calls `parse_thread` (SLACK-8) on the Document's text
+and file name, and builds the node. The rules stay in SLACK-5 to 8; this story adds none.
+
+**Checked against the library first (NFR-7).** No LlamaIndex parser splits chat by speaker
+(`SentenceSplitter`, `TokenTextSplitter`, `SemanticSplitter` cut by size or meaning;
+`Markdown`/`JSON`/`HTML` parsers by markup; the add-on `chonkie`, `slide` and `docling`
+parsers are general or document-oriented). A `TextNode` already renders
+`{metadata_str}\n\n{content}` with `{key}: {value}` per line, and
+`excluded_embed_metadata_keys` keeps a field on the node but out of the embedded text. So this
+story sets fields; it does not build a header string.
+
+| node field | value | in the embedded text? |
+|---|---|---|
+| `text` | the messages, speaker lines included (the header is dropped: it is the channel line) | yes |
+| `metadata.channel` | `Thread.channel.name`; left out when `unknown` | yes |
+| `metadata.participants` | `Thread.participants`, joined with `, ` | yes |
+| `metadata.doc_id` | the dsid | no |
+| `metadata.channel_route` | `line1` / `export_path` / `unknown`, for SLACK-12's split | no |
+| `metadata.first_turn`, `last_turn` | `0` and the last turn; SLACK-10 narrows them on a split | no |
+| source relationship | the Document the node came from | not text |
+
+The tension to manage: a header helps the vector carry channel and participants, but an
+identical prefix on every chunk pushes 285,605 vectors toward each other. Only the two keys
+that carry meaning are embedded.
+
+**What a preview run showed** (throwaway code, NovaCare, LlamaIndex 0.14.24): the wrapper works
+inside `IngestionPipeline`, and three things must be handled here or in SLACK-11:
+1. The node must link to its source Document, or the docstore cannot upsert it on a re-run.
+2. `SimpleDirectoryReader` adds `creation_date`, `last_modified_date`, `file_path`,
+   `file_size`, `file_type` to the Document. They are copied to nodes and would land in the
+   embedded text as an invented date. SLACK-11 loads with
+   `file_metadata=lambda path: {"file_name": Path(path).name}`, verified to keep only the name;
+   this story still excludes anything it did not set.
+3. The Document id is a random UUID by default (see SLACK-11).
+
+### Acceptance Criteria
+
+```gherkin
+Scenario: one thread, one node
+  Given the NovaCare Document
+  When SlackThreadParser runs inside an IngestionPipeline
+  Then it returns one TextNode whose embedded text starts
+       "channel: customer-success\nparticipants: Aisha, Priya, Ben, Tom, questionnaire-bot\n\n"
+  And doc_id, channel_route, first_turn and last_turn are on the node but not in that text
+  And the node's source relationship is the Document
 
 Scenario: an unknown channel contributes nothing to the text
   Given a thread whose channel is unknown
   Then "unknown" does not appear in the embedded text
 
-Scenario: no invented date
+Scenario: no date anywhere
   Then no timestamp appears in the node metadata or the embedded text
 
-Scenario: the node id is stable
-  Then node.id_ is the chunk id from SLACK-9 and survives a re-run
+Scenario: a thread with no speaker line
+  Then it still becomes one node holding its text, with no participants
 ```
-
-The third scenario is not a style rule. The corpus timestamps are placeholders — 73,578
-distinct values over 285,605 files, years running 2001 to 2513 — so a date would be noise.
 
 ### Example with real data
 
-`get_content(MetadataMode.EMBED)` for the NovaCare thread:
+`get_content(MetadataMode.EMBED)` for NovaCare, from the preview run:
 
 ```text
 channel: customer-success
-participants: Aisha (CS), Priya (Onboarding), Ben (Security), Tom (Legal), questionnaire-bot
+participants: Aisha, Priya, Ben, Tom, questionnaire-bot
 
-Aisha (CS): Hey team - NovaCare sent an updated vendor risk assessment and DPA follow-up...
-Priya (Onboarding): I can take lead on the questionnaire...
+Aisha (CS): Hey team — NovaCare sent an updated vendor risk assessment and DPA follow-up.
+Can someone pick this up? Link: https://files.redwoodinternal/vra/novacare_2026.pdf :eyes:
+...
 ```
 
-`doc_id` and `content_hash` are on the node, and absent from the text above.
+2,256 characters, 16 messages, one node.
 
 ### Non-functional Requirements
 
-Shared list, and NFR-7: the rendering is the library's, not ours.
+Shared list, and NFR-7: the rendering and the pipeline plumbing are the library's.
+
+### Dependencies
+
+APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## SLACK-10  `SlackMessageChunker`: split over-budget threads between messages ⬜
+
+**Status** To do
+**As a** retrieval index whose unit is the conversation
+**I want to** a node over the token ceiling split into nodes on message boundaries
+**So that** ~99% of threads reach the embedder whole and no message is cut in half
+
+A second custom `NodeParser` (or `TransformComponent`), placed after `SlackThreadParser` in the
+pipeline. A node under the ceiling passes through untouched; an over-budget node is cut
+between messages, never inside one. `SentenceSplitter` alone does not do this: it cuts by
+size wherever the size runs out.
+
+Measured by the design: thread tokens are p50 821, p90 1,256, p99 1,725, max 3,101. At a
+2,048-token ceiling about 99% of threads never split. Re-measure with the embedding model's
+own tokenizer when it is chosen.
+
+### Acceptance Criteria
+
+```gherkin
+Scenario: a normal thread passes through
+  Given the NovaCare node, about 780 tokens, and a ceiling of 2,048
+  Then the chunker returns the same node unchanged
+
+Scenario: an over-budget thread splits on a message boundary
+  Given a thread of 3,101 tokens and a ceiling of 2,048
+  Then it becomes 2 nodes, each with its own first_turn and last_turn
+  And no message is cut in half
+  And every message lands in exactly one node
+  And both keep the thread's channel, participants and doc_id
+
+Scenario: ids are stable
+  Then a node id is sha256(doc_id:first_turn:last_turn) and does not change between runs
+```
+
+A single message longer than the ceiling, if any exists, is the one place `SentenceSplitter`
+is allowed; count them first.
+
+### Non-functional Requirements
+
+Shared list.
 
 ### Dependencies
 
@@ -947,22 +1103,30 @@ APIs data contracts: SLACK-9 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-11  Embed + BM25 hybrid index ⬜  *(module-level; split when we reach it)*
+## SLACK-11  The ingestion run: reader, pipeline, stores, hybrid retrieval ⬜  *(module-level; split when we reach it)*
 
-Nodes from SLACK-10 go through an `IngestionPipeline` into the vector store, with a docstore
-keyed on the dsid so `refresh_ref_docs` handles re-runs, plus a `BM25Retriever` beside the
-vectors and a `QueryFusionRetriever` over the two. All library code — see section 8 of the
-design for the audit.
+All library code, wired together:
 
-**BM25 is required, not optional.** 72.8% of threads carry an exact-match token — `r_9f8e7d6c`,
-`OF-ACME-001`, `Photon9B-int4` — that dense retrieval alone loses. 56.2% carry a URL and 72.8%
-a fenced code block, which push the same way.
+```text
+SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
+  -> Document per thread, id = the dsid
+  -> IngestionPipeline(transformations=[SlackThreadParser(), SlackMessageChunker(), embed_model],
+                       docstore=..., vector_store=..., cache=IngestionCache)
+  -> vector index  +  BM25Retriever over the same nodes  ->  QueryFusionRetriever
+```
 
-Every node carries `channel`, `participants`, `doc_id`, `content_hash` and `embedding_model`.
-It does **not** carry a date: see SLACK-9.
-
-Channel is also an authority signal available for free: `postmortems` and `incidents` are
-verified outcomes, `random` and `lunch-plans` are not.
+- **Reader.** `SimpleDirectoryReader` reads the clean `.txt` files as they are; no loader of
+  our own. `file_metadata` keeps only `file_name` (verified: no dates reach the Document).
+- **Document id = the dsid.** `filename_as_id=True` gives the full file path, which changes with
+  the checkout location, so the id is set to the dsid after loading. The docstore upserts on
+  it, so a re-run updates a thread's nodes instead of duplicating them.
+- **Cache.** `IngestionCache` + `pipeline.persist()` skip node/transformation pairs already done.
+- **BM25 is required, not optional.** 72.8% of threads carry an exact-match token —
+  `r_9f8e7d6c`, `OF-ACME-001`, `Photon9B-int4` — that dense retrieval alone loses. 56.2% carry
+  a URL and 72.8% a fenced code block, which push the same way.
+- **No date** on any node (design section 5).
+- Channel is also an authority signal available for free: `postmortems` and `incidents` are
+  verified outcomes, `random` and `lunch-plans` are not.
 
 ---
 
@@ -988,7 +1152,7 @@ questions whose gold thread has a channel and for questions whose gold thread is
 
 If the two rates are about the same, the missing channel does not matter. If `unknown` is
 clearly lower, the channel line is helping search, and recovering more channels (for
-example from the thread's content) becomes worth a story. Two rules follow for SLACK-10 and
+example from the thread's content) becomes worth a story. Two rules follow for SLACK-9 and
 here: every node carries `channel_route` in its metadata (kept out of the embedded text), so
 this split is one group-by; and channel authority is a soft boost, never a filter, so an
 `unknown` thread is never dropped from results.

@@ -1,0 +1,27 @@
+eng-releases
+
+deploybot: hotfix deploy request for embed-processor (img: emb-hot-3312). Canary eu1 showed 503 spikes. Requesting expedited approval to push to eu1-prod. details: https://dash.redwood.internal/alerts/11223
+
+megan: quick summary of change? rollback plan?
+
+deploybot: fix is a single-line nil guard in tokenizer (PR #6099). No config changes. Rollback cmd: `releasebot rollback embed-processor v2.12.0 --region eu1`. Auto-abort if 503s > 6% for 3m.
+
+ops-tom: oncall and infra ok on code. I can own manual rollback. Need product ack and relnote pin.
+
+oncall-bot: ops-tom is oncall for embeddings for next 40m. Auto-abort rule applied. Manual rollback owner: ops-tom.
+
+cs-jules: CS standby. I'll send customer note after deploy with timeline.
+
+megan: product ack. relnote: "embed-processor: guard nil token in tokenizer causing 503s under rare input patterns. backported to v2.12.1-embhotfix. pinned tag emb-hot-3312 -> v2.12.1-embhotfix."
+
+deploybot: approvals recorded: megan, ops-tom, cs-jules. executing expedited rollout: stages 25 -> 100 with 120s checks. CMD: `deploy --svc embed-processor --img emb-hot-3312 --strategy expedited --regions eu1 --stages 25,100 --check 120s`
+
+deploybot: 25% -> success. monitoring.
+
+deploybot: 100% -> success. no abort. metrics: 503s down from 15% to 0.7%.
+
+ops-tom: verified. manual rollback not needed. filing ops memo with rollback command.
+
+cs-jules: sent customer updates. closing incident when CS confirms receipt.
+
+releasebot: rollout complete and relnote pinned to release-logs/2026-04-05-embhotfix. follow-up: add short rca to relnotes.

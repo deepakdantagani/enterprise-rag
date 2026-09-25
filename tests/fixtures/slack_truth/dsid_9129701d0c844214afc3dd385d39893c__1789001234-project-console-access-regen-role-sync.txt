@@ -1,0 +1,4 @@
+permission_denied
+
+user lacks scope project:read for proj_9a3f
+project:read

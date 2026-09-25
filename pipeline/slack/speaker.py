@@ -16,7 +16,7 @@ mixes teams (`CS`, `People Ops`), job roles (`PM`, `AE`), duties (`oncall`) and 
 keeping only the brackets: the speaker line stays in the message text.
 Some lines are written team first (`Legal - Priya:`; roughly 800 by a first-name check, not
 pinned); they are read as written, name `Legal`, since nothing in the line says which part
-is the person. SLACK-8's truth set can measure how often that matters.
+is the person. SLACK-8b's truth set can measure how often that matters.
 
 A bot is a speaker that one of BOT_RULES fires on; messages per rule, first rule that fires:
 

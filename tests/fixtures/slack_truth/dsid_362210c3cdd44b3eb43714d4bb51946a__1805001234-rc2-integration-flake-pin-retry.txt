@@ -1,0 +1,35 @@
+eng-releases
+
+deploy-bot: deploy pipeline started for tag v1.12.0-rc2 -> staging (commit ab12cd34)
+ci-bot: build: ✅
+ci-bot: lint: ✅
+ci-bot: unit tests: ✅
+ci-bot: integration tests: ❌ 3 failures (flaky?)
+ci-bot: failing tests:
+```
+IntegrationTest::streaming_retry
+IntegrationTest::cache_invalidation
+IntegrationTest::schema_mismatch
+```
+maya: hm, those look flaky from yesterday too
+alex: same tests failed on my branch earlier, likely timing with kv-cache TTL
+cheng: any infra changes? staging cluster restarted this morning
+priya: nothing from infra side, only image bump for redis to 6.2.7
+maya: that redis bump was in the same commit? tag shows dependency bump
+alex: propose pin redis back to 6.2.6 in package-lock and rerun, or quarantine tests (CI_QUARANTINE)
+cheng: leaning pin -> avoids masking bug. Quarantine only if pin takes longer
+maya: +1 pin for rc; create hotfix commit and trigger rerun
+alex: I'll push a revert-pin commit: `git checkout -b hotfix/pin-redis && npm install redis@6.2.6 && git commit -am "pin(redis): 6.2.6 to avoid staging flake" && git push origin hotfix/pin-redis` and create PR
+deploy-bot: pipeline created for PR #742 (hotfix/pin-redis) -> building
+ci-bot: build: ✅
+ci-bot: lint: ✅
+ci-bot: unit tests: ✅
+ci-bot: integration tests: ✅ all passed
+deploy-bot: merge complete, tag bumped to v1.12.0-rc2+hotfix and deployment to staging started
+deploy-bot: deployment to staging successful, canary pods stable :tada:
+maya: nice. we'll include note in release notes about pinning redis and add to changelog
+priya: created changelog entry: "Pin redis to 6.2.6 to avoid integration flakiness in staging"
+alex: rolling to canary-prod tomorrow during 02:00-04:00 change window unless any objections
+cheng: ack
+maya: thx everyone :shipit:
+ci-bot: logs attached: `https://ci.internal/builds/1805001234`

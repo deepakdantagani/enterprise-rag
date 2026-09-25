@@ -1,0 +1,32 @@
+people-ops
+
+Leo T.: Hi all — Im relocating to Lisbon for ~12 weeks. Still on US payroll. Quick q: how do prescriptions and outpatient visits work there? Any paperwork I should prep before I go? :sunglasses:
+
+Maya - People Ops: You can remain on Redwoods US plan while abroad for short assignments. Emergency care is generally covered but routine visits abroad are out-of-network. Prep list below.
+
+Benefits Bot: Reminder: update temporary address in Workday if youre outside the US >30 days.
+
+Ivy - Benefits: Prep checklist (copy this before travel):
+- Print/export your Redwood digital ID card (we can email PDF).
+- If you take maintenance meds, get a 90-day supply or an international prescription from your clinician.
+- Ask your clinician to include ICD/CPT codes on paperwork if possible (helps claims).
+- Scan copies of passport page and payment card used for receipts.
+
+Leo T.: If I see a private clinic there and pay, can Redwood reimburse me? How to submit?
+
+Maya - People Ops: Yes — we can submit for reimbursement to the insurer as an out-of-network claim. Email benefits@redwood.com with a scanned claim packet. Typical packet we need:
+```
+- Itemized invoice (dates, services, fees)
+- Proof of payment (cc slip or bank statement)
+- Simple English translation if invoice not in English (Google Translate attestation is fine)
+- Your name, DOB, Redwood employee ID
+```
+Well create a claims form and coordinate with the carrier. Reimbursements can take 6-8 weeks.
+
+Benefits Bot: Tip: take photos of receipts at the point of service; upload to Drive and email links to benefits to avoid lost paper.
+
+Leo T.: Great — last Q: any change to payroll deductions while Im abroad?
+
+Ivy - Benefits: No changes while youre on US payroll. If the assignment goes beyond ~6 months well do a benefits eligibility review and flag potential tax/benefit residency issues. For now, update Workday and well send the ID card PDF and telemed links.
+
+Leo T.: Thanks everyone — updating Workday now and will DM if I need the PDF sent to personal email. Appreciate it! :pray:

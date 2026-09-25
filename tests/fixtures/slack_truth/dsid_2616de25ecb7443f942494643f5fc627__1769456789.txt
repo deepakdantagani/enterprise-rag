@@ -1,0 +1,67 @@
+eng-oncall
+
+incident-bot: PAGER TRIGGERED — P1 embeddings-queue-high-latency (INC-2028)
+Details: embeddings-processor queue latency > 3s p95 for multiple customers. Link: https://redwood.internal/incidents/INC-2028 • Runbook: https://redwood.internal/runbooks/embeddings-queue
+
+Maya Patel: ACK — I'm on primary. pulling logs and metrics now.
+
+Samir Rao: i'm joining as secondary. quick ask — customer impact?
+
+Maya Patel: quick summary: 4 customers seeing sustained embedding latency 3-12s, error rate ~0% (no 5xx), just huge queueing. SLO breach for embeddings p95. We've scaled embeddings-processor and restarted workers. Root cause looks like redis evictions/timeouts on the vector cache.
+
+Ena Li: tagging infra — redis cluster rdb-primary showing high CPU & evictions. @ops-bot can you post current redis metrics?
+
+ops-bot: redis cluster rdb-primary (10.1.2.3) — CPU 98%, memory 92%, evictions 1200/s, rejected connections 0.5%. Last restart: 6d.
+
+Tony Nguyen: i'll take redis. SSHing to rdb-primary, starting graceful restart of rdb-node-3.
+
+Maya Patel: Mitigations applied so far:
+- scaled embeddings-processor deployment from 3 -> 8 replicas
+- disabled large batching in runtime (temp)
+- restarted embeddings-worker pods (rolling)
+Commands run:
+```bash
+kubectl scale deploy embeddings-processor --replicas=8 -n inference
+kubectl rollout restart deploy/embeddings-worker -n inference
+```
+Result: queue length dropped ~40% in 4m, p95 improved from ~9s -> ~3.4s but still above SLO. Redis evictions still high.
+
+Samir Rao: Customer impact details I have:
+- cust-A & cust-B: p95 5-10s, intermittently timing out on side that enqueues (retries succeed)
+- cust-C: degraded throughput, queued jobs growing earlier but draining now
+Support notified: support-bot posted customer-facing advisory (no data loss).
+
+support-bot: Notified Support & CSMs: "We're investigating increased embeddings latency affecting a small set of customers. No data loss. We'll update in 30m." :warning:
+
+Tony Nguyen: Redis action log: did a rolling restart on rdb-node-3, reclaimed memory, evictions dropped to ~50/s, CPU down to 65%. Restart command used: `sudo systemctl restart redis` then `redis-cli INFO memory` to verify. Backlog now draining.
+
+Maya Patel: good — that aligns with metrics. Next mitigation if evictions return: add an extra redis replica, or failover to secondary cluster (requires infra approval). Also consider enabling soft-limits on heavy customers (rate-limit embeddings per-min).
+
+Samir Rao: For handoff — here's what to watch:
+- embeddings queue length (Grafana: /d/embeddings/queue) — target <200
+- redis evictions per-sec (Grafana: /d/infra/redis) — target 0-5/s
+- p95 embeddings latency (API) — target <2s
+- DLQ size and error logs: `kubectl logs -l app=embeddings-worker -n inference --since=30m | grep ERROR`
+If latency creeps back up: revert batching change, scale processors further, or route heavy customers to `m-infer-lite`.
+
+Maya Patel: Support message template we sent:
+"We're currently mitigating increased embeddings latency. We've applied scaling and restarted infrastructure; performance is returning to normal. We'll monitor for 1 hour and follow up with details."
+
+Tony Nguyen: verify infra notes — I updated runbook snippet with commands to add a redis replica and to perform controlled failover: https://redwood.internal/runbooks/embeddings-queue#redis-failover
+
+Ena Li: Handoff plan — i'm taking over primary for the next shift (05:00–13:00 UTC). Samir remains secondary, Tony is infra contact. Coverage gap: no dedicated night infra lead from 01:00–03:00 UTC — Tony, can you be reachable for 01:00-03:00 if this recurs?
+
+Tony Nguyen: I can be on call for that window, will set phone schedule.
+
+Samir Rao: Added checklist for next shift:
+- confirm queue length <200 for 30m
+- confirm redis evictions <10/s for 30m
+- confirm p95 <2.5s and no customer retries failing
+- keep support updated (if any customer >5s latency send immediate update)
+Commands: `kubectl get hpa -n inference`, `redis-cli INFO stats`, `curl https://api.redwood.dev/health/embeddings/p95`
+
+incident-bot: Incident INC-2028 status -> MONITORING (mitigation in place). Pager closed at 04:40 UTC.
+
+Maya Patel: final note: system stabilized but this was likely caused by uneven key distribution in Redis after recent sync. Postmortem to include: how sharding/TTL interplay caused evictions, potential autoscale for redis, and safer default batching. I'll kick off the postmortem doc.
+
+Ena Li: ack — taking over monitoring. i'll post an update in 30m. leaving these notes in the incident doc. Thanks all. :white_check_mark:
