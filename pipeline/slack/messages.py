@@ -61,15 +61,16 @@ NOT_SPEAKERS = frozenset({  # first words of labels, measured opening a line ins
 LABEL_NAMES = frozenset({  # SLACK-6b: labels that block only when they are the whole name
     # Caught by the SLACK-8b truth set, or among the corpus's most frequent names that never
     # open two lines in any thread; each read in 3 real contexts, a label in all. Whole name
-    # only, because real speakers start with some of them: `SDK Team:`, `b en:`, `c raig:`.
+    # only, because real speakers start with some of them: `SDK Team:`, `SDK Lead:`, `SDK CI:`.
     # Not added: `CI` (`CI (docs-bot):` is a bot speaking) and `Everyone` (`Everyone: ack?`).
     "expect", "details", "commands", "files", "changes", "started_by", "apply_log",
     "rollback_plan", "post-check", "fallback", "retry-after", "user-agent", "request-id",
-    "transfer-encoding", "b", "c", "h1", "h2", "h3", "behavior", "outputs", "pattern",
+    "transfer-encoding", "h1", "h2", "h3", "behavior", "outputs", "pattern",
     "canary", "start", "rationale", "recommendation", "fp16", "baseline", "interpretation",
     "notable", "window", "bank", "dashboard", "problem", "sdk", "responses", "conclusion",
     "python",
 })
+OPTION_MARKERS = frozenset({"B", "C"})  # `B: "Scale inference..."`; capitals only, `b:` is a person
 
 
 class Split(NamedTuple):
@@ -101,13 +102,13 @@ def is_speaker(name: str, times_named: int) -> bool:
     (True, False, True)
     >>> is_speaker("maria gonzalez", 2), is_speaker("browser console", 1)
     (True, False)
-    >>> is_speaker("SDK", 1), is_speaker("SDK Team", 1)
-    (False, True)
+    >>> is_speaker("SDK", 1), is_speaker("SDK Team", 1), is_speaker("B", 1), is_speaker("b", 1)
+    (False, True, False, True)
     """
     words = name.split()
     if words[-1].lower() == BOT_SUFFIX:
         return True
-    if words[0].lower() in NOT_SPEAKERS or name.lower() in LABEL_NAMES:
+    if words[0].lower() in NOT_SPEAKERS or name.lower() in LABEL_NAMES or name in OPTION_MARKERS:
         return False
     lowercase_after_first = any(word[0].islower() for word in words[1:])
     return not lowercase_after_first or times_named >= REPEATS_NEEDED

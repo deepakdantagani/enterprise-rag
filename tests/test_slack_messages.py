@@ -48,6 +48,11 @@ class SplitMessages(unittest.TestCase):
                 "b en: paging oncall\nB: \"Scale inference predictably\"\nb en: can we toggle the flag back?\n")
         self.assertEqual([m.split(":")[0] for m in split_messages(text).messages], ["kai", "SDK Team", "b en", "b en"])
 
+    def test_option_markers_block_only_in_capitals(self):
+        text = ("eng\n\nkai: two options\nB: \"Scale inference predictably\"\nC: \"Prod-ready LLMs\"\n"
+                "b: can we replay those partitions?\n")
+        self.assertEqual([m.split(":")[0] for m in split_messages(text).messages], ["kai", "b"])
+
     def test_a_bot_named_like_a_new_label_still_speaks(self):
         text = "eng\n\nkai: hi\nCanary Bot: Canary deploy scheduled for rerank/v2 to 1% traffic.\n"
         self.assertEqual(len(split_messages(text).messages), 2)
@@ -109,7 +114,7 @@ class RealCorpus(unittest.TestCase):
             totals["threads"] += 1
             totals["messages"] += len(split.messages)
             totals["threads_without_messages"] += not split.messages
-        self.assertEqual(totals, {"threads": 285_605, "messages": 5_739_653, "threads_without_messages": 64})
+        self.assertEqual(totals, {"threads": 285_605, "messages": 5_739_660, "threads_without_messages": 64})
 
 
 if __name__ == "__main__":
