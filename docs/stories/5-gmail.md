@@ -21,7 +21,7 @@ library code harder than Confluence did:
   `dsid_<32 hex>__<YYYYMMDD>-<slug>.txt`. 121,390 of them.
 - **`dsid`**: the 32-hex id in the filename. **The benchmark's unit of truth** —
   `expected_doc_ids` in `questions.jsonl` are `dsid`s, so every chunk must carry one.
-- **Message**: one `From:` block inside a thread and the body under it. 578,254 of them,
+- **Message**: one `From:` block inside a thread and the body under it. 578,443 of them (578,254 start with `From:`, 189 are whole-body blocks),
   median 5 per thread.
 - **Thread title**: line 1 of the file. Always present; differs from any `Subject:` in
   65% of threads, so it is independent signal.
@@ -29,7 +29,7 @@ library code harder than Confluence did:
   not, so `is_escaped` (a whole-file count comparison) says False. 13 files corpus-wide.
 - **Quoted history**: an `On … wrote:` line and the `>`-prefixed text under it, repeating
   a message that is already indexed on its own. 61,922 threads, 42.8 M chars.
-- **Message record**: the ten derivable fields of one message (design §3), the unit
+- **Message record**: the derivable fields of one message (design §3, plus the body and flags), the unit
   written to `data/gmail/messages/` and handed to LlamaIndex as one `Document`.
 
 ## Module layout
@@ -66,7 +66,7 @@ pipeline/gmail/
 | 6 | GMAIL-6 strip_quotes | drop the `On … wrote:` block and its `>` lines |
 | 7a | GMAIL-7a attachments | file names on labelled lines; a value counts only where it holds file names |
 | 7b | GMAIL-7b attachments | bracket lines and bullet lists below an empty label |
-| 8 | GMAIL-8 message_records | assemble the ten fields per message, thread fields from the filename and line 1 |
+| 8 | GMAIL-8 message_records | one flat record per message: file name, line 1, headers, date, body, attachments, flags |
 | 8b | GMAIL-8b message truth set | 30-40 real messages with hand-checked output; every edge case found in stories 3-6 |
 | 9 | GMAIL-9 messages corpus | write `data/gmail/messages/*.jsonl` + manifest; counts reconcile |
 | 10 | GMAIL-10 to_document | one LlamaIndex `Document` per record; metadata templating does the context injection |
@@ -552,60 +552,41 @@ Reuses `file_name_of` from 7a for what counts as a name. Same edge-case discipli
 
 ---
 
-## GMAIL-8  message_records: the ten fields  ⬜
+## GMAIL-8  message_records: one flat record per message  ✅
 
-**Status:** To do.
+**Status:** Done. `pipeline/gmail/records.py`, 27 tests. Over all 121,390 threads it gives 578,443 records (every thread gives at least one; the story's 578,254 counted only blocks that start with `From:`). Counts: 189 `headers_missing`, 1,369 `date_missing` (1,243 with no date text, 126 with unreadable text), 3,010 `date_assumed_utc`, 1,503 `body_empty` (723 empty before quote removal, 780 emptied by it), 231,421 with attachments.
 
 **Background**
-Assembles GMAIL-3 to 7 into the record that becomes one LlamaIndex `Document`. Ten
-fields, all provable from the bytes (design §3). Provider metadata does not exist here —
-across 20,000 threads: `Message-ID` 1, `In-Reply-To` 1, `Labels` 1 — so nothing is
-invented to fill a schema.
+Assembles GMAIL-3 to 7 into the record that becomes one LlamaIndex `Document`. Provider metadata does not exist here (`Message-ID`, `In-Reply-To`, `Labels` appear once in 20,000 threads), so nothing is invented to fill a schema.
 
 **As a** pipeline developer
-**I want to** turn one clean thread into its message records
-**So that** stage 3 has flat, typed rows and never re-parses text
+**I want to** turn one clean thread and its file name into its message records
+**So that** later stages have flat, typed rows and never re-parse text
+
+**Decisions (from a whole-corpus scan, before any test)**
+1. The record holds the text: `body` is the text after `strip_quotes`. The original ten fields had no text, but GMAIL-10 needs it. Empty bodies are kept and flagged; GMAIL-10 skips them.
+2. No usable date: `sent_at` is `""` and `date_missing` is True. The file date is not used as a guess, because it differs from the first message's date in 40,937 threads. `thread_date` stays available for filtering. `date_raw` keeps the text, so unreadable and absent dates can be told apart.
+3. Text before the first `From:` (609 threads) is in no record. GMAIL-3b owns it; a marker line or a `Date:` line there belongs in a message, not the thread.
+4. `sha256` is of the message block as `split_messages` returns it, so a change to `clean_thread` changes it.
 
 **Acceptance Criteria (Gherkin)**
-- Given a clean thread and its filename, Then one `MessageRecord` per block is returned with `dsid`, `thread_title`, `thread_date`, `message_index`, `sender`, `recipients`, `sent_at`, `subject`, `attachments`, `sha256`
-- Given the filename, Then `dsid` is the 32-hex id and `thread_date` is the slug's `YYYYMMDD`
-- Given the thread, Then `thread_title` is line 1 and is the same on every record of that thread
-- Given `message_index`, Then it is 0-based and in file order
-- Given `recipients`, Then it is `to + cc` in that order
-- Given a headerless thread, Then one record is returned with empty sender/recipients/subject, `sent_at` from `thread_date`, and a `headers_missing` flag
-- Given the corpus, Then 578,254 records are produced from 121,390 threads
+- Given a clean thread and its file name, Then one `MessageRecord` per block is returned, in file order (`message_index` from 0)
+- Given the file name, Then `dsid` is `dsid_<32 hex>` and `thread_date` is the `YYYYMMDD` text, kept even when it is not a real day (2 files, e.g. 20260229)
+- Given the thread, Then `thread_title` is line 1 on every record
+- Given a message, Then `recipients` is To then Cc, `sent_at` is UTC, `body` has no quoted history and `attachments` are read from it
+- Given no readable date, Then `sent_at` is `""`, `date_missing` is True and `date_raw` holds whatever was written
+- Given a headerless thread, Then one record has empty sender, recipients and subject, and `headers_missing` is True
+- Given the corpus, Then 578,443 records are produced from 121,390 threads
 
-**Example with real data**
-```python
-MessageRecord(
-    dsid="dsid_000025680c494c78b8005828c90c9293",
-    thread_title="Payment orchestration: allocating regional seat charges across entities",
-    thread_date="20260625",
-    message_index=1,
-    sender="Vivek Kulkarni <vivek.kulkarni@redwood.ai>",
-    recipients=["Amal Khan <amal.khan@greenlinehealth.com>",
-                "Kimberly Park <kimberly_park@redwood.ai>", …],
-    sent_at="2026-06-25T18:05:00+00:00",
-    subject="Re: Invoice & VAT approach for multi-entity pilot (Greenline)",
-    attachments=["entity_mapping_template.xlsx"],
-    sha256="…",
-)
-```
-Note `thread_title` and `subject` say different things — true of 65% of threads, and the
-reason both are embedded.
+**The 16 fields:** `dsid`, `thread_title`, `thread_date`, `message_index`, `sender`, `recipients`, `sent_at`, `date_raw`, `subject`, `attachments`, `body`, `sha256`, and the flags `headers_missing`, `date_missing`, `date_assumed_utc`, `body_empty`. The names are pinned by a test because they are the contract for everything downstream.
+
+**Known and left alone (measured)**
+- `message_index` is file order: 13,550 messages are dated earlier than the one before them.
+- 185 messages repeat an earlier body in the same thread, and 505 more repeat the same sender and body across threads; all are kept.
+- 423 blocks still hold a literal `\r` or `\n` (GMAIL-1b).
 
 **Non-functional Requirements**
-Shared rules apply. Pure.
-
-*Maintainability:* one function, no state; the id scheme is documented beside it because
-changing it invalidates every stored vector.
-*Observability:* audit row `duplicate_chunk_id` must be 0 over the corpus. `MessageRecord` is a frozen dataclass; flat values only, so it
-serialises to a vector-store payload without transformation.
-
-*Maintainability:* the ten fields are the contract for everything downstream; adding an
-eleventh is a story of its own, because it changes the vector-store payload.
-*Observability:* every record carries `headers_missing`, `date_assumed_utc` and
-`body_empty`, so the awkward cases are queryable rather than invisible.
+Shared rules apply. Pure. `MessageRecord` is a frozen dataclass of strings, ints, bools and lists of strings, so it serialises without transformation. Adding a field is a story of its own, because it changes the stored payload.
 
 **Dependencies** APIs data contracts: GMAIL-3,4,5,6,7 · Service Bus: N/A · Database: N/A · UI: N/A
 
@@ -663,7 +644,7 @@ Writes the records to disk so stage 3 never re-parses, and proves nothing was lo
 **Acceptance Criteria (Gherkin)**
 - Given `data/gmail/clean/`, Then `data/gmail/messages/` holds one `.jsonl` per input slice, one record per line
 - Given `_manifest.json`, Then each row has `file`, `clean_sha256`, `messages`, `headers_missing`, `quoted_chars`
-- Given the manifest, Then `sum(messages) == 578,254` and `sum(headers_missing) == 189`
+- Given the manifest, Then `sum(messages) == 578,443` and `sum(headers_missing) == 189`
 - Given a second run, Then every file is byte-identical
 - Given any thread, Then its `dsid` appears in at least one record
 
@@ -680,7 +661,7 @@ over every record's `sha256` in `(dsid, message_index)` order.
 *Maintainability:* jsonl, one record per line, so a single thread can be inspected with
 `grep` and no tooling.
 *Observability:* this is the reconciliation point. The run prints threads in, messages out,
-and the four flag counts, and fails if `sum(messages) != 578,254` or a `dsid` is missing.
+and the four flag counts, and fails if `sum(messages) != 578,443` or a `dsid` is missing.
 
 **Dependencies** APIs data contracts: GMAIL-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
