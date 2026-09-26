@@ -35,6 +35,7 @@ Eval glossary:
 | EVAL-2a  `load_questions` | ✅ |
 | EVAL-2b  `metrics_report`: overall, per question type, per source, at k = 5, 10, 20 | ✅ |
 | EVAL-3  baseline: every document, `SentenceSplitter(512)`, local embedder  *(module-level)* | ⬜ |
+| EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
 ---
 
@@ -150,3 +151,46 @@ conflicting_info 20, completeness 20, miscellaneous 20.
   in `pipeline/eval/report.py`; groups are `overall`, `type:<question_type>`, `source:<source_type>`
 - Uses: EVAL-1's `RetrievalEvalResult.metric_vals_dict`, EVAL-2a's `Question`
 - Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## EVAL-4  `trace_to_phoenix`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** every LlamaIndex call of an eval run traced to a local Arize Phoenix UI
+**So that** when a group scores low I can open one question and see what the retriever
+returned, instead of guessing
+
+**Acceptance Criteria (Gherkin)**
+- Given `trace_to_phoenix(tracer_provider=provider)` and an evaluation, Then the provider
+  receives a span of kind `RETRIEVER`
+- Given that span, Then it holds the question (`input.value`) and each retrieved chunk's text
+  (`retrieval.documents.<i>.document.content`)
+- Given no provider, Then spans go to the Phoenix server at `localhost:6006`, project
+  `enterprise-rag-eval`, over HTTP
+- Given an embedding call, Then its span keeps the text but the vector is `__REDACTED__`: in
+  the first sample run (207 docs, 822 chunks) the 1,024-number vectors pushed one export batch
+  to 12 MB, over the 4 MB Phoenix accepts over gRPC, and those traces were lost
+
+**Example with real data**
+To be filled by EVAL-3's first run: qst_0431 opened in Phoenix, with its top chunks and the
+documents they came from.
+
+**Non-functional Requirements**
+- Shared NFRs. The tests use an in-memory span exporter: no server, no network.
+- Reuse: no span is written by our code. OpenInference's `LlamaIndexInstrumentor` hooks
+  LlamaIndex's instrumentation dispatcher, the same one `pipeline/observability.py` listens
+  to; the function only chooses where spans go.
+- Dependency discipline: two new runtime dependencies, `openinference-instrumentation-llama-index`
+  4.5.2 and `arize-phoenix-otel` 0.17.1 (resolve with the pinned `llama-index-core` 0.14.24,
+  no other pin moves). The Phoenix server itself is not a dependency: it runs on demand with
+  `uv run --with arize-phoenix phoenix serve`. Considered and not taken: Langfuse (a server to
+  host), MLflow (weaker per-question view).
+
+**Dependencies**
+- APIs: `trace_to_phoenix(project="enterprise-rag-eval", tracer_provider=None) -> TracerProvider`
+  in `pipeline/eval/tracing.py`
+- Uses: `openinference.instrumentation.llama_index.LlamaIndexInstrumentor`, `phoenix.otel.register`
+- Service Bus: N/A · Database: N/A · UI: Arize Phoenix at `http://localhost:6006` (local)
