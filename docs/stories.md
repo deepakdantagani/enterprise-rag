@@ -72,7 +72,7 @@ Confluence's; each source file carries its own, so a story can be read without t
 | PARSE-14  Assumption audit: every chunking assumption as a corpus count  ⬜ | [4-tools.md](stories/4-tools.md) |
 | PARSE-16  Chunking validation: recall@20 on the benchmark questions  ⬜ | [3-llamaindex.md](stories/3-llamaindex.md) |
 | GMAIL-0  Corpus profile  ✅ | [5-gmail.md](stories/5-gmail.md) |
-| GMAIL-1a ✅, 1b, 2 ✅, 3 ✅, 3b, 4 ✅, 5a ✅, 5b ✅, 6 ✅, 7a ✅, 7b, 8, 8b … GMAIL-9  Raw threads to message records  ⬜ | [5-gmail.md](stories/5-gmail.md) |
+| GMAIL-1a ✅, 1b, 2 ✅, 3 ✅, 3b, 4 ✅, 5a ✅, 5b ✅, 6 ✅, 7a ✅, 7b, 8 ✅, 8b … GMAIL-9  Raw threads to message records  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-10 … GMAIL-12  Message records to LlamaIndex nodes  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-13 … GMAIL-15  Thread roll-up, hybrid retrieval, recall@k  ⬜ | [5-gmail.md](stories/5-gmail.md) |
 | GMAIL-16  Gmail audit tool: every rule as a corpus count  ⬜ | [5-gmail.md](stories/5-gmail.md) |
