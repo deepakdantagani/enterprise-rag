@@ -1235,7 +1235,10 @@ APIs data contracts: SLACK-9 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-11  The ingestion run: reader, pipeline, stores, hybrid retrieval ⬜  *(module-level; split when we reach it)*
+## SLACK-11  The ingestion run: reader, pipeline, stores, hybrid retrieval ⬜
+
+Split on 2026-09-26 into three stories, one idea each: **11a** the embedding model, **11b** the
+ingestion run into Qdrant, **11c** hybrid retrieval. The overview below is the whole run.
 
 All library code, wired together:
 
@@ -1260,9 +1263,93 @@ SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
   its tokenizer and window passed to `EmbeddingWindowGuard` (SLACK-10). With Ollama, set
   `num_ctx` to the model's window: its default can be lower, and it truncates silently.
   Recount the largest threads with the model's own tokenizer.
+- **Vector store: Qdrant, local mode** (decided 2026-09-26): `QdrantClient(path=...)`, a
+  folder on disk with no server, through `llama-index-vector-stores-qdrant`. float32 by
+  default (1,024 dims x 4 bytes x 285,597 threads = 1.17 GB), int8 possible later; metadata
+  filters (channel); UUID point ids, which ours already are. Rejected: LlamaIndex's
+  `SimpleVectorStore` (in memory, persisted as JSON text: several GB loaded on every start,
+  brute-force search); FAISS (no metadata filters); Chroma, LanceDB (would work; Qdrant also
+  moves to a server unchanged); Milvus Lite (only needed for bge-m3's sparse vectors).
 - **No date** on any node (design section 5).
 - Channel is also an authority signal available for free: `postmortems` and `incidents` are
   verified outcomes, `random` and `lunch-plans` are not.
+
+---
+
+## SLACK-11a  `embed_model()`: Qwen3-Embedding-0.6B, local, through Ollama ⬜
+
+**Status** In progress
+**As a** pipeline that embeds 285,597 threads on one laptop
+**I want to** one place that says which embedding model we use and how it is called
+**So that** every thread is embedded whole, the same way on every run, and the model is one setting to change
+
+`pipeline/slack/embedding.py`: `embed_model()` returns LlamaIndex's `OllamaEmbedding` for
+`qwen3-embedding:0.6b` with Ollama's window (`num_ctx`) set to 32,768. No wrapper of our own.
+The settings are environment variables with these defaults (`embed_settings()`, documented in
+`.env.example`): `EMBED_PROVIDER` (ollama), `EMBED_MODEL`, `EMBED_BASE_URL`, `EMBED_WINDOW`,
+`EMBED_DIMENSIONS`. The window and dimensions belong to the model, so they change with it.
+**Swappable:** the pipeline sees only LlamaIndex's `BaseEmbedding`; `EMBED_PROVIDER` picks a row
+of `PROVIDERS`, and adding a provider (OpenAI, Voyage, Hugging Face) is one builder, one row and
+its `llama-index-embeddings-*` package, imported only when chosen. API keys stay in each
+provider's own variable (`OPENAI_API_KEY`, ...).
+
+**Why this model** (decided 2026-09-26; 20 models checked against official pages): it fits a
+whole thread (32,768-token window), has the best comparable retrieval among small open models
+(MTEB English v2 Retrieval 61.8), runs locally (no data leaves the laptop, no per-run cost),
+is Apache-2.0, is in Ollama, and has 1,024 dimensions (1.17 GB of float32 vectors for the
+corpus). Hosted enterprise models (OpenAI text-embedding-3-small about $4.90 a run, voyage-4-lite
+about $0.92) are a SLACK-12 comparison, not the default.
+
+**Measured on this Mac (M5 Pro), real threads:**
+
+| | |
+|---|---|
+| model | 595.78M parameters, Q8_0, window 32,768, 1,024 dimensions |
+| largest thread | 4,470 Qwen tokens (4,143 cl100k) |
+| Qwen vs cl100k, 1,000 threads | +4.4% (895,059 vs 857,584) |
+| same text twice | near-identical, not bit-for-bit: the first call after the model loads, and the same text at another place in a batch, differ by up to 9e-05 per number (cosine 0.9999997); repeat calls otherwise identical |
+| speed | 9.7 threads/s one at a time, 10.5 in batches of 16 or 64: a full run is about 7.7 hours |
+| window forced to 2,048 | the largest thread cut to 2,047 tokens without an error; its vector still 0.94 similar |
+
+**Decisions:**
+- **A full run is about 7.7 hours, once**, overnight; the docstore makes it resumable and later
+  runs embed only changed threads (11b).
+- **The guard stays at 8,192 cl100k tokens** (at most about 8,600 Qwen tokens, a quarter of the
+  window) and `num_ctx` is set to 32,768 explicitly, so a changed Ollama default cannot shrink
+  it. `OllamaEmbedding` cannot ask Ollama to refuse instead of truncate, so the guard is the only check.
+- **No instruction on threads.** The query instruction Qwen wants on questions is set in 11c.
+- **Vectors are near-identical, not byte-identical, across runs** (NFR-1 holds up to the
+  embedding stage, as it says): ids, text and metadata are exact; a vector can move by 9e-05 per
+  number. No golden fingerprint over vectors; tests compare them by cosine.
+
+### Acceptance Criteria
+
+```gherkin
+Scenario: the model is Qwen3-Embedding-0.6B with the full window
+  Then embed_model() is an OllamaEmbedding for qwen3-embedding:0.6b with num_ctx 32,768
+
+Scenario: the settings come from the environment
+  Given EMBED_PROVIDER, EMBED_MODEL, EMBED_BASE_URL, EMBED_WINDOW or EMBED_DIMENSIONS is set
+  Then embed_model() uses it, and falls back to the default for any that is not
+  And a window or dimension that is not a positive whole number, or a provider we do not have, is an error
+
+Scenario: a vector has 1,024 numbers, near-identical on every run
+  Given Ollama is running with the model pulled
+  Then a thread's vector has 1,024 numbers, and embedding it again, alone or in a batch, gives a vector with cosine above 0.9999
+
+Scenario: the end of the largest thread reaches the vector
+  Given the largest real thread (4,470 Qwen tokens)
+  Then its vector differs from the vector of the same thread without its last message
+```
+
+### Non-functional Requirements
+
+Shared list. Tests that call the model are skipped when Ollama or the model is absent.
+
+### Dependencies
+
+`llama-index-embeddings-ollama` (NFR-8: the library's own Ollama integration; no wrapper written).
+APIs data contracts: SLACK-9, 10 · Database: N/A · UI: N/A
 
 ---
 
