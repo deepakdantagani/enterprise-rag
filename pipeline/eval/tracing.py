@@ -10,6 +10,10 @@ instrumentation dispatcher (the one pipeline/observability.py already listens to
 retrieve, embed and evaluate call is traced as it is. This function only picks where spans go:
 the local Phoenix server by default, or a given provider (the tests pass an in-memory one).
 
+Two settings from the first sample run (207 docs, 822 chunks): embedding vectors are left out of
+the spans, because 1,024 numbers per chunk pushed one export batch to 12 MB; and spans go over
+HTTP, because Phoenix's gRPC receiver rejects any message over 4 MB.
+
 Start the UI first, then open http://localhost:6006:
 
     uv run --with arize-phoenix phoenix serve
@@ -21,6 +25,7 @@ Start the UI first, then open http://localhost:6006:
 """
 from typing import Optional
 
+from openinference.instrumentation import TraceConfig
 from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -30,6 +35,6 @@ PHOENIX_PROJECT = "enterprise-rag-eval"
 def trace_to_phoenix(project: str = PHOENIX_PROJECT, tracer_provider: Optional[TracerProvider] = None) -> TracerProvider:
     if tracer_provider is None:
         from phoenix.otel import register  # only when sending to a running Phoenix server
-        tracer_provider = register(project_name=project, batch=True)
-    LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider)
+        tracer_provider = register(project_name=project, batch=True, protocol="http/protobuf")
+    LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider, config=TraceConfig(hide_embeddings_vectors=True))
     return tracer_provider

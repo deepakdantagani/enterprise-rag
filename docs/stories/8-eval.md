@@ -169,7 +169,10 @@ returned, instead of guessing
 - Given that span, Then it holds the question (`input.value`) and each retrieved chunk's text
   (`retrieval.documents.<i>.document.content`)
 - Given no provider, Then spans go to the Phoenix server at `localhost:6006`, project
-  `enterprise-rag-eval`
+  `enterprise-rag-eval`, over HTTP
+- Given an embedding call, Then its span keeps the text but the vector is `__REDACTED__`: in
+  the first sample run (207 docs, 822 chunks) the 1,024-number vectors pushed one export batch
+  to 12 MB, over the 4 MB Phoenix accepts over gRPC, and those traces were lost
 
 **Example with real data**
 To be filled by EVAL-3's first run: qst_0431 opened in Phoenix, with its top chunks and the

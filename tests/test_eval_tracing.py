@@ -7,7 +7,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from llama_index.core import Document, SummaryIndex
+from llama_index.core import Document, MockEmbedding, SummaryIndex, VectorStoreIndex
 from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -46,6 +46,16 @@ class TraceToPhoenix(unittest.TestCase):
                          if "retrieval.documents.0.document.content" in span.attributes)
         self.assertIn("How do I roll back?", retrieval.attributes["input.value"])
         self.assertEqual(retrieval.attributes["retrieval.documents.1.document.content"], "Release pipeline.")
+
+    def test_embedding_spans_carry_no_vectors(self):
+        # a 1,024-number vector per chunk pushed one batch to 12 MB, over Phoenix's 4 MB limit (sample run)
+        index = VectorStoreIndex.from_documents([Document(id_="dsid_a", text="Emergency rollback steps.")],
+                                                embed_model=MockEmbedding(embed_dim=8))
+        index.as_retriever().retrieve("How do I roll back?")
+        vectors = [value for span in self.spans.get_finished_spans()
+                   for key, value in span.attributes.items() if key.endswith(".embedding.vector")]
+        self.assertTrue(vectors)
+        self.assertEqual(set(vectors), {"__REDACTED__"})
 
     def test_doctests(self):
         LlamaIndexInstrumentor().uninstrument()  # the doctest instruments on its own
