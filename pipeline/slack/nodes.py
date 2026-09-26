@@ -43,7 +43,7 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
     end_char_idx    2192                       library: where it ends
     embedding       None                       library: filled by the embed model (SLACK-11)
 
-3. metadata: 7 keys, all set by us, and who sees each
+3. metadata: 7 keys, all set by us, and who sees each (no timestamp anywhere)
 
     key            value                                      from                   seen by
     channel        customer-success                           channel_of (SLACK-5)   embed + LLM
@@ -52,14 +52,16 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
     channel_route  line1                                      channel_of (SLACK-5)   hidden
     first_turn     0                                          turn_range             hidden
     last_turn      15                                         turn_range             hidden
-    file_name      dsid_a4e702bd...novacare-vra-check.txt     the Document           hidden
+    slug           novacare-vra-check                         file name (SLACK-8)    hidden
 
     "hidden" is set by two lists on the node:
     excluded_embed_metadata_keys  every key except channel and participants
     excluded_llm_metadata_keys    the same, minus doc_id
     The reader's other fields (file_path, file_size, creation_date, ...) are not copied onto
     the node (include_metadata=False): a laptop path and a file-copy date mean nothing here.
-    A thread with no message has no first_turn/last_turn; an unknown channel, no channel.
+    A thread with no message has no first_turn/last_turn; an unknown channel, no channel;
+    a file name without a slug (6,199), no slug. file_name is not kept: it carries the fake
+    timestamp (1793045678), and doc_id + slug already lead back to the file.
 
 4. Link to the Document, and library defaults
 
@@ -73,7 +75,10 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
     text_template       "{metadata_str}\n\n{content}"
     mimetype            text/plain
 
-The node text is the thread minus its channel line, and minus any line that is only the
+The node text is the thread minus its channel line; on an unknown-channel thread, minus a
+line 1 that is the export's file name (it starts with the file name's fake timestamp:
+`1719998880`, `3476543210-launch-wedge-preflight.json`; 6,577 threads); and minus any line that
+is only the
 thread's own id (`dsid_02f44014...`: line 1 in 151 threads, line 3 in 7 more). The rest of the
 header stays: 157 threads carry real text there (a summary, an odd speaker line) and 64 have
 no message at all.
@@ -90,10 +95,10 @@ from llama_index.core.utils import get_tqdm_iterable
 from pydantic import Field
 
 from pipeline.slack.channel import UNKNOWN
-from pipeline.slack.thread import Thread, parse_thread
+from pipeline.slack.thread import THREAD_FILE_NAME, Thread, parse_thread
 
-HIDDEN_FROM_EMBEDDING = ["doc_id", "channel_route", "first_turn", "last_turn", "file_name"]
-HIDDEN_FROM_LLM = ["channel_route", "first_turn", "last_turn", "file_name"]  # doc_id stays, to cite
+HIDDEN_FROM_EMBEDDING = ["doc_id", "channel_route", "first_turn", "last_turn", "slug"]
+HIDDEN_FROM_LLM = ["channel_route", "first_turn", "last_turn", "slug"]  # doc_id stays, to cite
 
 
 class SlackThreadParser(NodeParser):
@@ -118,13 +123,14 @@ def thread_node(document: BaseNode) -> TextNode:
     """The node for one thread Document: its text, its metadata, a stable id, a link back."""
     file_name = document.metadata["file_name"]
     thread = parse_thread(file_name, document.text)
+    timestamp = THREAD_FILE_NAME.fullmatch(file_name)["timestamp"]
     if document.id_ != thread.doc_id:
         raise ValueError(f"Document id must be the thread's dsid {thread.doc_id!r}, got {document.id_!r}")
     first_turn, last_turn = turn_range(thread)
     return TextNode(
         id_=node_id(thread.doc_id, first_turn, last_turn),
-        text=node_text(document.text, thread),
-        metadata={**node_metadata(thread, first_turn, last_turn), "file_name": file_name},
+        text=node_text(document.text, thread, timestamp),
+        metadata=node_metadata(thread, first_turn, last_turn),
         excluded_embed_metadata_keys=list(HIDDEN_FROM_EMBEDDING),
         excluded_llm_metadata_keys=list(HIDDEN_FROM_LLM),
         relationships={NodeRelationship.SOURCE: document.as_related_node_info()},
@@ -141,16 +147,32 @@ def node_id(doc_id: str, first_turn: Optional[int], last_turn: Optional[int]) ->
     return hashlib.sha256(f"{doc_id}:{first_turn}:{last_turn}".encode()).hexdigest()
 
 
-def node_text(text: str, thread: Thread) -> str:
-    """The thread without its channel line and without any line that is only its own id.
+def node_text(text: str, thread: Thread, timestamp: str) -> str:
+    """The thread without its channel line, without a line 1 that is the export's file name
+    (it starts with the file name's fake timestamp: `3476543210-launch-wedge-preflight.json`),
+    and without any line that is only its own id.
 
     Dropping an id line from the middle (7 threads) means the text is no longer a substring of
     the Document, so LlamaIndex leaves start_char_idx/end_char_idx empty for those nodes.
     """
-    if thread.channel.route != UNKNOWN:
-        text = text.partition("\n")[2]
+    first_line, _, rest = text.partition("\n")
+    if thread.channel.route != UNKNOWN or is_export_file_name(first_line, timestamp):
+        text = rest
     own_id = f"dsid_{thread.doc_id}"
     return "".join(line for line in text.splitlines(keepends=True) if line.strip() != own_id).lstrip("\n")
+
+
+def is_export_file_name(line: str, timestamp: str) -> bool:
+    """True for `1719998880` or `1719998880-some-slug.json` when 1719998880 is this file's own
+    timestamp: an export artefact, not something anyone said.
+
+    >>> is_export_file_name("3476543210-launch-wedge-preflight.json", "3476543210")
+    True
+    >>> is_export_file_name("3476543210 is the ticket number", "3476543210")
+    False
+    """
+    line = line.strip()
+    return line.startswith(timestamp) and not any(character.isspace() for character in line)
 
 
 def node_metadata(thread: Thread, first_turn: Optional[int], last_turn: Optional[int]) -> dict:
@@ -159,5 +181,6 @@ def node_metadata(thread: Thread, first_turn: Optional[int], last_turn: Optional
     (channel when unknown, the turns when the thread has no message)."""
     channel = {"channel": thread.channel.name} if thread.channel.route != UNKNOWN else {}
     turns = {"first_turn": first_turn, "last_turn": last_turn} if first_turn is not None else {}
+    slug = {"slug": thread.slug} if thread.slug else {}  # the readable part of the file name
     return {**channel, "participants": ", ".join(thread.participants), "doc_id": thread.doc_id,
-            "channel_route": thread.channel.route, **turns}
+            "channel_route": thread.channel.route, **turns, **slug}

@@ -1071,6 +1071,13 @@ embedded text.
   messages alone would drop content in 221 threads.
 - **Embedded metadata** is `channel` and `participants` (names only; roles are already in the
   speaker lines). `doc_id` is hidden from the embedding but shown to the LLM, to cite.
+- **No fake timestamp in the node** (review fix). On an unknown-channel thread, a line 1 that
+  is the export's file name (`1719998880`, `3476543210-launch-wedge-preflight.json`: it starts
+  with the file name's timestamp and has no space) is dropped: 6,577 threads, none left. The
+  node keeps `slug`, not `file_name`, which carries the timestamp. Measured: the timestamp is in
+  2 nodes' metadata, both files whose slug itself repeats it (`3311112222-live-dot-pill-...`).
+  Timestamps inside messages stay (`...triggered at 1771009876`, 45,054 nodes): the generator
+  wrote the same fake number into the conversations, and that is what was said.
 - **The reader's fields are not copied onto the node** (`include_metadata=False`). LlamaIndex
   copies a Document's metadata onto its nodes by default, and `SimpleDirectoryReader`'s
   defaults (`file_path`, `file_size`, `creation_date`, `last_modified_date`) would put a laptop
@@ -1110,7 +1117,8 @@ Scenario: an unknown channel contributes nothing to the text
   Then "unknown" does not appear in the embedded text
 
 Scenario: no date anywhere
-  Then no timestamp appears in the node metadata or the embedded text
+  Then no timestamp from the file name appears in the node metadata or as an export line
+  (text inside messages is what was said and stays)
 
 Scenario: a thread with no speaker line
   Then it still becomes one node holding its text, with no participants

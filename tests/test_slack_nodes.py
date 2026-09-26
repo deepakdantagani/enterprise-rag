@@ -16,7 +16,8 @@ from llama_index.core.schema import Document, MetadataMode, NodeRelationship
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.slack import nodes as nodes_module  # noqa: E402
-from pipeline.slack.nodes import SlackThreadParser  # noqa: E402
+from pipeline.slack.nodes import SlackThreadParser, is_export_file_name  # noqa: E402
+from pipeline.slack.thread import THREAD_FILE_NAME  # noqa: E402
 
 CLEAN = ROOT / "data/slack/clean"
 FIXTURES = ROOT / "tests/fixtures/slack_truth"
@@ -46,10 +47,10 @@ class OneThreadOneNode(unittest.TestCase):
         self.assertEqual(node.metadata, {
             "channel": "product", "participants": "sam, opsbot", "doc_id": "47db1d5b12a44a9885495cde5305c45d",
             "channel_route": "line1", "first_turn": 0, "last_turn": 1,
-            "file_name": PIN_THREAD,
+            "slug": "pin-extension-sow-thread",
         })
         embedded = node.get_content(MetadataMode.EMBED)
-        for hidden in ("47db1d5b", "line1", "first_turn", "last_turn", "file_name", "1725550001"):
+        for hidden in ("47db1d5b", "line1", "first_turn", "last_turn", "slug", "1725550001"):
             self.assertNotIn(hidden, embedded)
 
     def test_the_node_links_to_its_document(self):
@@ -63,9 +64,9 @@ class OneThreadOneNode(unittest.TestCase):
         self.assertEqual(parse_one(PIN_THREAD, PIN_TEXT).id_, expected)
 
     def test_an_unknown_channel_contributes_nothing_to_the_text(self):
-        node = parse_one(PIN_THREAD, "1719998880\n\nkai: paging\n")
+        node = parse_one(PIN_THREAD, "1725550001\n\nkai: paging\n")
         self.assertNotIn("channel", node.metadata)
-        self.assertEqual(node.get_content(MetadataMode.EMBED), "participants: kai\n\n1719998880\n\nkai: paging")
+        self.assertEqual(node.get_content(MetadataMode.EMBED), "participants: kai\n\nkai: paging")
 
     def test_a_first_line_that_is_the_threads_own_id_is_dropped(self):
         node = parse_one(PIN_THREAD, "dsid_47db1d5b12a44a9885495cde5305c45d\n\nkai: paging\n")
@@ -80,6 +81,18 @@ class OneThreadOneNode(unittest.TestCase):
         self.assertIn("doc_id: 47db1d5b12a44a9885495cde5305c45d", text)
         self.assertNotIn("channel_route", text)
 
+    def test_an_export_file_name_on_line_1_is_dropped_with_its_timestamp(self):
+        name = "dsid_1c48469636984c3e82f4683345b7d2c8__3476543210-launch-wedge-preflight.txt"
+        text = (FIXTURES / name).read_text(encoding="utf-8")
+        node = parse_one(name, text)
+        self.assertTrue(node.text.startswith("maria: quick async — wedge preflight"))
+        self.assertNotIn("3476543210", node.get_content(MetadataMode.EMBED))
+        self.assertNotIn("3476543210", str(node.metadata))
+
+    def test_a_number_on_line_1_that_is_not_this_files_timestamp_is_content(self):
+        node = parse_one(PIN_THREAD, "1719998880\n\nkai: paging\n")
+        self.assertEqual(node.text, "1719998880\n\nkai: paging\n")
+
     def test_text_before_the_first_message_is_kept(self):
         text = "support\n\nCustomer escalated: tool routing broken.\n\nSDK: go-sdk v0.9.8\n"
         node = parse_one(PIN_THREAD, text)
@@ -88,7 +101,7 @@ class OneThreadOneNode(unittest.TestCase):
         self.assertNotIn("first_turn", node.metadata)
 
     def test_every_metadata_value_is_flat(self):
-        for text in (PIN_TEXT, "support\n\nno speaker here\n", "1719998880\n\nkai: paging\n"):
+        for text in (PIN_TEXT, "support\n\nno speaker here\n", "1725550001\n\nkai: paging\n"):
             for value in parse_one(PIN_THREAD, text).metadata.values():
                 self.assertIsInstance(value, (str, int, float), text)
 
@@ -127,8 +140,8 @@ class InsideTheLibrary(unittest.TestCase):
         self.assertTrue(node.get_content(MetadataMode.EMBED).startswith(
             "channel: customer-success\nparticipants: Aisha, Priya, Ben, Tom, questionnaire-bot\n\nAisha (CS): Hey team"))
         self.assertEqual(node.ref_doc_id, "a4e702bd03254699b0e7bed0000972ab")
-        self.assertEqual(sorted(node.metadata), ["channel", "channel_route", "doc_id", "file_name", "first_turn",
-                                                 "last_turn", "participants"])  # none of the reader's other fields
+        self.assertEqual(sorted(node.metadata), ["channel", "channel_route", "doc_id", "first_turn", "last_turn",
+                                                 "participants", "slug"])  # none of the reader's other fields
         for leaked in ("file_path", "file_size", "creation_date", "last_modified_date", "dsid_"):
             self.assertNotIn(leaked, node.get_content(MetadataMode.EMBED))
             self.assertNotIn(leaked, node.get_content(MetadataMode.LLM))
@@ -146,8 +159,12 @@ class RealCorpus(unittest.TestCase):
             totals["without_channel"] += "channel" not in node.metadata
             totals["without_participants"] += not node.metadata["participants"]
             totals["doc_id_in_embedded_text"] += node.metadata["doc_id"] in embedded
+            timestamp = THREAD_FILE_NAME.fullmatch(path.name)["timestamp"]
+            totals["starts_with_an_export_file_name"] += is_export_file_name(node.text.partition("\n")[0], timestamp)
+            totals["timestamp_in_metadata"] += timestamp in str(node.metadata)  # 2 slugs repeat it
         self.assertEqual(totals, {"nodes": 285_605, "without_channel": 9_053, "without_participants": 64,
-                                  "doc_id_in_embedded_text": 0})
+                                  "doc_id_in_embedded_text": 0, "starts_with_an_export_file_name": 0,
+                                  "timestamp_in_metadata": 2})
         self.assertEqual(len(node_ids), 285_605)
 
 
