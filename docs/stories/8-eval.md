@@ -38,7 +38,8 @@ Eval glossary:
 | EVAL-3b  `baseline_pipeline`: `SentenceSplitter(512)` + embedder into a vector store | ✅ |
 | EVAL-3c  `score_retriever`: every question × k in one event loop | ✅ |
 | EVAL-3d1  `embedded_doc_ids`: resume from what Qdrant already holds | ✅ |
-| EVAL-3d2  `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
+| EVAL-3d2  `sample_corpus`: 27 questions, 207 documents from all 9 sources | ✅ |
+| EVAL-3d3  `run_baseline` + `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
 ---
@@ -317,7 +318,24 @@ in the Qdrant collection (the `ref_doc_id` of every chunk, read with `scroll`, n
 - File: `pipeline/eval/resume.py`; tests on `QdrantClient(":memory:")`, no Docker. New
   dependency: `llama-index-vector-stores-qdrant==0.10.3` (brings `qdrant-client` 1.19.1)
 
-## EVAL-3d2  `python -m pipeline.eval.baseline`  ⬜
+## EVAL-3d2  `sample_corpus`  ✅
+
+**Status:** Done
+
+**I want to** `sample_corpus(questions, doc_sources, questions_per_source=3, others_per_source=20, seed=0)`
+to pick, per source, its first single-source questions, their expected documents and a few
+random other documents from that source
+**So that** `--sample` runs the whole baseline in about a minute before the ~2.5 h full run
+
+- Given questions from two sources, Then the first single-source ones of each, sources in
+  alphabetical order; a question with two sources is never picked
+- Given `others_per_source = 2`, Then every expected document plus 2 others per source
+- Given the same seed, Then the same sample
+- Given the real files, Then 27 questions and 207 documents across all 9 sources, the first
+  sample run's corpus (822 chunks, recall@10 0.96; inflated, the haystack is 207 documents)
+- File: `pipeline/eval/sample.py`; pure
+
+## EVAL-3d3  `python -m pipeline.eval.baseline`  ⬜
 
 **Status:** To do
 
