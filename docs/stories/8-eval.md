@@ -32,7 +32,7 @@ Eval glossary:
 | Story | Status |
 |---|---|
 | EVAL-1  `DocumentRetrieverEvaluator` | ✅ |
-| EVAL-2a  `load_questions` | ⬜ |
+| EVAL-2a  `load_questions` | ✅ |
 | EVAL-2b  `metrics_report`: overall, per question type, per source, at k = 5, 10, 20 | ⬜ |
 | EVAL-3  baseline: every document, `SentenceSplitter(512)`, local embedder  *(module-level)* | ⬜ |
 
@@ -85,9 +85,9 @@ documents hold only the first scores recall 0.5 on it.
 
 ---
 
-## EVAL-2a  `load_questions`  ⬜
+## EVAL-2a  `load_questions`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** RAG developer
 **I want to** `load_questions(path)` to return the benchmark questions that have expected
