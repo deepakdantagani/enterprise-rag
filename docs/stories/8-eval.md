@@ -36,7 +36,7 @@ Eval glossary:
 | EVAL-2b  `metrics_report`: overall, per question type, per source, at k = 5, 10, 20 | ✅ |
 | EVAL-3a  `parquet_documents` | ✅ |
 | EVAL-3b  `baseline_pipeline`: `SentenceSplitter(512)` + embedder into a vector store | ✅ |
-| EVAL-3c  `score_retriever`: every question × k in one event loop | ⬜ |
+| EVAL-3c  `score_retriever`: every question × k in one event loop | ✅ |
 | EVAL-3d  `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
@@ -282,13 +282,20 @@ already embedded (the docstore keeps each document's hash; `DocstoreStrategy.UPS
 - File: `pipeline/eval/baseline.py`; tests with `SimpleVectorStore` and `SimpleDocumentStore`,
   no model, no network
 
-## EVAL-3c  `score_retriever`  ⬜
+## EVAL-3c  `score_retriever`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **I want to** `score_retriever(retriever, questions, ks=(5, 10, 20))` to return one `Scored`
 per question and k, all inside one event loop (`aevaluate`)
 **So that** EVAL-2b can report it, and async vector stores such as Qdrant work (finding 4)
+
+- Given 2 questions and ks (2, 10), Then 4 `Scored` rows, question-major, with recall and mrr on
+  the top k documents
+- Given a retriever that, like Qdrant's async client, fails outside the loop it was first used
+  in, Then all 6 evaluations (2 questions × 3 k) succeed; the old per-call `evaluate()` fails it
+- Every row carries `hit_rate`, `recall`, `mrr`, `ndcg`
+- File: `pipeline/eval/score.py`; no model, no network
 
 ## EVAL-3d  `python -m pipeline.eval.baseline`  ⬜
 
