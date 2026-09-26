@@ -37,7 +37,8 @@ Eval glossary:
 | EVAL-3a  `parquet_documents` | ✅ |
 | EVAL-3b  `baseline_pipeline`: `SentenceSplitter(512)` + embedder into a vector store | ✅ |
 | EVAL-3c  `score_retriever`: every question × k in one event loop | ✅ |
-| EVAL-3d  `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
+| EVAL-3d1  `embedded_doc_ids`: resume from what Qdrant already holds | ✅ |
+| EVAL-3d2  `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
 ---
@@ -212,8 +213,11 @@ Decisions:
   default. Smarter parsers are what the per-source stories must prove against it.
 - **Vector store: Qdrant** (Docker, `localhost:6333`, data under `data/_index/qdrant/`).
   Chosen over LanceDB for native hybrid (dense + sparse) search later and a managed version
-  for AWS. Docker has 8.3 GB of memory here and the full-precision vectors are ~5.3 GB, so the
-  full run keeps vectors on disk with an int8 copy in memory (decided in 3d).
+  for AWS. Docker had 8.3 GB of memory and the full-precision vectors are ~5.3 GB (estimated);
+  decided: raise Docker Desktop to 16 GB and keep every vector in memory at full precision
+  (no quantization), so the baseline's search is exact.
+- **Resume: skip the dsids already in Qdrant** (3d1), not the IngestionPipeline docstore:
+  at 511,962 documents a `SimpleDocumentStore` is a ~2.5 GB JSON file rewritten per batch.
 
 What the first sample run found (3 single-source questions + 20 other docs per source: 207
 documents → 822 chunks, ~50 s; recall@10 0.96 over 27 questions, all `basic`; inflated, as the
@@ -297,7 +301,23 @@ per question and k, all inside one event loop (`aevaluate`)
 - Every row carries `hit_rate`, `recall`, `mrr`, `ndcg`
 - File: `pipeline/eval/score.py`; no model, no network
 
-## EVAL-3d  `python -m pipeline.eval.baseline`  ⬜
+## EVAL-3d1  `embedded_doc_ids`  ✅
+
+**Status:** Done
+
+**I want to** `embedded_doc_ids(client, collection_name)` to return the dsids already stored
+in the Qdrant collection (the `ref_doc_id` of every chunk, read with `scroll`, no vectors)
+**So that** a stopped full run resumes by dropping those documents, with no extra file
+
+- Given a long page (several chunks) and a short one ingested, Then `{dsid_a, dsid_b}`
+- Given `page_size = 1`, Then the same set: it pages through every chunk
+- Given a collection not created yet, Then the empty set
+- Known gap: uploads go 64 chunks at a time, so a crash mid-upload can leave the last batch's
+  documents half-written and skipped; at most one batch of 1,000. 3d2 logs the batch in flight
+- File: `pipeline/eval/resume.py`; tests on `QdrantClient(":memory:")`, no Docker. New
+  dependency: `llama-index-vector-stores-qdrant==0.10.3` (brings `qdrant-client` 1.19.1)
+
+## EVAL-3d2  `python -m pipeline.eval.baseline`  ⬜
 
 **Status:** To do
 
@@ -306,6 +326,7 @@ per question and k, all inside one event loop (`aevaluate`)
 **So that** the baseline is one reproducible command, and its result is the first row of
 `docs/eval/results.md`
 
-- New dependencies: `llama-index-embeddings-ollama==0.10.0`,
-  `llama-index-vector-stores-qdrant==0.10.3` (resolve with `llama-index-core` 0.14.24)
+- New dependency: `llama-index-embeddings-ollama==0.10.0` (resolves with `llama-index-core` 0.14.24)
+- `QdrantVectorStore` gets both `client` and `aclient=AsyncQdrantClient(...)` (finding 3)
+- Each batch: drop `embedded_doc_ids`, run 3b, and log the batch number to the run log first
 - Writes `runs/<date>-baseline/metrics.json` (gitignored) and one row of `docs/eval/results.md`
