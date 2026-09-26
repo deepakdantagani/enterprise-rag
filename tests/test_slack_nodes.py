@@ -98,9 +98,21 @@ class OneThreadOneNode(unittest.TestCase):
         with_bar = SlackThreadParser().get_nodes_from_documents([document], show_progress=True)
         self.assertEqual([node.to_dict() for node in with_bar], [node.to_dict() for node in quiet])
 
+    def test_a_document_whose_id_is_not_the_thread_id_is_an_error(self):
+        for wrong_id in ("9f6c813e-d05f-4c1e-9a36-5e2b8f0c1d7a", "/Users/deepak/data/slack/clean/" + PIN_THREAD):
+            document = Document(id_=wrong_id, text=PIN_TEXT, metadata={"file_name": PIN_THREAD})
+            with self.assertRaises(ValueError, msg=wrong_id):
+                SlackThreadParser().get_nodes_from_documents([document])
+
+    def test_a_document_field_named_like_ours_does_not_hide_ours(self):
+        document = thread_document(PIN_THREAD, PIN_TEXT)
+        document.metadata["channel"] = "not-this-one"
+        [node] = SlackThreadParser().get_nodes_from_documents([document])
+        self.assertTrue(node.get_content(MetadataMode.EMBED).startswith("channel: product\n"))
+
     def test_a_document_without_a_file_name_is_an_error(self):
         with self.assertRaises(KeyError):
-            SlackThreadParser().get_nodes_from_documents([Document(text="eng\n\nkai: hi\n")])
+            SlackThreadParser().get_nodes_from_documents([Document(id_="x", text="eng\n\nkai: hi\n")])
 
     def test_doctests(self):
         self.assertEqual(doctest.testmod(nodes_module).failed, 0)
@@ -115,6 +127,8 @@ class InsideTheLibrary(unittest.TestCase):
         self.assertTrue(node.get_content(MetadataMode.EMBED).startswith(
             "channel: customer-success\nparticipants: Aisha, Priya, Ben, Tom, questionnaire-bot\n\nAisha (CS): Hey team"))
         self.assertEqual(node.ref_doc_id, "a4e702bd03254699b0e7bed0000972ab")
+        self.assertEqual(sorted(node.metadata), ["channel", "channel_route", "doc_id", "file_name", "first_turn",
+                                                 "last_turn", "participants"])  # none of the reader's other fields
         for leaked in ("file_path", "file_size", "creation_date", "last_modified_date", "dsid_"):
             self.assertNotIn(leaked, node.get_content(MetadataMode.EMBED))
             self.assertNotIn(leaked, node.get_content(MetadataMode.LLM))

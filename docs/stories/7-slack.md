@@ -1071,11 +1071,17 @@ embedded text.
   messages alone would drop content in 221 threads.
 - **Embedded metadata** is `channel` and `participants` (names only; roles are already in the
   speaker lines). `doc_id` is hidden from the embedding but shown to the LLM, to cite.
-- **Every key of the Document is hidden too.** LlamaIndex copies the Document's metadata onto
-  the node, and `SimpleDirectoryReader`'s defaults (`file_path`, `file_size`, `creation_date`,
-  `last_modified_date`) would otherwise prefix every vector with the file name, the fake
-  timestamp and file-system dates. Found by the review; the library test now uses the reader's
-  defaults.
+- **The reader's fields are not copied onto the node** (`include_metadata=False`). LlamaIndex
+  copies a Document's metadata onto its nodes by default, and `SimpleDirectoryReader`'s
+  defaults (`file_path`, `file_size`, `creation_date`, `last_modified_date`) would put a laptop
+  path and a file-copy date on every node. Only `file_name` is kept, set by us and hidden:
+  it is the readable way back to the source file. When the corpus moves to shared storage
+  (e.g. S3), a `source_uri` field is the one to add.
+- **The Document id must be the thread's dsid**, or the parser raises. The docstore recognises
+  a thread on a re-run by that id; the reader's random id or `filename_as_id`'s full path would
+  store every thread again. SLACK-11 sets it after loading.
+- **Known limitation:** dropping an id line from the middle (7 threads) leaves those nodes
+  without `start_char_idx`/`end_char_idx`.
 - **Node id** `sha256(doc_id:first_turn:last_turn)`, the same on every run; SLACK-10 reuses it.
   A thread with no message has no `first_turn`/`last_turn` at all: LlamaIndex's docs ask for
   flat `str`/`float`/`int` values, so a missing value is left out, never `None`.

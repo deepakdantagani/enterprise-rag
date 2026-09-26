@@ -43,35 +43,31 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
     end_char_idx    2192                       library: where it ends
     embedding       None                       library: filled by the embed model (SLACK-11)
 
-3. metadata: 12 keys, and who sees each
+3. metadata: 7 keys, all set by us, and who sees each
 
-    key                 value                        from                        seen by
-    channel             customer-success             ours, channel_of (SLACK-5)  embed + LLM
-    participants        Aisha, Priya, Ben, Tom,      ours, speakers (SLACK-7/8)  embed + LLM
-                        questionnaire-bot
-    doc_id              a4e702bd0325...              ours, file name (SLACK-8)   LLM only
-    channel_route       line1                        ours, channel_of (SLACK-5)  hidden
-    first_turn          0                            ours, turn_range            hidden
-    last_turn           15                           ours, turn_range            hidden
-    file_path           .../dsid_a4e702bd....txt     reader                      hidden
-    file_name           dsid_a4e702bd...__17930...   reader                      hidden
-    file_type           text/plain                   reader                      hidden
-    file_size           2202 (bytes, not chars)      reader                      hidden
-    creation_date       2026-09-25                   reader: file copy date      hidden
-    last_modified_date  2026-09-25                   reader: file copy date      hidden
+    key            value                                      from                   seen by
+    channel        customer-success                           channel_of (SLACK-5)   embed + LLM
+    participants   Aisha, Priya, Ben, Tom, questionnaire-bot  speakers (SLACK-7/8)   embed + LLM
+    doc_id         a4e702bd03254699b0e7bed0000972ab           file name (SLACK-8)    LLM only
+    channel_route  line1                                      channel_of (SLACK-5)   hidden
+    first_turn     0                                          turn_range             hidden
+    last_turn      15                                         turn_range             hidden
+    file_name      dsid_a4e702bd...novacare-vra-check.txt     the Document           hidden
 
-    "hidden" is set by two lists on the node, both ours:
+    "hidden" is set by two lists on the node:
     excluded_embed_metadata_keys  every key except channel and participants
     excluded_llm_metadata_keys    the same, minus doc_id
-    The reader keys reach the node because LlamaIndex copies the Document's metadata onto it.
+    The reader's other fields (file_path, file_size, creation_date, ...) are not copied onto
+    the node (include_metadata=False): a laptop path and a file-copy date mean nothing here.
     A thread with no message has no first_turn/last_turn; an unknown channel, no channel.
 
 4. Link to the Document, and library defaults
 
-    relationships[SOURCE]  node_id  a4e702bd0325...   the Document's id (the dsid)
+    relationships[SOURCE]  node_id  a4e702bd0325...   the Document's id; must be the dsid
                            type     DOCUMENT
-                           hash     5dcf1544...       library: tells the docstore if it changed
-                           metadata the 6 reader keys
+                           hash     5dcf1544...       library: sha256(text + metadata) of the
+                                                      Document; tells the docstore if it changed
+                           metadata the Document's own metadata
     metadata_template   "{key}: {value}"               library defaults, not set by us
     metadata_separator  "\n"
     text_template       "{metadata_str}\n\n{content}"
@@ -91,19 +87,27 @@ from typing import Any, List, Optional, Sequence
 from llama_index.core.node_parser import NodeParser
 from llama_index.core.schema import BaseNode, NodeRelationship, TextNode
 from llama_index.core.utils import get_tqdm_iterable
+from pydantic import Field
 
+from pipeline.slack.channel import UNKNOWN
 from pipeline.slack.thread import Thread, parse_thread
 
-HIDDEN_FROM_EMBEDDING = ["doc_id", "channel_route", "first_turn", "last_turn"]
-HIDDEN_FROM_LLM = ["channel_route", "first_turn", "last_turn"]  # doc_id stays, to cite
-# Every key of the Document is hidden too: LlamaIndex copies the Document's metadata onto the
-# node, and SimpleDirectoryReader's defaults (file_path, file_size, creation_date, ...) would
-# otherwise put the file name, a fake timestamp and file-system dates into every vector.
-CHANNEL_ON_LINE_1 = frozenset({"line1", "export_path"})  # SLACK-5 routes where line 1 is not content
+HIDDEN_FROM_EMBEDDING = ["doc_id", "channel_route", "first_turn", "last_turn", "file_name"]
+HIDDEN_FROM_LLM = ["channel_route", "first_turn", "last_turn", "file_name"]  # doc_id stays, to cite
 
 
 class SlackThreadParser(NodeParser):
-    """One TextNode per clean Slack thread. Needs `file_name` in each Document's metadata."""
+    """One TextNode per clean Slack thread.
+
+    Each Document needs `file_name` in its metadata and the thread's dsid as its id: the
+    docstore recognises a thread on a re-run by that id, so any other id (the reader's random
+    one, or the full path from `filename_as_id`) would store every thread again.
+    """
+
+    include_metadata: bool = Field(
+        default=False,  # the library copies the Document's metadata onto the node by default
+        description="Our node sets its own metadata; the reader's (file_path, dates, size) is not copied.",
+    )
 
     def _parse_nodes(self, nodes: Sequence[BaseNode], show_progress: bool = False, **kwargs: Any) -> List[BaseNode]:
         documents = get_tqdm_iterable(nodes, show_progress, "Parsing Slack threads")  # the library's bar
@@ -112,14 +116,17 @@ class SlackThreadParser(NodeParser):
 
 def thread_node(document: BaseNode) -> TextNode:
     """The node for one thread Document: its text, its metadata, a stable id, a link back."""
-    thread = parse_thread(document.metadata["file_name"], document.text)
+    file_name = document.metadata["file_name"]
+    thread = parse_thread(file_name, document.text)
+    if document.id_ != thread.doc_id:
+        raise ValueError(f"Document id must be the thread's dsid {thread.doc_id!r}, got {document.id_!r}")
     first_turn, last_turn = turn_range(thread)
     return TextNode(
         id_=node_id(thread.doc_id, first_turn, last_turn),
         text=node_text(document.text, thread),
-        metadata=node_metadata(thread, first_turn, last_turn),
-        excluded_embed_metadata_keys=[*HIDDEN_FROM_EMBEDDING, *document.metadata],
-        excluded_llm_metadata_keys=[*HIDDEN_FROM_LLM, *document.metadata],
+        metadata={**node_metadata(thread, first_turn, last_turn), "file_name": file_name},
+        excluded_embed_metadata_keys=list(HIDDEN_FROM_EMBEDDING),
+        excluded_llm_metadata_keys=list(HIDDEN_FROM_LLM),
         relationships={NodeRelationship.SOURCE: document.as_related_node_info()},
     )
 
@@ -135,8 +142,12 @@ def node_id(doc_id: str, first_turn: Optional[int], last_turn: Optional[int]) ->
 
 
 def node_text(text: str, thread: Thread) -> str:
-    """The thread without its channel line and without any line that is only its own id."""
-    if thread.channel.route in CHANNEL_ON_LINE_1:
+    """The thread without its channel line and without any line that is only its own id.
+
+    Dropping an id line from the middle (7 threads) means the text is no longer a substring of
+    the Document, so LlamaIndex leaves start_char_idx/end_char_idx empty for those nodes.
+    """
+    if thread.channel.route != UNKNOWN:
         text = text.partition("\n")[2]
     own_id = f"dsid_{thread.doc_id}"
     return "".join(line for line in text.splitlines(keepends=True) if line.strip() != own_id).lstrip("\n")
@@ -146,7 +157,7 @@ def node_metadata(thread: Thread, first_turn: Optional[int], last_turn: Optional
     """Flat values only (str, int), as LlamaIndex's docs ask for vector stores: participants is
     joined into one string, and a field with no value is left out rather than set to None
     (channel when unknown, the turns when the thread has no message)."""
-    channel = {"channel": thread.channel.name} if thread.channel.route in CHANNEL_ON_LINE_1 else {}
-    turns = {"first_turn": first_turn, "last_turn": last_turn} if thread.messages else {}
+    channel = {"channel": thread.channel.name} if thread.channel.route != UNKNOWN else {}
+    turns = {"first_turn": first_turn, "last_turn": last_turn} if first_turn is not None else {}
     return {**channel, "participants": ", ".join(thread.participants), "doc_id": thread.doc_id,
             "channel_route": thread.channel.route, **turns}
