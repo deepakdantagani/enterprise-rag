@@ -49,7 +49,7 @@ Glossary (terms used across the stories; a story should make sense without chat 
 Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`,
 `2-chunking`, `3-llamaindex`, `4-tools`. Each additional source then gets its own slot,
 assigned alphabetically so branches built in parallel do not collide: `5-gmail`, `6-linear`,
-`7-slack`; `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
+`7-slack`, then `8-eval` for the cross-source scoring; `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
 numbers are stable and prefixed by source — `PARSE-n` for the Confluence stages, `GMAIL-n`,
 `LINEAR-n`, `SLACK-n` — and a story keeps its number when it moves. The glossary above is
 Confluence's; each source file carries its own, so a story can be read without the others.
@@ -101,3 +101,5 @@ Confluence's; each source file carries its own, so a story can be read without t
 | LINEAR-7  Reuse the corpus writer for a second source  ⬜ | [6-linear.md](stories/6-linear.md) |
 | LINEAR-8  Golden fingerprints for the Linear corpus  ⬜ | [6-linear.md](stories/6-linear.md) |
 | LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [6-linear.md](stories/6-linear.md) |
+| EVAL-1  `document_recall`  ✅ | [8-eval.md](stories/8-eval.md) |
+| EVAL-2  Recall report  ⬜ · EVAL-3  Naive baseline  ⬜ | [8-eval.md](stories/8-eval.md) |
