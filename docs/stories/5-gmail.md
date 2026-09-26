@@ -421,7 +421,7 @@ Decisions already made: no zone means UTC plus the flag; `-0000` is UTC without 
 
 ## GMAIL-6  strip_quotes: remove what is already indexed  ✅
 
-**Status:** Done. `pipeline/gmail/quotes.py`, 31 tests. Over all 578,443 message bodies: 120,289 change, 780 become empty (723 more were already empty, headers only), 1,505 keep an `On … wrote:` line with no quote after it (flagged), 45,457,740 characters removed.
+**Status:** Done. `pipeline/gmail/quotes.py`, 31 tests. Over all 578,443 message bodies: 120,288 change, 780 become empty (723 more were already empty, headers only), 1,505 keep an `On … wrote:` line with no quote after it (flagged), 45,457,656 characters removed.
 
 **Background**
 A reply quotes the earlier message back, and every word of that copy is normally already embedded on the message it came from. Leaving it in means a question matches the original and every reply that quoted it. Measured on the real bodies (not re-checking the first draft's "61,922 threads"):
@@ -467,7 +467,7 @@ after   'Hi Claire — appreciate the details and the PDF. High level answers be
 Shared rules apply. Pure, standard library plus the shared whitespace tidy from `pipeline.gmail.cleaning`. The quote stays in the clean file on disk; only the returned text loses it, so nothing is destroyed.
 
 *Maintainability:* the two patterns (`OPENER`, `QUOTE_ON_OPENER_LINE`) are named constants with real examples above.
-*Observability:* `quoted_chars` per message, summing to 45,457,740. Audit rows `quote_opener_unmatched` (1,505 bodies) and `body_empty` (780) list real examples; both must stay small.
+*Observability:* `quoted_chars` per message, summing to 45,457,656. Audit rows `quote_opener_unmatched` (1,505 bodies) and `body_empty` (780) list real examples; both must stay small.
 
 **Known limits (measured, left for later):** 1,505 bodies keep an unmarked quoted history (kept and counted); a forward is kept even where it repeats an earlier message; 91 bodies have nested quotes that are removed along with the rest.
 
@@ -642,7 +642,7 @@ Writes the records to disk so stage 3 never re-parses, and proves nothing was lo
 
 **Acceptance Criteria (Gherkin)**
 - Given `data/gmail/clean/`, Then `data/gmail/messages/` holds one `.jsonl` per input slice, one record per line
-- Given `_manifest.json`, Then each row has `file`, `clean_sha256`, `messages`, `headers_missing`, `quoted_chars_removed`
+- Given `_manifest.json`, Then each row has `file`, `clean_sha256`, `messages`, `headers_missing`, `quoted_chars`
 - Given the manifest, Then `sum(messages) == 578,254` and `sum(headers_missing) == 189`
 - Given a second run, Then every file is byte-identical
 - Given any thread, Then its `dsid` appears in at least one record
@@ -650,7 +650,7 @@ Writes the records to disk so stage 3 never re-parses, and proves nothing was lo
 **Example with real data**
 ```json
 {"file": "dsid_0070cd596374404085ed0cbca4e3a9e2__20280316-renewal-paperwork….txt",
- "clean_sha256": "…", "messages": 1, "headers_missing": 1, "quoted_chars_removed": 0}
+ "clean_sha256": "…", "messages": 1, "headers_missing": 1, "quoted_chars": 0}
 ```
 
 **Non-functional Requirements**
@@ -967,7 +967,7 @@ merge is the cost of shipping now, and it is recorded in PARSE-14's story.
   | `header_order` | header blocks not in the `From → To → [Cc] → Date → Subject` shape | ~0.4% |
   | `date_rule` | `Date:` values per parsing rule, plus failures | 0 failures |
   | `date_assumed_utc` | values with no zone, read as UTC | reported |
-  | `quote_opener_unmatched` | a `>` block with no `On … wrote:` opener | small |
+  | `quote_opener_unmatched` | an `On … wrote:` line with no `>` line after it (kept, flagged by `strip_quotes`; 1,505 bodies) | small |
   | `body_empty` | messages that were only a quote | small |
   | `attachment_prose` | attachment-shaped lines holding no filename | ~2,900 `Attached:` |
   | `duplicate_chunk_id` | ids colliding across the corpus | 0 |

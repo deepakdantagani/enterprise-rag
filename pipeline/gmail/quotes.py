@@ -14,7 +14,7 @@ from pipeline.gmail.cleaning import tidy_whitespace
 
 QUOTE_MARK = ">"
 OPENER = re.compile(r"^On .{5,200} wrote:(?:\s*(?:\\r|\([^)]{0,40}\)))?\s*$")
-QUOTE_ON_OPENER_LINE = re.compile(r"^On .{5,200} wrote:\s*>")
+QUOTE_ON_OPENER_LINE = re.compile(r"^On .{5,200} wrote:\s*>(?:\s|$)")
 
 
 @dataclass(frozen=True)

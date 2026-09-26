@@ -97,6 +97,15 @@ class OpenerVariations(unittest.TestCase):
         self.assertEqual(result.quoted_chars, len(line) + 1)
         self.assertFalse(result.opener_unmatched)
 
+    def test_a_greater_than_glued_to_a_quotation_mark_is_not_a_quote(self):
+        body = 'On Sep 15, 2026, at 18:22, Sana <s@x.com> wrote:>" is how the header looks.\nDone.'
+        self.assertEqual(strip_quotes(body), StrippedBody(body, 0, False))
+
+    def test_a_lone_greater_than_after_the_opener_is_a_quote_mark(self):
+        for line in ["On Sep 12, 2026, at 11:03 AM, Tessa Morgan wrote: >", "On Mon, Aug 16, 2027 at 09:00 Sofia <s@x.com> wrote:>"]:
+            with self.subTest(line=line):
+                self.assertEqual(kept(f"Reply.\n\n{line}"), "Reply.")
+
     def test_an_opener_pattern_quoted_inside_a_sentence_is_kept(self):
         body = 'On Tue, 3 Mar 2026 at 10:00, Sam wrote:" is how the header looks.\nDone.'
         self.assertEqual(strip_quotes(body), StrippedBody(body, 0, False))
@@ -181,13 +190,13 @@ class RealCorpus(unittest.TestCase):
         self.assertEqual(bodies, 578_443)
         # Every number below was counted first by a separately written script (plain string
         # checks, not this module), then compared with what strip_quotes returns.
-        # Bodies with a ">" line (120,151) plus 138 with a quote on the opener line.
-        self.assertEqual(changed, 120_289)
+        # Bodies with a ">" line (120,151) plus 137 with a quote on the opener line.
+        self.assertEqual(changed, 120_288)
         # 780 bodies are only a quote; 723 more were already empty (headers only).
         self.assertEqual(emptied_by_stripping, 780)
         self.assertEqual(empty_before, 723)
         # 38,379,270 characters in ">" lines, the rest in removed openers and same-line quotes.
-        self.assertEqual(quoted_chars, 45_457_740)
+        self.assertEqual(quoted_chars, 45_457_656)
         # Bodies with an "On ... wrote:" line and no quote after it (kept, flagged).
         self.assertEqual(unmatched, 1_505)
 
