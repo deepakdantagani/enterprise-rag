@@ -1,4 +1,4 @@
-"""SLACK-9: SlackThreadParser, a LlamaIndex NodeParser: one clean-thread Document -> one TextNode.
+r"""SLACK-9: SlackThreadParser, a LlamaIndex NodeParser: one clean-thread Document -> one TextNode.
 
 It runs as a step inside LlamaIndex's IngestionPipeline, like SentenceSplitter does. LlamaIndex
 calls `get_nodes_from_documents`, which calls our `_parse_nodes` and then tidies up. We only
@@ -7,7 +7,7 @@ turn a Document into a TextNode, with SLACK-8's `parse_thread`; no new rules her
 No LlamaIndex parser splits chat by speaker (SentenceSplitter, TokenTextSplitter and the
 semantic splitters cut by size or meaning; Markdown/JSON/HTML parsers by markup), so this
 wrapper is ours. The rendering is the library's: a TextNode already writes
-`{metadata_str}\\n\\n{content}` with one `key: value` line per metadata field, and leaves
+`{metadata_str}\n\n{content}` with one `key: value` line per metadata field, and leaves
 out `excluded_embed_metadata_keys`. So we set fields; we build no header string.
 
 What the embedder sees:
@@ -37,13 +37,13 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
 
 2. Identity and text
 
-    id_             baf7ae0d43d3e0f6...        ours: sha256("a4e702bd...:0:15"), same every run
+    id_             bb4f104c-ce43...      ours: uuid5 of "a4e702bd...:0:15", same every run
     text            "Aisha (CS): Hey team..."  ours: the clean file minus "customer-success\n\n"
     start_char_idx  18                         library: where the text starts in the Document
     end_char_idx    2192                       library: where it ends
     embedding       None                       library: filled by the embed model (SLACK-11)
 
-3. metadata: 7 keys, all set by us, and who sees each (no timestamp anywhere)
+3. metadata: 7 keys, all set by us, and who sees each (no timestamp; no empty values)
 
     key            value                                      from                   seen by
     channel        customer-success                           channel_of (SLACK-5)   embed + LLM
@@ -59,7 +59,8 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
     excluded_llm_metadata_keys    the same, minus doc_id
     The reader's other fields (file_path, file_size, creation_date, ...) are not copied onto
     the node (include_metadata=False): a laptop path and a file-copy date mean nothing here.
-    A thread with no message has no first_turn/last_turn; an unknown channel, no channel;
+    A key with no value is left out: no first_turn/last_turn/participants when nobody speaks
+    (56 threads), no channel when unknown;
     a file name without a slug (6,199), no slug. file_name is not kept: it carries the fake
     timestamp (1793045678), and doc_id + slug already lead back to the file.
 
@@ -69,7 +70,7 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
                            type     DOCUMENT
                            hash     5dcf1544...       library: sha256(text + metadata) of the
                                                       Document; tells the docstore if it changed
-                           metadata the Document's own metadata
+                           metadata {file_name}: all thread_documents keeps
     metadata_template   "{key}: {value}"               library defaults, not set by us
     metadata_separator  "\n"
     text_template       "{metadata_str}\n\n{content}"
@@ -78,87 +79,116 @@ defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra
 The node text is the thread minus its channel line; on an unknown-channel thread, minus a
 line 1 that is the export's file name (it starts with the file name's fake timestamp:
 `1719998880`, `3476543210-launch-wedge-preflight.json`; 6,577 threads); and minus any line that
-is only the
-thread's own id (`dsid_02f44014...`: line 1 in 151 threads, line 3 in 7 more). The rest of the
-header stays: 157 threads carry real text there (a summary, an odd speaker line) and 64 have
-no message at all.
+is only the thread's own id (`dsid_02f44014...`: 151 threads, on line 1 in 148 and on line 3 in
+7, 4 of them both). The rest of the header stays: 157 threads carry real text there (a summary,
+an odd speaker line). 8 threads have no text left at all (only a channel line or their own id)
+and make no node; 56 more have text but no message.
 
-    >>> node_id("47db1d5b12a44a9885495cde5305c45d", 0, 5)[:12]
-    '18577a92a262'
+    >>> node_id("47db1d5b12a44a9885495cde5305c45d", 0, 5)
+    'ae24d386-a511-535f-869a-023fc0e21d78'
 """
 import hashlib
+import uuid
+from pathlib import Path
 from typing import Any, List, Optional, Sequence
 
 from llama_index.core.node_parser import NodeParser
-from llama_index.core.schema import BaseNode, NodeRelationship, TextNode
+from llama_index.core.node_parser.node_utils import default_id_func
+from llama_index.core.schema import BaseNode, MetadataMode, NodeRelationship, TextNode
 from llama_index.core.utils import get_tqdm_iterable
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from pipeline.slack.channel import UNKNOWN
 from pipeline.slack.thread import THREAD_FILE_NAME, Thread, parse_thread
 
 HIDDEN_FROM_EMBEDDING = ["doc_id", "channel_route", "first_turn", "last_turn", "slug"]
 HIDDEN_FROM_LLM = ["channel_route", "first_turn", "last_turn", "slug"]  # doc_id stays, to cite
+NODE_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "enterprise-rag/slack/nodes")
+RULE_FILES = ("channel.py", "messages.py", "speaker.py", "thread.py", "nodes.py")  # what a node depends on
+
+
+def rules_fingerprint() -> str:
+    """sha256 of the rule files: part of the parser's settings, so of IngestionPipeline's cache
+    key. A cache kept across runs then misses after any rule change instead of replaying old nodes."""
+    here = Path(__file__).parent
+    return hashlib.sha256(b"".join((here / name).read_bytes() for name in RULE_FILES)).hexdigest()
 
 
 class SlackThreadParser(NodeParser):
-    """One TextNode per clean Slack thread.
+    """One TextNode per clean Slack thread Document (from `thread_documents`).
 
-    Each Document needs `file_name` in its metadata and the thread's dsid as its id: the
-    docstore recognises a thread on a re-run by that id, so any other id (the reader's random
-    one, or the full path from `filename_as_id`) would store every thread again.
+    Each Document must be a root Document with `file_name` in its metadata and the thread's
+    dsid as its id: the docstore recognises a thread on a re-run by that id.
     """
 
-    include_metadata: bool = Field(
-        default=False,  # the library copies the Document's metadata onto the node by default
-        description="Our node sets its own metadata; the reader's (file_path, dates, size) is not copied.",
-    )
+    include_metadata: bool = Field(default=False, description="Our node sets its own metadata.")
+    include_prev_next_rel: bool = Field(default=False, description="One node per thread: nothing to link.")
+    rules_fingerprint: str = Field(default_factory=rules_fingerprint, description="Changes the cache key.")
+
+    @classmethod
+    def class_name(cls) -> str:
+        return "SlackThreadParser"
+
+    @model_validator(mode="after")
+    def refuse_settings_that_would_change_our_nodes(self) -> "SlackThreadParser":
+        if self.include_metadata or self.id_func is not default_id_func:
+            raise ValueError("SlackThreadParser sets its own metadata and ids; "
+                             "include_metadata and id_func cannot be changed")
+        return self
 
     def _parse_nodes(self, nodes: Sequence[BaseNode], show_progress: bool = False, **kwargs: Any) -> List[BaseNode]:
         documents = get_tqdm_iterable(nodes, show_progress, "Parsing Slack threads")  # the library's bar
-        return [thread_node(document) for document in documents]
+        return [node for document in documents for node in thread_nodes(document)]
 
 
-def thread_node(document: BaseNode) -> TextNode:
-    """The node for one thread Document: its text, its metadata, a stable id, a link back."""
+def thread_nodes(document: BaseNode) -> List[TextNode]:
+    """The node for one thread Document, or none when no text is left (8 threads hold only a
+    channel line or their own id: a node would embed nothing but metadata)."""
+    if document.source_node is not None:
+        raise ValueError(f"{document.id_!r} is not a root thread Document: it already has a source "
+                         f"({document.source_node.node_id!r}); SlackThreadParser takes Documents from "
+                         "thread_documents, before any splitter")
     file_name = document.metadata["file_name"]
-    thread = parse_thread(file_name, document.text)
-    timestamp = THREAD_FILE_NAME.fullmatch(file_name)["timestamp"]
+    text = document.get_content(MetadataMode.NONE)
+    thread = parse_thread(file_name, text)
     if document.id_ != thread.doc_id:
         raise ValueError(f"Document id must be the thread's dsid {thread.doc_id!r}, got {document.id_!r}")
+    kept = node_text(text, thread, THREAD_FILE_NAME.fullmatch(file_name)["timestamp"])
+    if not kept.strip():
+        return []
     first_turn, last_turn = turn_range(thread)
-    return TextNode(
+    return [TextNode(
         id_=node_id(thread.doc_id, first_turn, last_turn),
-        text=node_text(document.text, thread, timestamp),
+        text=kept,
         metadata=node_metadata(thread, first_turn, last_turn),
         excluded_embed_metadata_keys=list(HIDDEN_FROM_EMBEDDING),
         excluded_llm_metadata_keys=list(HIDDEN_FROM_LLM),
         relationships={NodeRelationship.SOURCE: document.as_related_node_info()},
-    )
+    )]
 
 
 def turn_range(thread: Thread) -> tuple[Optional[int], Optional[int]]:
-    """First and last message turn in the node; (None, None) for a thread with no message."""
-    return (0, len(thread.messages) - 1) if thread.messages else (None, None)
+    """First and last message turn in the node, as parse_thread numbered them; (None, None) for
+    a thread with no message."""
+    return (thread.messages[0].turn, thread.messages[-1].turn) if thread.messages else (None, None)
 
 
 def node_id(doc_id: str, first_turn: Optional[int], last_turn: Optional[int]) -> str:
-    """sha256 of doc_id:first_turn:last_turn: the same on every run. SLACK-10 reuses it per piece."""
-    return hashlib.sha256(f"{doc_id}:{first_turn}:{last_turn}".encode()).hexdigest()
+    """A UUID from doc_id:first_turn:last_turn, the same on every run (UUID-shaped because Qdrant
+    and Weaviate accept nothing else). SLACK-10 reuses it per piece."""
+    return str(uuid.uuid5(NODE_ID_NAMESPACE, f"{doc_id}:{first_turn}:{last_turn}"))
 
 
 def node_text(text: str, thread: Thread, timestamp: str) -> str:
     """The thread without its channel line, without a line 1 that is the export's file name
     (it starts with the file name's fake timestamp: `3476543210-launch-wedge-preflight.json`),
-    and without any line that is only its own id.
-
-    Dropping an id line from the middle (7 threads) means the text is no longer a substring of
-    the Document, so LlamaIndex leaves start_char_idx/end_char_idx empty for those nodes.
-    """
+    and without any line that is only its own id."""
     first_line, _, rest = text.partition("\n")
     if thread.channel.route != UNKNOWN or is_export_file_name(first_line, timestamp):
         text = rest
     own_id = f"dsid_{thread.doc_id}"
+    if own_id not in text:
+        return text.lstrip("\n")
     return "".join(line for line in text.splitlines(keepends=True) if line.strip() != own_id).lstrip("\n")
 
 
@@ -176,11 +206,11 @@ def is_export_file_name(line: str, timestamp: str) -> bool:
 
 
 def node_metadata(thread: Thread, first_turn: Optional[int], last_turn: Optional[int]) -> dict:
-    """Flat values only (str, int), as LlamaIndex's docs ask for vector stores: participants is
-    joined into one string, and a field with no value is left out rather than set to None
-    (channel when unknown, the turns when the thread has no message)."""
-    channel = {"channel": thread.channel.name} if thread.channel.route != UNKNOWN else {}
-    turns = {"first_turn": first_turn, "last_turn": last_turn} if first_turn is not None else {}
-    slug = {"slug": thread.slug} if thread.slug else {}  # the readable part of the file name
-    return {**channel, "participants": ", ".join(thread.participants), "doc_id": thread.doc_id,
-            "channel_route": thread.channel.route, **turns, **slug}
+    """Flat values only (str, int), as LlamaIndex's docs ask for vector stores; a field with no
+    value is left out, never empty or None: channel when unknown, participants and turns when
+    nobody speaks, slug when the file name has none."""
+    fields = {"channel": thread.channel.name if thread.channel.route != UNKNOWN else None,
+              "participants": ", ".join(thread.participants) or None,
+              "doc_id": thread.doc_id, "channel_route": thread.channel.route,
+              "first_turn": first_turn, "last_turn": last_turn, "slug": thread.slug}
+    return {key: value for key, value in fields.items() if value is not None}

@@ -3,15 +3,16 @@
 Run: uv run python -m unittest discover tests
 """
 import doctest
-import hashlib
 import sys
 import unittest
+import uuid
 from collections import Counter
 from pathlib import Path
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.ingestion import IngestionPipeline
-from llama_index.core.schema import Document, MetadataMode, NodeRelationship
+from llama_index.core.ingestion.pipeline import get_transformation_hash
+from llama_index.core.schema import Document, MetadataMode, NodeRelationship, RelatedNodeInfo, TextNode
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -58,8 +59,9 @@ class OneThreadOneNode(unittest.TestCase):
         self.assertEqual(node.relationships[NodeRelationship.SOURCE].node_id, "47db1d5b12a44a9885495cde5305c45d")
         self.assertEqual(node.ref_doc_id, "47db1d5b12a44a9885495cde5305c45d")
 
-    def test_the_node_id_is_stable(self):
-        expected = hashlib.sha256(b"47db1d5b12a44a9885495cde5305c45d:0:1").hexdigest()
+    def test_the_node_id_is_a_stable_uuid(self):
+        expected = str(uuid.uuid5(nodes_module.NODE_ID_NAMESPACE, "47db1d5b12a44a9885495cde5305c45d:0:1"))
+        self.assertEqual(str(uuid.UUID(expected)), expected)  # Qdrant and Weaviate accept only UUIDs
         self.assertEqual(parse_one(PIN_THREAD, PIN_TEXT).id_, expected)
         self.assertEqual(parse_one(PIN_THREAD, PIN_TEXT).id_, expected)
 
@@ -76,10 +78,10 @@ class OneThreadOneNode(unittest.TestCase):
         node = parse_one(PIN_THREAD, "product\n\ndsid_47db1d5b12a44a9885495cde5305c45d\n\nkai: paging\n")
         self.assertEqual(node.text, "kai: paging\n")
 
-    def test_the_llm_sees_the_doc_id_to_cite_but_not_the_bookkeeping(self):
-        text = parse_one(PIN_THREAD, PIN_TEXT).get_content(MetadataMode.LLM)
-        self.assertIn("doc_id: 47db1d5b12a44a9885495cde5305c45d", text)
-        self.assertNotIn("channel_route", text)
+    def test_the_llm_sees_the_doc_id_to_cite_and_nothing_else_extra(self):
+        self.assertEqual(parse_one(PIN_THREAD, PIN_TEXT).get_content(MetadataMode.LLM),
+                         "channel: product\nparticipants: sam, opsbot\ndoc_id: 47db1d5b12a44a9885495cde5305c45d\n\n"
+                         + PIN_TEXT.removeprefix("product\n\n").rstrip("\n"))
 
     def test_an_export_file_name_on_line_1_is_dropped_with_its_timestamp(self):
         name = "dsid_1c48469636984c3e82f4683345b7d2c8__3476543210-launch-wedge-preflight.txt"
@@ -97,8 +99,13 @@ class OneThreadOneNode(unittest.TestCase):
         text = "support\n\nCustomer escalated: tool routing broken.\n\nSDK: go-sdk v0.9.8\n"
         node = parse_one(PIN_THREAD, text)
         self.assertEqual(node.text, text.removeprefix("support\n\n"))
-        self.assertEqual(node.metadata["participants"], "")
+        self.assertNotIn("participants", node.metadata)  # nobody speaks: no empty "participants:" line
         self.assertNotIn("first_turn", node.metadata)
+        self.assertEqual(node.get_content(MetadataMode.EMBED), "channel: support\n\n" + text.removeprefix("support\n\n").rstrip())
+
+    def test_a_thread_with_no_text_left_makes_no_node(self):
+        for text in ("general\n", "eng-security\n\ndsid_47db1d5b12a44a9885495cde5305c45d\n"):
+            self.assertEqual(SlackThreadParser().get_nodes_from_documents([thread_document(PIN_THREAD, text)]), [])
 
     def test_every_metadata_value_is_flat(self):
         for text in (PIN_TEXT, "support\n\nno speaker here\n", "1725550001\n\nkai: paging\n"):
@@ -117,11 +124,31 @@ class OneThreadOneNode(unittest.TestCase):
             with self.assertRaises(ValueError, msg=wrong_id):
                 SlackThreadParser().get_nodes_from_documents([document])
 
-    def test_a_document_field_named_like_ours_does_not_hide_ours(self):
+    def test_library_settings_that_would_change_our_nodes_are_refused(self):
+        for setting in ({"include_metadata": True}, {"id_func": lambda i, document: "x"}):
+            with self.assertRaises(ValueError, msg=setting):
+                SlackThreadParser(**setting)
+
+    def test_only_root_thread_documents_are_accepted(self):
+        exported = thread_document(PIN_THREAD, PIN_TEXT)
+        exported.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id="export-2026-09")
+        chunk = TextNode(text=PIN_TEXT, metadata={"file_name": PIN_THREAD},
+                         relationships={NodeRelationship.SOURCE: RelatedNodeInfo(node_id="47db1d5b12a44a9885495cde5305c45d")})
+        for not_a_root in (exported, chunk):
+            with self.assertRaisesRegex(ValueError, "root"):
+                SlackThreadParser().get_nodes_from_documents([not_a_root])
+
+    def test_the_same_thread_twice_gets_no_links_to_itself(self):
         document = thread_document(PIN_THREAD, PIN_TEXT)
-        document.metadata["channel"] = "not-this-one"
-        [node] = SlackThreadParser().get_nodes_from_documents([document])
-        self.assertTrue(node.get_content(MetadataMode.EMBED).startswith("channel: product\n"))
+        for node in SlackThreadParser().get_nodes_from_documents([document, document]):
+            self.assertNotIn(NodeRelationship.NEXT, node.relationships)
+
+    def test_a_rule_change_changes_the_cache_key(self):
+        document = thread_document(PIN_THREAD, PIN_TEXT)
+        before = get_transformation_hash([document], SlackThreadParser())
+        other = get_transformation_hash([document], SlackThreadParser(rules_fingerprint="a different rule set"))
+        self.assertNotEqual(before, other)
+        self.assertEqual(SlackThreadParser.class_name(), "SlackThreadParser")
 
     def test_a_document_without_a_file_name_is_an_error(self):
         with self.assertRaises(KeyError):
@@ -149,23 +176,27 @@ class InsideTheLibrary(unittest.TestCase):
 
 @unittest.skipUnless(CLEAN.is_dir(), "clean Slack corpus not present (run python -m pipeline.slack.corpus)")
 class RealCorpus(unittest.TestCase):
-    def test_every_thread_becomes_one_node(self):
+    def test_every_thread_with_text_becomes_one_node(self):
         totals, node_ids, parser = Counter(), set(), SlackThreadParser()
         for path in CLEAN.glob("*.txt"):
-            [node] = parser.get_nodes_from_documents([thread_document(path.name, path.read_text(encoding="utf-8"))])
+            made = parser.get_nodes_from_documents([thread_document(path.name, path.read_text(encoding="utf-8"))])
+            totals["threads_without_a_node"] += not made
+            if not made:
+                continue
+            [node] = made
             embedded = node.get_content(MetadataMode.EMBED)
             node_ids.add(node.id_)
             totals["nodes"] += 1
             totals["without_channel"] += "channel" not in node.metadata
-            totals["without_participants"] += not node.metadata["participants"]
+            totals["without_participants"] += "participants" not in node.metadata
             totals["doc_id_in_embedded_text"] += node.metadata["doc_id"] in embedded
             timestamp = THREAD_FILE_NAME.fullmatch(path.name)["timestamp"]
             totals["starts_with_an_export_file_name"] += is_export_file_name(node.text.partition("\n")[0], timestamp)
             totals["timestamp_in_metadata"] += timestamp in str(node.metadata)  # 2 slugs repeat it
-        self.assertEqual(totals, {"nodes": 285_605, "without_channel": 9_053, "without_participants": 64,
-                                  "doc_id_in_embedded_text": 0, "starts_with_an_export_file_name": 0,
-                                  "timestamp_in_metadata": 2})
-        self.assertEqual(len(node_ids), 285_605)
+        self.assertEqual(totals, {"nodes": 285_597, "threads_without_a_node": 8, "without_channel": 9_049,
+                                  "without_participants": 56, "doc_id_in_embedded_text": 0,
+                                  "starts_with_an_export_file_name": 0, "timestamp_in_metadata": 2})
+        self.assertEqual(len(node_ids), 285_597)
 
 
 if __name__ == "__main__":
