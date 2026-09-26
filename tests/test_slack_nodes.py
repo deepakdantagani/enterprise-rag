@@ -86,6 +86,12 @@ class OneThreadOneNode(unittest.TestCase):
         self.assertEqual(node.text, text.removeprefix("support\n\n"))
         self.assertEqual((node.metadata["participants"], node.metadata["first_turn"]), ("", None))
 
+    def test_asking_for_a_progress_bar_changes_nothing_else(self):
+        document = thread_document(PIN_THREAD, PIN_TEXT)
+        quiet = SlackThreadParser().get_nodes_from_documents([document])
+        with_bar = SlackThreadParser().get_nodes_from_documents([document], show_progress=True)
+        self.assertEqual([node.to_dict() for node in with_bar], [node.to_dict() for node in quiet])
+
     def test_a_document_without_a_file_name_is_an_error(self):
         with self.assertRaises(KeyError):
             SlackThreadParser().get_nodes_from_documents([Document(text="eng\n\nkai: hi\n")])

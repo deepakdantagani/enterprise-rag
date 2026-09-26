@@ -21,6 +21,39 @@ Only `channel` and `participants` are embedded: an identical prefix on every nod
 285,605 vectors together, so the prefix carries only what has meaning. `channel` is left out
 when it is unknown (9,053 threads). Roles need no field; they are in the speaker lines.
 
+A complete node, for reference: the real NovaCare thread, read with SimpleDirectoryReader's
+defaults (text shortened; the rest printed as the code builds it). Where each key comes from:
+[ours] this module, [reader] SimpleDirectoryReader, copied onto the node by LlamaIndex,
+[lib] LlamaIndex itself.
+
+    TextNode(
+      id_='baf7ae0d43d3e0f6...',            [ours] sha256("a4e702bd...:0:15"), same every run
+      embedding=None,                       [lib] filled by the embed model (SLACK-11)
+      metadata={
+        'file_path': '.../dsid_a4e702bd...novacare-vra-check.txt',   [reader] hidden
+        'file_name': 'dsid_a4e702bd...__1793045678-novacare-vra-check.txt',  [reader] hidden
+        'file_type': 'text/plain', 'file_size': 2202,                [reader] hidden (bytes)
+        'creation_date': '2026-09-25', 'last_modified_date': '2026-09-25',
+                                            [reader] hidden: the file's copy date, not the chat's
+        'channel': 'customer-success',      [ours] channel_of, SLACK-5; embedded
+        'participants': 'Aisha, Priya, Ben, Tom, questionnaire-bot',
+                                            [ours] speakers, SLACK-7/8, joined; embedded
+        'doc_id': 'a4e702bd03254699b0e7bed0000972ab',   [ours] file name, SLACK-8; LLM only
+        'channel_route': 'line1',           [ours] SLACK-5; hidden (SLACK-12 splits on it)
+        'first_turn': 0, 'last_turn': 15},  [ours] turn_range; hidden
+      excluded_embed_metadata_keys=['doc_id', 'channel_route', 'first_turn', 'last_turn',
+        'file_path', 'file_name', 'file_type', 'file_size', 'creation_date', 'last_modified_date'],
+      excluded_llm_metadata_keys=[the same, minus 'doc_id'],
+      relationships={SOURCE: RelatedNodeInfo(node_id='a4e702bd...', node_type=DOCUMENT,
+                                             metadata={the 6 file fields}, hash='5dcf1544...')},
+                                            [ours] the link; [lib] its type, copy and hash
+      text="Aisha (CS): Hey team — NovaCare sent an updated vendor risk assessment...
+            ...questionnaire-bot: Thread closed by inactivity after 48h (reminder set for 2026-03-30).\n",
+                                            [ours] node_text: the clean file minus 'customer-success\n\n'
+      start_char_idx=18, end_char_idx=2192, [lib] where the text sits in the Document
+      metadata_template='{key}: {value}', metadata_separator='\n',
+      text_template='{metadata_str}\n\n{content}', mimetype='text/plain')   [lib] defaults
+
 The node text is the thread minus its channel line, and minus any line that is only the
 thread's own id (`dsid_02f44014...`: line 1 in 151 threads, line 3 in 7 more). The rest of the header stays: 157 threads carry real text
 there (a summary, an odd speaker line) and 64 have no message at all.
@@ -33,6 +66,7 @@ from typing import Any, List, Optional, Sequence
 
 from llama_index.core.node_parser import NodeParser
 from llama_index.core.schema import BaseNode, NodeRelationship, TextNode
+from llama_index.core.utils import get_tqdm_iterable
 
 from pipeline.slack.thread import Thread, parse_thread
 
@@ -48,7 +82,8 @@ class SlackThreadParser(NodeParser):
     """One TextNode per clean Slack thread. Needs `file_name` in each Document's metadata."""
 
     def _parse_nodes(self, nodes: Sequence[BaseNode], show_progress: bool = False, **kwargs: Any) -> List[BaseNode]:
-        return [thread_node(document) for document in nodes]
+        documents = get_tqdm_iterable(nodes, show_progress, "Parsing Slack threads")  # the library's bar
+        return [thread_node(document) for document in documents]
 
 
 def thread_node(document: BaseNode) -> TextNode:
