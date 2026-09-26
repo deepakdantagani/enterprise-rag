@@ -173,6 +173,9 @@ returned, instead of guessing
 - Given an embedding call, Then its span keeps the text but the vector is `__REDACTED__`: in
   the first sample run (207 docs, 822 chunks) the 1,024-number vectors pushed one export batch
   to 12 MB, over the 4 MB Phoenix accepts over gRPC, and those traces were lost
+- Given a retrieval of 50 chunks, Then its span keeps every chunk, the best-ranked included: a
+  span holds up to 1,024 attributes (`phoenix_provider`); OpenTelemetry's default of 128 dropped
+  the first chunks in the first `--sample` run ("Attributes dict is full")
 
 **Example with real data**
 To be filled by EVAL-3's first run: qst_0431 opened in Phoenix, with its top chunks and the

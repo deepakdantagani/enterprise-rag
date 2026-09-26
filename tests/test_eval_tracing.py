@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import tracing as tracing_module  # noqa: E402
 from pipeline.eval.evaluator import DocumentRetrieverEvaluator  # noqa: E402
-from pipeline.eval.tracing import trace_to_phoenix  # noqa: E402
+from pipeline.eval.tracing import phoenix_provider, trace_to_phoenix  # noqa: E402
 
 
 class TraceToPhoenix(unittest.TestCase):
@@ -63,8 +63,21 @@ class TraceToPhoenix(unittest.TestCase):
         LlamaIndexInstrumentor().uninstrument()
         provider = trace_to_phoenix(project="baseline_sample")
         [processor] = provider._active_span_processor._span_processors
+        provider.shutdown()
         self.assertEqual(provider.resource.attributes["openinference.project.name"], "baseline_sample")
         self.assertEqual(processor.span_exporter._endpoint, "http://localhost:6006/v1/traces")
+
+    def test_a_retrieval_of_50_chunks_keeps_every_chunk_in_its_span(self):
+        # the sample run warned "Attributes dict is full": OpenTelemetry's default keeps 128
+        # attributes per span, so the best-ranked chunks of a 50-chunk retrieval were dropped
+        LlamaIndexInstrumentor().uninstrument()
+        spans = InMemorySpanExporter()
+        provider = trace_to_phoenix(tracer_provider=phoenix_provider("test", spans))
+        pages = [Document(id_=f"dsid_{n}", text=f"Runbook {n}.") for n in range(50)]
+        SummaryIndex.from_documents(pages).as_retriever().retrieve("How do I roll back?")
+        provider.force_flush()
+        retrieval = next(span for span in spans.get_finished_spans() if "retrieval.documents.49.document.content" in span.attributes)
+        self.assertEqual(retrieval.attributes["retrieval.documents.0.document.content"], "Runbook 0.")
 
     def test_doctests(self):
         LlamaIndexInstrumentor().uninstrument()  # the doctest instruments on its own
