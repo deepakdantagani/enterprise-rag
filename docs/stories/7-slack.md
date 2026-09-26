@@ -1084,6 +1084,15 @@ embedded text.
   path and a file-copy date on every node. Only `file_name` is kept, set by us and hidden:
   it is the readable way back to the source file. When the corpus moves to shared storage
   (e.g. S3), a `source_uri` field is the one to add.
+- **Documents are tagged where they are read** (review fix): `pipeline/slack/documents.py`,
+  `thread_documents(clean_dir)`, configures LlamaIndex's `SimpleDirectoryReader` (`.txt` only,
+  so `_manifest.json` stays out; `file_name` as the only metadata, so a Document's hash does not
+  change when the files are re-copied or moved) and sets each id to the dsid. It has to happen
+  there: the pipeline's cache recognises input by text and metadata, not by id, so on a cache
+  hit the parser never runs and a check inside it cannot catch a wrong id. Measured: with a
+  docstore, a second run of the same 3 threads stores nothing twice. The reader's
+  `exclude_hidden` is off: it treats any dotted folder in the path (`.claude/worktrees/...`) as
+  hidden and would find no file.
 - **The Document id must be the thread's dsid**, or the parser raises. The docstore recognises
   a thread on a re-run by that id; the reader's random id or `filename_as_id`'s full path would
   store every thread again. SLACK-11 sets it after loading.
@@ -1208,8 +1217,8 @@ SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
   -> vector index  +  BM25Retriever over the same nodes  ->  QueryFusionRetriever
 ```
 
-- **Reader.** `SimpleDirectoryReader` reads the clean `.txt` files as they are; no loader of
-  our own. `file_metadata` keeps only `file_name` (verified: no dates reach the Document).
+- **Reader.** `thread_documents(clean_dir)` (SLACK-9): LlamaIndex's `SimpleDirectoryReader`,
+  `.txt` only, `file_name` as the only metadata, each Document's id set to its dsid.
 - **Document id = the dsid.** `filename_as_id=True` gives the full file path, which changes with
   the checkout location, so the id is set to the dsid after loading. The docstore upserts on
   it, so a re-run updates a thread's nodes instead of duplicating them.

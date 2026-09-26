@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.slack import nodes as nodes_module  # noqa: E402
 from pipeline.slack.nodes import SlackThreadParser, is_export_file_name  # noqa: E402
-from pipeline.slack.thread import THREAD_FILE_NAME  # noqa: E402
+from pipeline.slack.thread import THREAD_FILE_NAME, id_and_slug  # noqa: E402
 
 CLEAN = ROOT / "data/slack/clean"
 FIXTURES = ROOT / "tests/fixtures/slack_truth"
@@ -28,7 +28,7 @@ PIN_TEXT = ("product\n\nsam (pm): Heads-up: team asked for a narrower deprecatio
 
 
 def thread_document(file_name: str, text: str) -> Document:
-    return Document(id_=file_name.split("__")[0].removeprefix("dsid_"), text=text, metadata={"file_name": file_name})
+    return Document(id_=id_and_slug(file_name)[0], text=text, metadata={"file_name": file_name})
 
 
 def parse_one(file_name: str, text: str):
@@ -135,7 +135,7 @@ class InsideTheLibrary(unittest.TestCase):
     def test_it_runs_as_a_transformation_on_documents_from_simple_directory_reader(self):
         documents = SimpleDirectoryReader(input_files=[FIXTURES / NOVACARE]).load_data()  # default metadata
         for document in documents:
-            document.id_ = "a4e702bd03254699b0e7bed0000972ab"
+            document.id_ = id_and_slug(document.metadata["file_name"])[0]
         [node] = IngestionPipeline(transformations=[SlackThreadParser()]).run(documents=documents)
         self.assertTrue(node.get_content(MetadataMode.EMBED).startswith(
             "channel: customer-success\nparticipants: Aisha, Priya, Ben, Tom, questionnaire-bot\n\nAisha (CS): Hey team"))
