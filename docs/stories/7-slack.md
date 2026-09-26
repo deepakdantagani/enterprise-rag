@@ -1077,8 +1077,12 @@ embedded text.
   timestamp and file-system dates. Found by the review; the library test now uses the reader's
   defaults.
 - **Node id** `sha256(doc_id:first_turn:last_turn)`, the same on every run; SLACK-10 reuses it.
-  A thread with no message has turns `None`: flat metadata allows it, but check the vector
-  store chosen in SLACK-11 accepts `None`.
+  A thread with no message has no `first_turn`/`last_turn` at all: LlamaIndex's docs ask for
+  flat `str`/`float`/`int` values, so a missing value is left out, never `None`.
+- **Checked against the LlamaIndex docs** (via its docs server): metadata customisation,
+  the id, document management and parallel runs (`num_workers=4` gives the same 50 nodes).
+- **Progress bar:** `show_progress` goes to the library's `get_tqdm_iterable`, as its own
+  parsers do.
 
 **Reviewed** by a code-review agent against the installed library source: our keys win the
 metadata merge, the source link is kept, a single node gets no prev/next links, and the

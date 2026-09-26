@@ -84,7 +84,13 @@ class OneThreadOneNode(unittest.TestCase):
         text = "support\n\nCustomer escalated: tool routing broken.\n\nSDK: go-sdk v0.9.8\n"
         node = parse_one(PIN_THREAD, text)
         self.assertEqual(node.text, text.removeprefix("support\n\n"))
-        self.assertEqual((node.metadata["participants"], node.metadata["first_turn"]), ("", None))
+        self.assertEqual(node.metadata["participants"], "")
+        self.assertNotIn("first_turn", node.metadata)
+
+    def test_every_metadata_value_is_flat(self):
+        for text in (PIN_TEXT, "support\n\nno speaker here\n", "1719998880\n\nkai: paging\n"):
+            for value in parse_one(PIN_THREAD, text).metadata.values():
+                self.assertIsInstance(value, (str, int, float), text)
 
     def test_asking_for_a_progress_bar_changes_nothing_else(self):
         document = thread_document(PIN_THREAD, PIN_TEXT)

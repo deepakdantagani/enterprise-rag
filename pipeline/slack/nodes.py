@@ -119,7 +119,10 @@ def node_text(text: str, thread: Thread) -> str:
 
 
 def node_metadata(thread: Thread, first_turn: Optional[int], last_turn: Optional[int]) -> dict:
-    """Flat fields only (str, int, None): vector stores reject lists, so participants is joined."""
+    """Flat values only (str, int), as LlamaIndex's docs ask for vector stores: participants is
+    joined into one string, and a field with no value is left out rather than set to None
+    (channel when unknown, the turns when the thread has no message)."""
     channel = {"channel": thread.channel.name} if thread.channel.route in CHANNEL_ON_LINE_1 else {}
+    turns = {"first_turn": first_turn, "last_turn": last_turn} if thread.messages else {}
     return {**channel, "participants": ", ".join(thread.participants), "doc_id": thread.doc_id,
-            "channel_route": thread.channel.route, "first_turn": first_turn, "last_turn": last_turn}
+            "channel_route": thread.channel.route, **turns}
