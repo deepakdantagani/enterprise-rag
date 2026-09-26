@@ -39,7 +39,8 @@ tools/
     gmail_profile.py  GMAIL-0    profile: counts only, no rules
 pipeline/gmail/
     cleaning.py    GMAIL-1a,1b clean_thread
-    messages.py    GMAIL-3,6,7    split_messages, strip_quotes, attachments
+    messages.py    GMAIL-3,7      split_messages, attachments
+    quotes.py      GMAIL-6    strip_quotes
     headers.py     GMAIL-4    parse_headers
     dates.py       GMAIL-5    normalise_date
     records.py     GMAIL-8    MessageRecord, message_records
@@ -64,6 +65,7 @@ pipeline/gmail/
 | 6 | GMAIL-6 strip_quotes | drop the `On … wrote:` block and its `>` lines |
 | 7 | GMAIL-7 attachments | filenames from `Attachment(s):`; **never** from prose `Attached:` |
 | 8 | GMAIL-8 message_records | assemble the ten fields per message, thread fields from the filename and line 1 |
+| 8b | GMAIL-8b message truth set | 30-40 real messages with hand-checked output; every edge case found in stories 3-6 |
 | 9 | GMAIL-9 messages corpus | write `data/gmail/messages/*.jsonl` + manifest; counts reconcile |
 | 10 | GMAIL-10 to_document | one LlamaIndex `Document` per record; metadata templating does the context injection |
 | 11 | GMAIL-11 chunk_id | deterministic `id_func` for the splitter |
@@ -417,60 +419,61 @@ Decisions already made: no zone means UTC plus the flag; `-0000` is UTC without 
 
 ---
 
-## GMAIL-6  strip_quotes: remove what is already indexed  ⬜
+## GMAIL-6  strip_quotes: remove what is already indexed  ✅
 
-**Status:** To do.
+**Status:** Done. `pipeline/gmail/quotes.py`, 31 tests. Over all 578,443 message bodies: 120,289 change, 780 become empty (723 more were already empty, headers only), 1,505 keep an `On … wrote:` line with no quote after it (flagged), 45,457,740 characters removed.
 
 **Background**
-61,922 threads (51%) quote an earlier message back. That text is 42.8 M chars, 6.3% of
-all body text, and every word of it is already embedded on the message it came from.
-Leaving it in means a question matches both the original and every reply that quoted it.
-
-Two quote openers appear:
-`On Mon, May 10, 2027 at 08:23 Naomi Feldman <naomi@…> wrote:` and
-`On 2026-09-05 10:12, Claire Dawson wrote:`. Both are followed by `>`-prefixed lines.
+A reply quotes the earlier message back, and every word of that copy is normally already embedded on the message it came from. Leaving it in means a question matches the original and every reply that quoted it. Measured on the real bodies (not re-checking the first draft's "61,922 threads"):
+- **120,151 bodies (20.8%) have `>` lines**, holding 38,379,270 characters (5.6% of all body text). The first draft said 42.8 M characters (6.3%); that could not be reproduced. With the removed `On … wrote:` lines the total is 45.5 M.
+- **The first draft's rule was wrong.** It said to cut from `On … wrote:` to the end of the body. That deletes the reply whenever the quote comes first: in 9,108 bodies the quote is at the top with the answer below it, in 19,961 the author wrote text on both sides of it, and in 1,396 the answers sit between quoted lines. The rule removes only the quoted lines and their opener, and keeps every other line.
+- **The premise "already embedded" is mostly true:** of 98,344 quotes that could be checked, 82.0% (80,647) are copies of an earlier message in the same thread. The rest are often placeholders such as `> [original message quoted]`, or quote a message that is not in the thread. They are removed anyway; the clean file on disk keeps them.
+- **The `email-reply-parser` library was tried and not adopted.** It agrees with the simple rule on 83,880 of 120,151 quoted bodies, but it also strips signatures (over 20% more text in 601 bodies, and it empties 29 bodies the simple rule keeps, text after `---`) and it crashed on 2 real bodies (a regex "bad escape"). GMAIL-7 needs the attachment lines it may cut.
 
 **As a** pipeline developer
-**I want to** cut a message body at its quote marker
+**I want to** remove the quoted earlier email from one message body
 **So that** each message embeds only what its author wrote
 
 **Acceptance Criteria (Gherkin)**
-- Given a body with `On … wrote:`, Then the text from that line to the end is removed
-- Given both opener shapes, Then both are matched
-- Given a body whose lines start with `>` but has no opener, Then the `>` lines are removed
-- Given a body with no quoting, Then it is returned unchanged
-- Given a body that is *only* a quote, Then the result is empty and the record is flagged `body_empty`
-- Given the corpus, Then 42.8 M chars are removed and the removed count is reported per thread
+- Given a line that starts with `>` (any depth: `>>`, `> >`, no space as in `>Jordan`), Then it is removed
+- Given an `On … wrote:` line directly above quoted lines (or one blank line above them), Then it is removed with them; both shapes are covered: `On Mon, May 10, 2027 at 08:23 Naomi Feldman <naomi@…> wrote:` and `On 2026-09-05 10:12, Claire Dawson wrote:`
+- Given an opener that ends in a leftover literal `\r` or a short bracketed note, Then it is still an opener; an opener with the quote on the same line (`… wrote: > text`) is removed whole
+- Given a quote at the top with the answer below it, or author text on both sides, or answers between quoted lines, Then all of the author's text is kept
+- Given a forwarded message (`--- Forwarded message ---`, `-----Original Message-----`) or quoted history with no `>` marks (inline `From:`/`Sent:` lines), Then it is kept: it cannot be told from new text
+- Given an `On … wrote:` line with no quote after it, Then it is kept and `opener_unmatched` is true
+- Given lines that only look like openers (`On quoting: …`, `… wrote to execs: …`, `… wrote:"`), Then they are kept
+- Given a body with no quoting, Then it is returned unchanged; the remaining text is always tidied (trailing spaces, runs of blank lines)
+- Given a body that is only a quote, Then the text is empty (GMAIL-8 sets the `body_empty` flag)
+- Given a second run on its own output, Then nothing changes
 
 **Example with real data**
 
-`dsid_0003343918ed4f56960a7d38b9848893__20260908-ed…`:
+`dsid_0003343918ed4f56960a7d38b9848893`, reply 2 (quote first, answer below):
 
 ```
-before  'Subject: Re: Edge node licensing — clarify platform fee credits'
+before  'On 2026-09-05 10:12, Claire Dawson wrote:'
+        '> Thanks for the walkthrough earlier. We captured our prioritized constraints in ...'
+        '> 1) Licensing model for edge nodes...'
         ''
-        'On 2026-09-05 10:12, Claire Dawson wrote:'
-        '> Thanks for the walkthrough earlier. We captured our prioritized constraints in'
-        '> the attached Novus-VPC-Requirements.pdf but wanted a couple of clarifications…'
+        'Hi Claire — appreciate the details and the PDF. High level answers below ...'
 
-after   (the message's own text only; the quote is already a record of its own)
+after   'Hi Claire — appreciate the details and the PDF. High level answers below ...'
+        quoted_chars=359  opener_unmatched=False
 ```
+
+**Returned** (`StrippedBody`): `text`, `quoted_chars` (every removed character, one newline per removed line) and `opener_unmatched`.
 
 **Non-functional Requirements**
-Shared rules apply. Pure.
+Shared rules apply. Pure, standard library plus the shared whitespace tidy from `pipeline.gmail.cleaning`. The quote stays in the clean file on disk; only the returned text loses it, so nothing is destroyed.
 
-*Maintainability:* one function, no state; the id scheme is documented beside it because
-changing it invalidates every stored vector.
-*Observability:* audit row `duplicate_chunk_id` must be 0 over the corpus. The quote stays in the clean file — only the record's
-`body` loses it, so nothing is destroyed on disk.
+*Maintainability:* the two patterns (`OPENER`, `QUOTE_ON_OPENER_LINE`) are named constants with real examples above.
+*Observability:* `quoted_chars` per message, summing to 45,457,740. Audit rows `quote_opener_unmatched` (1,505 bodies) and `body_empty` (780) list real examples; both must stay small.
 
-*Maintainability:* the two opener shapes are two patterns in one constant with a real
-example beside each, so a third shape is an entry, not a rewrite.
-*Observability:* `quoted_chars_removed` per thread in the manifest, summing to 42.8 M.
-Audit rows: `quote_opener_unmatched` (a `>` block with no opener) and `body_empty`
-(a message that was only a quote) — both must stay small and are listed with examples.
+**Known limits (measured, left for later):** 1,505 bodies keep an unmarked quoted history (kept and counted); a forward is kept even where it repeats an earlier message; 91 bodies have nested quotes that are removed along with the rest.
 
-**Dependencies** APIs data contracts: GMAIL-3 · Service Bus: N/A · Database: N/A · UI: N/A
+**Review notes:** a code review found openers ending in a literal `\r` or a note, and openers with the quote on the same line (602 lines), missed by the first version; fixed here. The literal `\r` itself is cleaning residue owned by GMAIL-1b.
+
+**Dependencies** APIs data contracts: GMAIL-4 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
@@ -585,6 +588,44 @@ eleventh is a story of its own, because it changes the vector-store payload.
 `body_empty`, so the awkward cases are queryable rather than invisible.
 
 **Dependencies** APIs data contracts: GMAIL-3,4,5,6,7 · Service Bus: N/A · Database: N/A · UI: N/A
+
+---
+
+## GMAIL-8b  Message truth set: real messages with hand-checked output  ⬜
+
+**Status:** To do. Built after GMAIL-8, so it can check the finished record and not only single functions.
+
+**Background**
+GMAIL-3, 4, 5 and 6 each pin real-corpus **counts** measured by a throwaway script. A count can
+match while one message is wrong. That already happened once: the standard library counted
+111,029 colon-offset dates as parsed, and only reading real values showed the zone was lost.
+The other sources have a hand-checked set for this reason (PARSE-17 headings, SLACK-8b, LINEAR-3).
+The escape story has a small one for its own question (`tests/fixtures/gmail_escape/expected.json`,
+40 occurrences), but nothing covers the parsing stories.
+
+**As a** pipeline developer
+**I want to** real messages with the expected output written by hand
+**So that** each rule is checked on individual messages, not only on totals
+
+**Acceptance Criteria (Gherkin)**
+- Given 30 to 40 real messages copied from `data/gmail/raw/` into `tests/fixtures/gmail_truth/`, When each is read by `message_records`, Then sender, recipients, `sent_at`, offset, `assumed_utc`, subject and quote-stripped body match the hand-written `expected.json`
+- Given the fixture set, Then every edge case below is covered by at least one message, chosen from real data (not made up)
+- Given a rule change that alters any expected value, Then the test fails and names the message and field
+- Given the expected file, Then each entry records who checked it and on what date; an unchecked draft is marked as a draft
+
+**Edge cases to cover (each found in the real corpus while building GMAIL-3 to 6)**
+- Message shape: no `From:` line (189); date before `From:` (GMAIL-3b); preamble text
+- Headers: wrapped `To:`/`Cc:` line; `Sent:` instead of `Date:`; no `Cc:`; `Bcc:` present; `Attachments:` line right after the subject; name with a comma (`Ruiz, Elena <a@b>`); `(none)` or `;` recipient list
+- Dates: colon offset (`-07:00`); `-0000`; no zone (assumed UTC); named zone (`PDT`, `PT`); 12-hour clock with PM; full weekday and month names; a stray PM on a 24-hour time; one of the 126 unreadable dates
+- Quotes: quote at the bottom; quote at the top with the answer below it (9,108 messages); author text on both sides (19,961); inline answers between `>` lines; nested `>>`; quote only (780); `On … wrote:` with no `>` after it (kept, flagged); a forward (kept); quoted attachment line
+- Cleaning residue: a literal `\r` (GMAIL-1b)
+
+**Who labels:** the expected values are drafted from the code's output and the raw text, then **checked by a person** before the story is marked done. A truth set the author both wrote and checked is only a regression test, not a truth set, so the file says which entries a person has checked.
+
+**Non-functional Requirements**
+Shared rules apply. Fixtures are real message text, so the set stays small; nothing here needs the full corpus and the tests always run.
+
+**Dependencies** APIs data contracts: GMAIL-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
