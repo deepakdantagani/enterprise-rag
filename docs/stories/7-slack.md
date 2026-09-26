@@ -1285,13 +1285,18 @@ SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
 
 `pipeline/slack/embedding.py`: `embed_model()` returns LlamaIndex's `OllamaEmbedding` for
 `qwen3-embedding:0.6b` with Ollama's window (`num_ctx`) set to 32,768. No wrapper of our own.
-The settings are environment variables with these defaults (`embed_settings()`, documented in
-`.env.example`): `EMBED_PROVIDER` (ollama), `EMBED_MODEL`, `EMBED_BASE_URL`, `EMBED_WINDOW`,
-`EMBED_DIMENSIONS`. The window and dimensions belong to the model, so they change with it.
+The settings are environment variables (`embed_settings()`, documented in `.env.example`):
+`EMBED_PROVIDER` (ollama), `EMBED_MODEL`, `EMBED_BASE_URL` (empty = the provider's default),
+`EMBED_WINDOW`, `EMBED_DIMENSIONS`. A real variable wins, then the repository's `.env`, then the
+defaults. Everything that depends on the model is tied to it: Ollama's `num_ctx` is the window,
+the guard's ceiling is the window x 0.8 (`window_guard`), and `check_dimensions` compares a real
+vector with `EMBED_DIMENSIONS` before anything is stored.
 **Swappable:** the pipeline sees only LlamaIndex's `BaseEmbedding`; `EMBED_PROVIDER` picks a row
 of `PROVIDERS`, and adding a provider (OpenAI, Voyage, Hugging Face) is one builder, one row and
 its `llama-index-embeddings-*` package, imported only when chosen. API keys stay in each
-provider's own variable (`OPENAI_API_KEY`, ...).
+provider's own variable (`OPENAI_API_KEY`, ...). LlamaIndex's `resolve_embed_model` /
+`Settings.embed_model` were checked first: they take `"default"` (OpenAI), `"local:..."` (Hugging
+Face) or `"clip..."`, with no Ollama form.
 
 **Why this model** (decided 2026-09-26; 20 models checked against official pages): it fits a
 whole thread (32,768-token window), has the best comparable retrieval among small open models
@@ -1314,9 +1319,12 @@ about $0.92) are a SLACK-12 comparison, not the default.
 **Decisions:**
 - **A full run is about 7.7 hours, once**, overnight; the docstore makes it resumable and later
   runs embed only changed threads (11b).
-- **The guard stays at 8,192 cl100k tokens** (at most about 8,600 Qwen tokens, a quarter of the
-  window) and `num_ctx` is set to 32,768 explicitly, so a changed Ollama default cannot shrink
-  it. `OllamaEmbedding` cannot ask Ollama to refuse instead of truncate, so the guard is the only check.
+- **The guard's ceiling comes from the window** (review fix; first decided as a fixed 8,192):
+  window x 0.8, a margin for the guard counting with cl100k while the model counts its own
+  tokens (Qwen +4.4% on 1,000 threads). Qwen: 26,214, against a largest thread of 4,143. A
+  512-token model: 409, so the run stops instead of truncating. `num_ctx` is set to the window
+  explicitly. `OllamaEmbedding` cannot ask Ollama to refuse instead of truncate, so the guard is
+  the only check.
 - **No instruction on threads.** The query instruction Qwen wants on questions is set in 11c.
 - **Vectors are near-identical, not byte-identical, across runs** (NFR-1 holds up to the
   embedding stage, as it says): ids, text and metadata are exact; a vector can move by 9e-05 per
@@ -1333,6 +1341,14 @@ Scenario: the settings come from the environment
   Then embed_model() uses it, and falls back to the default for any that is not
   And a window or dimension that is not a positive whole number, or a provider we do not have, is an error
 
+Scenario: a smaller model cannot truncate silently
+  Given EMBED_WINDOW=512
+  Then the guard's ceiling is 409 and the largest thread stops the run
+
+Scenario: a wrong EMBED_DIMENSIONS stops the run before anything is stored
+  Given a model that returns 768 numbers and EMBED_DIMENSIONS=1024
+  Then check_dimensions raises
+
 Scenario: a vector has 1,024 numbers, near-identical on every run
   Given Ollama is running with the model pulled
   Then a thread's vector has 1,024 numbers, and embedding it again, alone or in a batch, gives a vector with cosine above 0.9999
@@ -1348,7 +1364,10 @@ Shared list. Tests that call the model are skipped when Ollama or the model is a
 
 ### Dependencies
 
-`llama-index-embeddings-ollama` (NFR-8: the library's own Ollama integration; no wrapper written).
+`llama-index-embeddings-ollama==0.10.0` (NFR-8: the library's own Ollama integration; no wrapper
+written). Every release declares `pytest-asyncio` as a runtime dependency, which brings `pytest`
+into the install; accepted rather than writing our own Ollama client. `python-dotenv` (already a
+dependency) reads `.env`.
 APIs data contracts: SLACK-9, 10 · Database: N/A · UI: N/A
 
 ---
