@@ -1,6 +1,6 @@
 ---
 name: llamaindex-docs
-description: Look up what LlamaIndex already offers before writing custom logic - every reader, node parser/chunker, metadata extractor, index, store, retriever, postprocessor/reranker, response mode, query/chat engine, agent, workflow, evaluator and observability feature in the official Python docs, plus how to fetch any docs page live. Use when Deepak asks "does LlamaIndex have X", "which parser/retriever/extractor should I use", "list LlamaIndex features/topics", asks what a LlamaIndex class does or when to use it, or when a story is about to add custom logic that a library component might already cover.
+description: Look up what LlamaIndex already offers before writing custom logic - every reader, node parser/chunker, metadata extractor, index, storage backend (vector, document, index, chat and key-value stores), LLM/embedding integration, retriever, postprocessor/reranker, response mode, query/chat engine, agent, memory, workflow, evaluator and observability feature in the official Python docs, plus how to fetch any docs page live. Use for ANY question about LlamaIndex components - "does LlamaIndex have X", "which/what X does LlamaIndex have/support/document", "which parser/retriever/store should I use", "list LlamaIndex features/topics", what a LlamaIndex class does or when to use it - and when a story is about to add custom logic that a library component might already cover.
 ---
 
 # LlamaIndex docs lookup

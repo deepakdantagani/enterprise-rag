@@ -1,0 +1,102 @@
+{
+  "_about": "Ground truth for the llamaindex-docs skill. Every expected term was checked against the official docs on 2026-09-26 (developers.llamaindex.ai api/read and api/grep). must_include: all terms must appear (case-insensitive). must_include_any: at least one term from each group. expect_skill: whether the llamaindex-docs skill should be invoked. needs_live: the answer is not in docs/research and needs the live docs API.",
+  "cases": [
+    {
+      "id": "node-parsers",
+      "question": "Which node parsers and chunkers does LlamaIndex have? Just list the class names.",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["SentenceSplitter", "TokenTextSplitter", "CodeSplitter", "SentenceWindowNodeParser", "SemanticSplitterNodeParser", "SemanticDoubleMergingSplitterNodeParser", "TopicNodeParser", "MarkdownNodeParser", "HTMLNodeParser", "JSONNodeParser", "MarkdownElementNodeParser", "UnstructuredElementNodeParser", "HierarchicalNodeParser"],
+      "source": "/python/framework/module_guides/loading/node_parsers/modules + api/grep NodeParser"
+    },
+    {
+      "id": "response-modes",
+      "question": "What response modes can a LlamaIndex response synthesizer use?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["refine", "compact", "tree_summarize", "simple_summarize", "no_text", "accumulate", "compact_accumulate"],
+      "source": "/python/framework/module_guides/deploying/query_engine/response_modes"
+    },
+    {
+      "id": "chat-engines",
+      "question": "Which chat engines does LlamaIndex offer?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["SimpleChatEngine", "ContextChatEngine", "CondenseQuestionChatEngine", "CondensePlusContextChatEngine"],
+      "source": "/python/framework/module_guides/deploying/chat_engines/modules"
+    },
+    {
+      "id": "memory-blocks",
+      "question": "What long-term memory blocks do LlamaIndex agents support?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["StaticMemoryBlock", "FactExtractionMemoryBlock", "VectorMemoryBlock"],
+      "source": "/python/framework/module_guides/deploying/agents/memory"
+    },
+    {
+      "id": "local-reranker",
+      "question": "Does LlamaIndex have a reranker I can run locally without an API key?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["SentenceTransformerRerank"],
+      "must_include_any": [["cross-encoder", "cross encoder", "sentence-transformers", "sentence transformers"]],
+      "source": "/python/framework/module_guides/models/rerankers"
+    },
+    {
+      "id": "tree-retriever-modes",
+      "question": "Which retriever modes does the LlamaIndex TreeIndex support?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["select_leaf", "select_leaf_embedding", "all_leaf", "root"],
+      "source": "/python/framework/module_guides/querying/retriever/retriever_modes"
+    },
+    {
+      "id": "time-postprocessors",
+      "question": "Are there LlamaIndex node postprocessors that rank by recency or time?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["FixedRecencyPostprocessor", "EmbeddingRecencyPostprocessor", "TimeWeightedPostprocessor"],
+      "source": "/python/framework/module_guides/querying/node_postprocessors/node_postprocessors"
+    },
+    {
+      "id": "docstores",
+      "question": "Which document stores are documented in LlamaIndex?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include": ["MongoDB", "Redis", "Firestore", "Couchbase"],
+      "source": "/python/framework/module_guides/storing/docstores"
+    },
+    {
+      "id": "live-example-values",
+      "question": "In the official LlamaIndex node parser docs, what breakpoint_percentile_threshold does the SemanticSplitterNodeParser example use, and what chunk_sizes does the HierarchicalNodeParser example use?",
+      "expect_skill": true,
+      "needs_live": true,
+      "must_include": ["95", "2048", "512", "128"],
+      "source": "/python/framework/module_guides/loading/node_parsers/modules lines 176 and 209"
+    },
+    {
+      "id": "nonexistent-class",
+      "question": "Does LlamaIndex have a PDFTableNodeParser for pulling tables out of documents?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include_any": [["MarkdownElementNodeParser", "UnstructuredElementNodeParser"]],
+      "source": "no such class in api/grep NodeParser; table-aware parsers are the element-based ones"
+    },
+    {
+      "id": "project-verdict",
+      "question": "For our Slack threads, should I write my own chunker or does LlamaIndex already cover it?",
+      "expect_skill": true,
+      "needs_live": false,
+      "must_include_any": [["NodeParser", "TransformComponent"]],
+      "source": "CLAUDE.md: custom logic only as a NodeParser/TransformComponent wrapper"
+    },
+    {
+      "id": "negative-git",
+      "question": "How do I undo my last git commit but keep the changes in my working tree?",
+      "expect_skill": false,
+      "needs_live": false,
+      "must_include_any": [["reset --soft", "reset HEAD~", "reset --mixed"]],
+      "source": "control case: must not trigger the skill"
+    }
+  ]
+}
