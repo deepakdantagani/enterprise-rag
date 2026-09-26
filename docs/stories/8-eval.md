@@ -188,16 +188,21 @@ documents they came from.
 - Reuse: no span is written by our code. OpenInference's `LlamaIndexInstrumentor` hooks
   LlamaIndex's instrumentation dispatcher, the same one `pipeline/observability.py` listens
   to; the function only chooses where spans go.
-- Dependency discipline: two new runtime dependencies, `openinference-instrumentation-llama-index`
-  4.5.2 and `arize-phoenix-otel` 0.17.1 (resolve with the pinned `llama-index-core` 0.14.24,
-  no other pin moves). The Phoenix server itself is not a dependency: it runs on demand with
+- Dependency discipline: two runtime dependencies, `openinference-instrumentation-llama-index`
+  4.5.2 and `opentelemetry-exporter-otlp-proto-http` 1.45.0 (resolve with the pinned
+  `llama-index-core` 0.14.24). EVAL-4b dropped `arize-phoenix-otel`: its
+  `register(protocol="http/protobuf")` raises AttributeError on the exporter's `_headers` with
+  the current OpenTelemetry exporter, so the provider is plain OpenTelemetry (a `Resource` with
+  `openinference.project.name`, a `BatchSpanProcessor`, an OTLP HTTP exporter to
+  `localhost:6006/v1/traces`). A test now takes that default path, and a live check sent a span
+  to the running Phoenix. The Phoenix server itself is not a dependency: it runs on demand with
   `uv run --with arize-phoenix phoenix serve`. Considered and not taken: Langfuse (a server to
   host), MLflow (weaker per-question view).
 
 **Dependencies**
 - APIs: `trace_to_phoenix(project="enterprise-rag-eval", tracer_provider=None) -> TracerProvider`
   in `pipeline/eval/tracing.py`
-- Uses: `openinference.instrumentation.llama_index.LlamaIndexInstrumentor`, `phoenix.otel.register`
+- Uses: `openinference.instrumentation.llama_index.LlamaIndexInstrumentor`, OpenTelemetry's `OTLPSpanExporter` (HTTP)
 - Service Bus: N/A · Database: N/A · UI: Arize Phoenix at `http://localhost:6006` (local)
 
 ---

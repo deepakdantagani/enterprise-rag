@@ -57,6 +57,15 @@ class TraceToPhoenix(unittest.TestCase):
         self.assertTrue(vectors)
         self.assertEqual(set(vectors), {"__REDACTED__"})
 
+    def test_by_default_spans_go_to_phoenix_over_http_under_the_project_name(self):
+        # the first real run failed here: phoenix.otel.register(protocol="http/protobuf") raised
+        # AttributeError on the exporter's missing `_headers`; no test had taken this path
+        LlamaIndexInstrumentor().uninstrument()
+        provider = trace_to_phoenix(project="baseline_sample")
+        [processor] = provider._active_span_processor._span_processors
+        self.assertEqual(provider.resource.attributes["openinference.project.name"], "baseline_sample")
+        self.assertEqual(processor.span_exporter._endpoint, "http://localhost:6006/v1/traces")
+
     def test_doctests(self):
         LlamaIndexInstrumentor().uninstrument()  # the doctest instruments on its own
         self.assertEqual(doctest.testmod(tracing_module).failed, 0)
