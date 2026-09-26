@@ -38,6 +38,25 @@ class SplitMessages(unittest.TestCase):
         text = "eng\n\npriya: Added tasks:\n- Verify SOC2\nDue: 2026-04-02\nNote: owner is Ben\nContent-Type: application/json\n"
         self.assertEqual(len(split_messages(text).messages), 1)
 
+    def test_label_words_measured_by_the_truth_set_stay_inside_their_message(self):
+        text = ("eng\n\nana: design uploaded\nFiles: a.svg\nExpect: 0 errors\nH1: sampling change\n"
+                "Retry-After: 30\nstarted_by: kyle\nB: \"Scale inference predictably\"\n")
+        self.assertEqual(len(split_messages(text).messages), 1)
+
+    def test_a_new_label_word_blocks_only_the_whole_name(self):
+        text = ("eng\n\nkai: hi\nSDK: node-sdk 1.3.9\nSDK Team: PR #482 is ready\n"
+                "b en: paging oncall\nB: \"Scale inference predictably\"\nb en: can we toggle the flag back?\n")
+        self.assertEqual([m.split(":")[0] for m in split_messages(text).messages], ["kai", "SDK Team", "b en", "b en"])
+
+    def test_option_markers_block_only_in_capitals(self):
+        text = ("eng\n\nkai: two options\nB: \"Scale inference predictably\"\nC: \"Prod-ready LLMs\"\n"
+                "b: can we replay those partitions?\n")
+        self.assertEqual([m.split(":")[0] for m in split_messages(text).messages], ["kai", "b"])
+
+    def test_a_bot_named_like_a_new_label_still_speaks(self):
+        text = "eng\n\nkai: hi\nCanary Bot: Canary deploy scheduled for rerank/v2 to 1% traffic.\n"
+        self.assertEqual(len(split_messages(text).messages), 2)
+
     def test_full_names_are_speakers_and_a_labelled_plan_is_not(self):
         text = "eng\n\nMaya Chen: ok\nPriya S.: fine\nConnor O'Brien: agreed\nPlan B: roll back\n"
         self.assertEqual(len(split_messages(text).messages), 3)
@@ -95,7 +114,7 @@ class RealCorpus(unittest.TestCase):
             totals["threads"] += 1
             totals["messages"] += len(split.messages)
             totals["threads_without_messages"] += not split.messages
-        self.assertEqual(totals, {"threads": 285_605, "messages": 5_741_020, "threads_without_messages": 62})
+        self.assertEqual(totals, {"threads": 285_605, "messages": 5_739_660, "threads_without_messages": 64})
 
 
 if __name__ == "__main__":

@@ -3,10 +3,10 @@
 The input is a message from `split_messages` (SLACK-6), or just its first line. SLACK-6 has
 already decided the line opens a message, so this only reads its parts. It reuses SLACK-6's
 SPEAKER_AT_LINE_START, so the two can never disagree on what a speaker line looks like.
-Measured over the 5,741,020 messages:
+Measured over the 5,739,660 messages:
 
-    tom_ae:                   4,978,937   name only
-    Aisha (CS):                 744,702   in brackets
+    tom_ae:                   4,977,672   name only
+    Aisha (CS):                 744,607   in brackets
     Noah - AE:                   17,247   after a dash
     Dan - HelixEdge (SI):           134   both; the brackets win
 
@@ -16,7 +16,7 @@ mixes teams (`CS`, `People Ops`), job roles (`PM`, `AE`), duties (`oncall`) and 
 keeping only the brackets: the speaker line stays in the message text.
 Some lines are written team first (`Legal - Priya:`; roughly 800 by a first-name check, not
 pinned); they are read as written, name `Legal`, since nothing in the line says which part
-is the person. SLACK-8b's truth set can measure how often that matters.
+is the person. SLACK-8b measured it: 13 lines in 3 threads of its truth set, accepted.
 
 A bot is a speaker that one of BOT_RULES fires on; messages per rule, first rule that fires:
 

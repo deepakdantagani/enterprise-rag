@@ -955,24 +955,7 @@
     false
    ]
   },
-  "known_gaps": {
-   "4": {
-    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
-    "parser_says": [
-     "Details",
-     null,
-     false
-    ]
-   },
-   "61": {
-    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
-    "parser_says": [
-     "Commands",
-     null,
-     false
-    ]
-   }
-  }
+  "known_gaps": {}
  },
  "dsid_297332094f044c928a6789f9f5d60b6d__1888881234-billing-followup-action-items.txt": {
   "why": "blank-line layout",
@@ -1942,48 +1925,7 @@
     true
    ]
   },
-  "known_gaps": {
-   "7": {
-    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
-    "parser_says": [
-     "changes",
-     null,
-     false
-    ]
-   },
-   "8": {
-    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
-    "parser_says": [
-     "started_by",
-     null,
-     false
-    ]
-   },
-   "31": {
-    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
-    "parser_says": [
-     "apply_log",
-     null,
-     false
-    ]
-   },
-   "42": {
-    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
-    "parser_says": [
-     "rollback_plan",
-     null,
-     false
-    ]
-   },
-   "46": {
-    "reason": "SLACK-6: a lowercase key inside a bot notice, not a speaker",
-    "parser_says": [
-     "post-check",
-     null,
-     false
-    ]
-   }
-  }
+  "known_gaps": {}
  },
  "dsid_5a2cb66f3fcf4d97b6c40e9d32523f17__1958123456-nimbus-artifact-finalization-workflow.txt": {
   "why": "one-off capitalised single-word speaker (label candidate)",
@@ -2074,16 +2016,7 @@
     false
    ]
   },
-  "known_gaps": {
-   "12": {
-    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
-    "parser_says": [
-     "Files",
-     null,
-     false
-    ]
-   }
-  }
+  "known_gaps": {}
  },
  "dsid_5e556ff416614b848ca4a75c406354a3__1798456780-evidence-demo-access-sideband-log-capture-ask.txt": {
   "why": "blank-line layout",
@@ -4133,16 +4066,7 @@
     false
    ]
   },
-  "known_gaps": {
-   "34": {
-    "reason": "SLACK-6: a label, not a speaker; its word is not in NOT_SPEAKERS yet (SLACK-6b)",
-    "parser_says": [
-     "Expect",
-     null,
-     false
-    ]
-   }
-  }
+  "known_gaps": {}
  },
  "dsid_ceb121321d194dd08416ff8e56b4c244__5001112222-onboard-stall-renewal-escalation.txt": {
   "why": "one-off capitalised single-word speaker (label candidate)",

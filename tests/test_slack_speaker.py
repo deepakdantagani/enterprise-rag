@@ -74,7 +74,7 @@ class RealCorpus(unittest.TestCase):
                 totals["with_team_or_role"] += speaker.team_or_role is not None
                 totals["from_bots"] += speaker.is_bot
                 messages_per_bot_rule[bot_rule(speaker.name, speaker.team_or_role)] += 1
-        self.assertEqual(totals, {"messages": 5_741_020, "with_team_or_role": 762_083, "from_bots": 573_797})
+        self.assertEqual(totals, {"messages": 5_739_660, "with_team_or_role": 761_988, "from_bots": 573_797})
         del messages_per_bot_rule[None]
         self.assertEqual(messages_per_bot_rule,
                          {"name_ends_in_bot": 573_157, "name_starts_with_bot": 444, "team_or_role_is_bot": 196})
