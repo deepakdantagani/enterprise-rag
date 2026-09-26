@@ -39,7 +39,8 @@ tools/
     gmail_profile.py  GMAIL-0    profile: counts only, no rules
 pipeline/gmail/
     cleaning.py    GMAIL-1a,1b clean_thread
-    messages.py    GMAIL-3,7      split_messages, attachments
+    messages.py    GMAIL-3        split_messages
+    attachments.py GMAIL-7    attachment_names
     quotes.py      GMAIL-6    strip_quotes
     headers.py     GMAIL-4    parse_headers
     dates.py       GMAIL-5    normalise_date
@@ -63,7 +64,8 @@ pipeline/gmail/
 | 5a | GMAIL-5a normalise_date (ISO, RFC 2822) | 568,479 dates to one UTC instant; the colon-offset trap; 126 stay unreadable |
 | 5b | GMAIL-5b normalise_date (Gmail display) | 8,595 dates with named zones and a 12-hour clock |
 | 6 | GMAIL-6 strip_quotes | drop the `On … wrote:` block and its `>` lines |
-| 7 | GMAIL-7 attachments | filenames from `Attachment(s):`; **never** from prose `Attached:` |
+| 7a | GMAIL-7a attachments | file names on labelled lines; a value counts only where it holds file names |
+| 7b | GMAIL-7b attachments | bracket lines and bullet lists below an empty label |
 | 8 | GMAIL-8 message_records | assemble the ten fields per message, thread fields from the filename and line 1 |
 | 8b | GMAIL-8b message truth set | 30-40 real messages with hand-checked output; every edge case found in stories 3-6 |
 | 9 | GMAIL-9 messages corpus | write `data/gmail/messages/*.jsonl` + manifest; counts reconcile |
@@ -477,58 +479,76 @@ Shared rules apply. Pure, standard library plus the shared whitespace tidy from 
 
 ---
 
-## GMAIL-7  attachments: filenames, not prose  ⬜
+## GMAIL-7a  attachments: file names on labelled lines  ✅
 
-**Status:** To do.
+**Status:** Done. `pipeline/gmail/attachments.py`, 32 tests. Over all 578,443 message bodies (read after `strip_quotes`): 273,086 labelled lines, 231,421 messages with at least one file name, 347,011 names, 24,873 labelled lines with no name (prose, `none`, promises). The bracket form and the bullet lists are GMAIL-7b.
 
 **Background**
-110,768 threads mention attachments, under five spellings: `Attachment:`,
-`Attachments:`, `attachment:`, `attachments:` and `Attached:`. **`Attached:` is a trap.**
-It is usually a sentence, not a list:
+The first draft said `Attached:` is usually a sentence and must be skipped. **That was wrong.** Of 17,145 `Attached:` lines, 15,223 (88.8%) hold a file name; only 1,752 are prose such as `Attached: sample invoice mock (internal) and entity mapping template.` So the rule does not skip a label; it accepts a value only where it finds file names. Measured on the real lines:
 
-> `Attached: sample invoice mock (internal) and entity mapping template. No need to do a
-> formal review — a short checklist will do.`
+| Label | Lines | With a file name on the line |
+|---|---:|---:|
+| `Attachments:` | 148,567 | 134,208 |
+| `Attachment:` | 85,351 | 79,319 |
+| `Attached:` | 17,145 | 15,223 |
+| `Attachments referenced:` | 7,659 | 6,809 |
+| `Attachment stubs:` / `stub:` | 5,250 | 4,384 |
+| `Attachments included:` | 3,538 | 3,033 |
+| `Attachment(s):` | 1,413 | 1,195 |
 
-Matching it would put a sentence into a metadata field. The rule takes the four
-`Attachment(s):` spellings, and accepts a value only when it looks like filenames.
+Case does not matter (260,400 capitalised, 11,437 lowercase, 79 all capitals), and a bullet before the label (2,793 lines) is allowed. The first draft's "110,768 threads" was not reproduced: about 118,000 threads have a label under a looser set of spellings.
+
+What is and is not a file name (each found by measuring, each has a test):
+- **Shape, not a fixed list:** a word with a dot and a 2 to 8 character extension that starts with a letter. A list of extensions would miss `.gdoc` (223), `.vcf` (115), `.gslides` (85), `.js` (80), `.url` (67), `.sig` (55) and more. Starting the extension with a letter rejects sizes (`1.2MB`, 3,309 tokens), versions (`v1.2`, `TLS1.3`) and `e.g.`.
+- **Rejected:** MIME types (`application/vnd…sheet`, 18,350), email addresses, domains (`.com .net .org .io .co …`), and a type written in capitals inside brackets (`(TAR.GZ, 18MB)`, 7).
+- **Path or link:** the last segment is the name (`Diva/Diva-crossconnect.pdf`, 127 such tokens).
+- **A sentence around a name:** only the space-free word that ends in an extension is kept, so a sentence never enters the field. A name with real spaces (`Q3 Report.pdf`) is cut to `Report.pdf`; a known limit, at most a few hundred of 821 cases, most of which are sentences.
+- **Repeats:** 4,713 messages list the same name twice; one copy is kept, in first-seen order. Names that differ only in case stay separate.
 
 **As a** pipeline developer
-**I want to** pull attachment filenames out of a message block
+**I want to** pull attachment file names out of a message
 **So that** attachments are filterable metadata instead of body text
 
 **Acceptance Criteria (Gherkin)**
 - Given `Attachment: Greenline_PO_3042.pdf (application/pdf)`, Then `["Greenline_PO_3042.pdf"]`
-- Given `Attachments: entity_mapping_template.xlsx, Greenline_SOW_v2.docx`, Then both filenames, in order
-- Given lowercase `attachments:`, Then it matches
-- Given `Attached: sample invoice mock (internal) and entity mapping template. No need…`, Then `[]` — the line is prose and stays in the body
-- Given a value with no `.<ext>` token, Then `[]`
-- Given a message with no attachment line, Then `[]`
+- Given `Attachments: entity_mapping_template.xlsx, Greenline_SOW_v2.docx`, Then both names, in order
+- Given a label in any case, with a bullet or indent before it, and the labels `Attachment(s)`, `Attached`, `Attachments referenced`, `Attachments included`, `Attachment stub(s)`, Then it is read
+- Given `Attached: sample invoice mock (internal) and entity mapping template.`, `none`, `(will attach)` or `detailed-sizing-spreadsheet (to be uploaded)`, Then `[]`
+- Given `Novus-VPC-Requirements.pdf (1.2MB)` or a MIME type in brackets, Then only the file name is returned
+- Given semicolons, the word `and`, square brackets, a name inside round brackets, or trailing punctuation, Then the names are still found
+- Given a line that does not start with the label (a sentence, a `>` quote, `Attaching:`, `Attachments in thread:`, a bracket line, or bullet lines below an empty label), Then it is not read
+- Given a name listed twice, Then it appears once; given no label, Then `[]`
 
 **Example with real data**
 ```
-'Attachment: Greenline_PO_3042.pdf (application/pdf)'          → ['Greenline_PO_3042.pdf']
-'Attachments: entity_mapping_template.xlsx, Greenline_SOW_v2.docx'
-                                                               → ['entity_mapping_template.xlsx',
-                                                                  'Greenline_SOW_v2.docx']
-'attachments: ClearWave_MSA_redline_v1.docx'                   → ['ClearWave_MSA_redline_v1.docx']
-'Attached: sample invoice mock (internal) and entity mapping…' → []
+'Attachment: Greenline_PO_3042.pdf (application/pdf)'                 -> ['Greenline_PO_3042.pdf']
+'Attachments: entity_mapping_template.xlsx, Greenline_SOW_v2.docx'    -> ['entity_mapping_template.xlsx', 'Greenline_SOW_v2.docx']
+'Attachments: MAP-template-v1.gdoc (link), MAP-slate-v1.gslides (link)' -> ['MAP-template-v1.gdoc', 'MAP-slate-v1.gslides']
+'Attached: sample invoice mock (internal) and entity mapping template.' -> []
 ```
 
+**Decisions:** read the text after `strip_quotes` (7,724 attachment lines sit inside quotes and would be counted twice); a shape rule, not a list of extensions; sentence text never enters the field; split the story so this PR stays small.
+
 **Non-functional Requirements**
-Shared rules apply. Pure.
+Shared rules apply. Pure, standard library only.
 
-*Maintainability:* one function, no state; the id scheme is documented beside it because
-changing it invalidates every stored vector.
-*Observability:* audit row `duplicate_chunk_id` must be 0 over the corpus. The MIME string in parentheses is discarded; no attachment
-bytes exist in the corpus, so a type adds nothing.
+*Maintainability:* the label pattern, the separators, the MIME prefixes and the domain endings are named constants at the top of the module.
+*Observability:* audit row `attachment_unread_lines` counts labelled lines with no file name (24,873) and lines that name attachments in a form 7a does not read (`Attaching:` 3,633 lines, other labels), each with three real examples.
 
-*Maintainability:* the accepted spellings and the filename test are two constants at the
-top of the module, next to the `Attached:` prose example that explains the exclusion.
-*Observability:* audit row `attachment_prose` counts lines that look like an attachment
-header but hold no filename — the rule that would silently put a sentence into metadata.
-Expect ~2,900 excluded `Attached:` lines and near zero false accepts.
+**Dependencies** APIs data contracts: GMAIL-6 · Service Bus: N/A · Database: N/A · UI: N/A
 
-**Dependencies** APIs data contracts: GMAIL-3 · Service Bus: N/A · Database: N/A · UI: N/A
+---
+
+## GMAIL-7b  attachments: bracket lines and bullet lists  ⬜
+
+**Status:** To do. Built on GMAIL-7a.
+
+Two more forms carry the same information and are not read by 7a (measured over all bodies, text after `strip_quotes`):
+- **Bracket lines, one file per line:** `[Attachment: Helios_MSA_redline.docx (docx - redline)]`, 55,774 lines. Includes `[Attachment: none]` and `[Attachment stubs included above]`.
+- **Names on bullet lines below an empty label:** `Attachments:` then `- SustainCo_Scorecard.xlsx (xlsx)`, 5,781 label lines (4,315 under `Attachments:`).
+- **`Attaching:` lines** (3,633) hold the name inside a sentence (`Attaching: initial procurement checklist we use (Procurement_requirements.xlsx).`); decide here whether to read them.
+
+Reuses `file_name_of` from 7a for what counts as a name. Same edge-case discipline: inventory the real lines first, then the tests.
 
 ---
 
