@@ -1,11 +1,17 @@
 """EVAL-3b: baseline_pipeline, the naive baseline as one LlamaIndex IngestionPipeline.
+EVAL-3d3: ingest_corpus, the corpus through that pipeline batch by batch.
 
 Run: uv run python -m unittest discover tests
 """
 import doctest
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from llama_index.core import Document, MockEmbedding
 from llama_index.core.node_parser import SentenceSplitter
@@ -15,7 +21,8 @@ from llama_index.core.vector_stores import SimpleVectorStore
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import baseline as baseline_module  # noqa: E402
-from pipeline.eval.baseline import baseline_pipeline  # noqa: E402
+from pipeline.eval.baseline import baseline_pipeline, ingest_corpus  # noqa: E402
+from pipeline.observability import events_logged_to  # noqa: E402
 
 LONG_PAGE = Document(id_="dsid_a", text="Roll back the release in every region. " * 150)
 SHORT_PAGE = Document(id_="dsid_b", text="Pin the previous runtime version.")
@@ -31,6 +38,21 @@ class CountingEmbedding(MockEmbedding):
 
 def pipeline_with(embed_model):
     return baseline_pipeline(embed_model, SimpleVectorStore(), SimpleDocumentStore())
+
+
+ROWS = [{"doc_id": f"dsid_{n}", "source_type": "confluence", "title": f"page {n}",
+         "content": f"Runbook {n}: roll back region {n}. " * (40 if n == 0 else 1)} for n in range(5)]
+
+
+def ingest_five_pages(**options):
+    folder = Path(tempfile.mkdtemp())
+    pq.write_table(pa.Table.from_pylist(ROWS), folder / "documents.parquet")
+    vector_store = SimpleVectorStore()
+    with events_logged_to(folder / "events.jsonl"):
+        count = ingest_corpus(folder / "documents.parquet", vector_store, MockEmbedding(embed_dim=8), batch_size=2, **options)
+    events = [json.loads(line) for line in (folder / "events.jsonl").read_text().splitlines()]
+    embedded = {vector_store.data.text_id_to_ref_doc_id[chunk_id] for chunk_id in vector_store.data.embedding_dict}
+    return count, embedded, [event for event in events if event["event"] == "StageDone"]
 
 
 class BaselinePipeline(unittest.TestCase):
@@ -57,6 +79,23 @@ class BaselinePipeline(unittest.TestCase):
         embedded_once = embed_model.texts_embedded
         self.assertEqual(pipeline.run(documents=[LONG_PAGE, SHORT_PAGE]), [])
         self.assertEqual(embed_model.texts_embedded, embedded_once)
+
+    def test_ingest_embeds_every_document_and_counts_them(self):
+        count, embedded, _ = ingest_five_pages()
+        self.assertEqual((count, embedded), (5, {f"dsid_{n}" for n in range(5)}))
+
+    def test_ingest_skips_documents_already_embedded(self):
+        _, embedded, _ = ingest_five_pages(skip_doc_ids={"dsid_1", "dsid_2"})
+        self.assertEqual(embedded, {"dsid_0", "dsid_3", "dsid_4"})
+
+    def test_ingest_can_keep_only_a_sample(self):
+        _, embedded, _ = ingest_five_pages(keep_doc_ids={"dsid_0", "dsid_4"})
+        self.assertEqual(embedded, {"dsid_0", "dsid_4"})
+
+    def test_ingest_logs_one_stage_done_per_batch(self):
+        _, _, batches = ingest_five_pages(skip_doc_ids={"dsid_1"})
+        self.assertEqual([(event["stage"], event["files"]) for event in batches],
+                         [("embed batch 0", 1), ("embed batch 1", 2), ("embed batch 2", 1)])
 
     def test_doctests(self):
         self.assertEqual(doctest.testmod(baseline_module).failed, 0)

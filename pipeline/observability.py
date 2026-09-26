@@ -15,6 +15,8 @@ gives one line:
 The handler sits on LlamaIndex's root dispatcher, so the same log also holds the library's
 own events (embedding, retrieval) when a later stage runs them: one trace per run.
 Events carry `source` ("slack", "gmail", "linear"), so a new source adds a value, not a module.
+`only=PipelineEvent` keeps just our events: a run that embeds ~1.3M chunks would otherwise log
+every vector, since LlamaIndex's embedding events carry them (EVAL-3d3).
 Observing never changes a pipeline's output: the handler only writes to its log file. The
 dispatcher swallows handler errors, so a log line lost to a full disk is lost silently.
 """
@@ -67,6 +69,7 @@ class JsonLinesEventHandler(BaseEventHandler):
     """Writes each event as one line of JSON: its name first, then its fields."""
 
     log_path: Path
+    only: type[BaseEvent] = BaseEvent
     _log_file: Any = PrivateAttr(default=None)
 
     def open(self) -> None:
@@ -77,15 +80,17 @@ class JsonLinesEventHandler(BaseEventHandler):
         self._log_file.close()
 
     def handle(self, event: BaseEvent, **kwargs: Any) -> None:
+        if not isinstance(event, self.only):
+            return
         fields = {name: value for name, value in event.model_dump(mode="json").items()
                   if name not in FIELDS_NOT_LOGGED}
         self._log_file.write(json.dumps({"event": type(event).__name__} | fields) + "\n")
 
 
 @contextmanager
-def events_logged_to(log_path: Path) -> Iterator[None]:
-    """Log every event (ours and LlamaIndex's) to log_path while the block runs, then detach."""
-    handler = JsonLinesEventHandler(log_path=log_path)
+def events_logged_to(log_path: Path, only: type[BaseEvent] = BaseEvent) -> Iterator[None]:
+    """Log every event of type `only` (by default ours and LlamaIndex's) to log_path while the block runs, then detach."""
+    handler = JsonLinesEventHandler(log_path=log_path, only=only)
     handler.open()
     root_dispatcher.add_event_handler(handler)
     try:
