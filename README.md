@@ -24,6 +24,7 @@ pipeline/                 active ingestion code (a Python package), pure functio
     thread.py             SLACK-8: parse_thread(file_name, text) -> Thread(doc_id, slug, channel, header, messages, participants)
     documents.py          SLACK-9: thread_documents(clean_dir): the clean threads as Documents, id = dsid
     nodes.py              SLACK-9: SlackThreadParser, a LlamaIndex NodeParser: thread Document -> one TextNode
+    chunker.py            SLACK-10: SlackMessageChunker: a node over 2,048 tokens -> balanced pieces cut between messages
   nodes.py                planned (PARSE-9): LlamaIndex MarkdownNodeParser + SentenceSplitter, stable ids, line ranges
 tests/                    unit tests, 13 fixture documents, golden corpus fingerprints, fixtures/headings/: 10 real pages with hand-decided headings; fixtures/slack_truth/: 50 real Slack threads with hand-decided message starts (SLACK-8b)
 tools/                    audit and measurement scripts, outside pipeline/: slack_profile.py (SLACK-0); planned PARSE-11, PARSE-14

@@ -125,7 +125,8 @@ class OneThreadOneNode(unittest.TestCase):
                 SlackThreadParser().get_nodes_from_documents([document])
 
     def test_library_settings_that_would_change_our_nodes_are_refused(self):
-        for setting in ({"include_metadata": True}, {"id_func": lambda i, document: "x"}):
+        for setting in ({"include_metadata": True}, {"include_prev_next_rel": True},
+                        {"id_func": lambda i, document: "x"}):
             with self.assertRaises(ValueError, msg=setting):
                 SlackThreadParser(**setting)
 

@@ -57,7 +57,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-8b  truth set | ✅ |
 | SLACK-6b  label words from the truth set | ✅ |
 | SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ✅ |
-| SLACK-10  `SlackMessageChunker` | ⬜ |
+| SLACK-10  `SlackMessageChunker` | ✅ |
 | SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
 | SLACK-12  recall@20 on the benchmark questions | ⬜ |
 
@@ -1087,7 +1087,7 @@ metadata (their slug repeats it); every node keeps its char offsets.
   would put in place of ours).
 - **The parser owns its metadata, ids and links.** `include_metadata` and
   `include_prev_next_rel` default to False (one node per thread: nothing to copy or link), and
-  `include_metadata=True` or a custom `id_func` is refused.
+  turning either on, or a custom `id_func`, is refused (since SLACK-10, via `SlackNodeParser`).
 - **Cache key.** The parser has its own `class_name` and a `rules_fingerprint` (sha256 of
   channel.py, messages.py, speaker.py, thread.py, nodes.py) among its settings, so a cache kept
   across runs misses after a rule change instead of replaying old nodes.
@@ -1155,46 +1155,110 @@ APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-10  `SlackMessageChunker`: split over-budget threads between messages ⬜
+## SLACK-10  `SlackMessageChunker`: split over-budget threads between messages ✅
 
-**Status** To do
+**Status** Done
 **As a** retrieval index whose unit is the conversation
 **I want to** a node over the token ceiling split into nodes on message boundaries
-**So that** ~99% of threads reach the embedder whole and no message is cut in half
+**So that** nearly every thread reaches the embedder whole and no message is cut in half
 
-A second custom `NodeParser` (or `TransformComponent`), placed after `SlackThreadParser` in the
-pipeline. A node under the ceiling passes through untouched; an over-budget node is cut
-between messages, never inside one. `SentenceSplitter` alone does not do this: it cuts by
-size wherever the size runs out.
+`pipeline/slack/chunker.py`. A second custom `NodeParser`, placed after `SlackThreadParser`:
+`IngestionPipeline(transformations=[SlackThreadParser(), SlackMessageChunker(), embed_model])`.
+A node at or under the ceiling comes back as the same object; an over-budget node is cut
+between messages, never inside one. `SentenceSplitter` alone does not do this: it cuts by size
+wherever the size runs out.
 
-Measured by the design: thread tokens are p50 821, p90 1,256, p99 1,725, max 3,101. At a
-2,048-token ceiling about 99% of threads never split. Re-measure with the embedding model's
-own tokenizer when it is chosen.
+**Measured, all 285,597 nodes**, with LlamaIndex's default tokenizer (tiktoken `cl100k_base`),
+counted on what the embedder sees (`get_content(MetadataMode.EMBED)`: the metadata lines plus
+the text):
+
+| | p50 | p90 | p99 | max |
+|---|---|---|---|---|
+| tokens per node | 831 | 1,254 | 1,714 | 4,143 |
+
+The design's 821 / 1,256 / 1,725 / 3,101 came from 4 characters per token on slice 1 only; the
+percentiles hold (3.99 characters per token), the maximum did not.
+
+| ceiling | nodes over it | threads with one message over it |
+|---|---|---|
+| 512 | 253,575 (89%) | 468 |
+| 1,024 | 75,198 | 69 |
+| **2,048** | **697 (0.24%)** | **0** (longest message 1,752) |
+| 4,096 | 2 | 0 |
+| 8,192 | 0 | 0 |
+
+**Built.** `SlackMessageChunker(max_tokens=2048, tokenizer=None)`:
+- `pieces(node)`: `[node]` when it fits; otherwise the fewest balanced pieces that all fit.
+- `message_units(node)`: `split_messages` (SLACK-6) redone on the node text; text before the
+  first message goes with it. It finds `last_turn - first_turn + 1` messages in all 285,597
+  nodes; a node where it does not is an error (the rules changed since the node was made).
+- `balanced_cuts(sizes, pieces)`: where to cut so the largest piece is as small as the message
+  boundaries allow (then the most even spread). Walking forward toward an equal share is not
+  enough past 2 pieces: messages of 2, 8, 5, 2, 1, 5, 1 fit 4 pieces of 8 but that walk needs 5.
+- `piece_node(...)`: the thread's metadata, its own `first_turn`/`last_turn`, id
+  `nodes.node_id(doc_id, first_turn, last_turn)`, the same SOURCE link to the thread Document,
+  and its char offsets in that Document.
+
+**Measured result at 2,048:** 284,900 nodes pass through; 693 threads become 2 pieces and 4
+become 3: 286,298 nodes, all ids distinct, the largest piece within 2,048, the smallest 666.
+
+**Decisions** (2026-09-26):
+- **Ceiling 2,048 by default, a setting.** It is a retrieval choice, not a model limit: at
+  8,192 nothing is ever cut; at 512 89% of threads are and 468 need a cut inside a message.
+  SLACK-11 passes the embedding model's tokenizer and may change the ceiling; SLACK-12's
+  recall@20 can compare ceilings.
+- **Balanced, not greedy.** Filling piece 1 to the brim leaves a tiny tail: the smallest real
+  thread over the ceiling (`dsid_19189bd1...-stream-protocol-paging-rca-coord`, 2,049 tokens,
+  40 messages) becomes 2,008 + 15 tokens, a lone "noted, will ping"; 279 greedy pieces are under
+  200 tokens. Balanced gives turns 0-19 and 20-39, and no piece under 666.
+- **Participants: the whole thread's**, on every piece, so every piece of a thread says who
+  was in it.
+- **A message longer than the ceiling is an error**, not a `SentenceSplitter` cut: at 2,048
+  there are none. A lower ceiling that needs one has to build that step first.
+- **Pieces link to the thread Document**, not to the node they were cut from, so the docstore
+  still replaces every piece of a thread on a re-run.
+- **Shared with SLACK-9**: `SlackNodeParser` (in `nodes.py`) keeps `include_metadata`,
+  `include_prev_next_rel` and a custom `id_func` off. The cache key holds `max_tokens` and a
+  `rules_fingerprint` of whitespace.py (code fences), messages.py, nodes.py and chunker.py. The
+  tokenizer is not in it (as in `SentenceSplitter`): clear a kept cache when the tokenizer
+  changes. The tokenizer is a field, so it survives pickling for `num_workers`.
+- **Whole threads, once.** A piece may not re-split into its turns (`maria gonzalez:` is a
+  speaker only when the name opens 2 lines; inside one piece it may open 1: 32 of 6,770 real
+  pieces at 512), so chunking a piece again to a lower ceiling is an error. At the same ceiling
+  every piece fits and passes through.
+- **Clear errors** for a node that is not from `SlackThreadParser` and for a ceiling below the
+  metadata lines alone.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: a normal thread passes through
-  Given the NovaCare node, about 780 tokens, and a ceiling of 2,048
-  Then the chunker returns the same node unchanged
+  Given the NovaCare node and a ceiling of 2,048
+  Then the chunker returns the same node object
 
 Scenario: an over-budget thread splits on a message boundary
-  Given a thread of 3,101 tokens and a ceiling of 2,048
-  Then it becomes 2 nodes, each with its own first_turn and last_turn
+  Given the real thread 19189bd1, 2,049 tokens over 40 messages, and a ceiling of 2,048
+  Then it becomes 2 nodes, turns 0-19 and 20-39, of about equal size
   And no message is cut in half
-  And every message lands in exactly one node
-  And both keep the thread's channel, participants and doc_id
+  And the two texts joined give back the node text
+  And both keep the thread's channel, participants and doc_id, and link to the thread Document
 
 Scenario: ids are stable
   Then a node id is the UUID nodes.node_id(doc_id, first_turn, last_turn) and does not change between runs
-```
 
-A single message longer than the ceiling, if any exists, is the one place `SentenceSplitter`
-is allowed; count them first.
+Scenario: chunking twice changes nothing
+  Given the chunker's own output
+  Then running it again returns the same nodes
+
+Scenario: a message longer than the ceiling
+  Then the chunker raises instead of cutting inside the message
+```
 
 ### Non-functional Requirements
 
-Shared list.
+Shared list. The real-corpus test pins every count above (about 2.5 minutes). SLACK-11 must keep
+the ceiling at or above the longest message plus its metadata lines (1,752 tokens + the prefix),
+or build the `SentenceSplitter` step first: one longer message stops the whole run.
 
 ### Dependencies
 

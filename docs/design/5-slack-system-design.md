@@ -34,7 +34,7 @@
 | FR-7 | Every message yields its speaker, team or role, and whether the speaker is a bot | SLACK-7 |
 | FR-8 | Every thread becomes one record: channel, participants, ordered messages, doc id | SLACK-8 (record), SLACK-8b (truth set) |
 | FR-9 | A thread `Document` becomes a `TextNode` carrying channel and participants into the embedded text, via a custom `NodeParser` | SLACK-9 |
-| FR-10 | A node over the token ceiling splits on a message boundary; ~99% pass through whole | SLACK-10 |
+| FR-10 | A node over the token ceiling splits on a message boundary into balanced pieces; 99.76% pass through whole at 2,048 | SLACK-10 |
 | FR-11 | An `IngestionPipeline` embeds and indexes the nodes for both dense and lexical retrieval | SLACK-11 |
 | FR-12 | Retrieval quality is measured as recall@20 on the benchmark's Slack questions | SLACK-12 |
 
@@ -76,9 +76,13 @@ Measured over all 58 slices unless a row says otherwise.
 |---|---|---|---|---|
 | tokens | 821 | 1,256 | 1,725 | 3,101 |
 
+Re-measured in SLACK-10 over all 285,597 nodes with LlamaIndex's default tokenizer (tiktoken
+`cl100k_base`), on the embedded text: p50 831, p90 1,254, p99 1,714, **max 4,143** (slice 1
+missed the largest threads).
+
 Every thread fits in an 8k embedding window with room to spare. Unlike Confluence, where
 every page had to be split, **splitting here is the exception**: at a 2,048-token ceiling
-about 99% of threads are never cut.
+697 nodes (0.24%) are cut, always between messages; no single message is over 2,048.
 
 **Speakers per thread** (slice 1):
 
@@ -260,7 +264,7 @@ Checked against the LlamaIndex docs on 2026-09-23, re-checked 2026-09-24 (NFR-7)
 | Split chat by speaker | node parsers: `SentenceSplitter`, `TokenTextSplitter`, `SemanticSplitter`, `Markdown`/`JSON`/`HTML`, `Hierarchical`; add-ons `chonkie`, `slide`, `docling` | **None fits**, re-checked 2026-09-24: they cut by size, meaning or markup, and none knows a speaker line. So the parser is ours, wrapped as a `NodeParser`. |
 | Skip work already done on a re-run (NFR-3) | `IngestionCache`, `pipeline.persist()` / `.load()` | **Use it.** Each node+transformation pair is hashed and cached. This is most of what a hand-written resume would do. |
 | Dedup and upsert by document id | docstore + `refresh_ref_docs()`, `upsert` | **Use it** for index-side identity, keyed on the dsid. Our `_manifest.json` stays, because it answers a different question — which raw bytes produced which clean bytes — and the docstore does not track that. |
-| Split an over-budget thread | `SentenceSplitter` | **Not for the thread**: it cuts wherever the size runs out, mid-message. SLACK-10 cuts between messages; `SentenceSplitter` only for a single message longer than the ceiling, if any exists. |
+| Split an over-budget thread | `SentenceSplitter` | **Not for the thread**: it cuts wherever the size runs out, mid-message. SLACK-10 cuts between messages into balanced pieces. No message is over 2,048 tokens, so `SentenceSplitter` is not used; a longer message is an error. |
 | Put channel and participants into the embedded text | `TextNode.metadata` + `text_template` + `metadata_template` + `excluded_embed_metadata_keys` | **Use it.** A node already renders `{metadata_str}\n\n{content}` with `{key}: {value}` per line, and can exclude a key from the embedded text while keeping it on the node. So SLACK-9's parser sets fields; it does **not** hand-build a header string. |
 | Lexical retrieval | `BM25Retriever` | **Use it.** |
 | Combine dense and lexical | `QueryFusionRetriever` (reciprocal rank fusion, relative score fusion) | **Use it.** |

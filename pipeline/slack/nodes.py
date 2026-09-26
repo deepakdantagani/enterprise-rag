@@ -107,34 +107,40 @@ NODE_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "enterprise-rag/slack/nodes")
 RULE_FILES = ("channel.py", "messages.py", "speaker.py", "thread.py", "nodes.py")  # what a node depends on
 
 
-def rules_fingerprint() -> str:
+def rules_fingerprint(rule_files: Sequence[str] = RULE_FILES) -> str:
     """sha256 of the rule files: part of the parser's settings, so of IngestionPipeline's cache
     key. A cache kept across runs then misses after any rule change instead of replaying old nodes."""
     here = Path(__file__).parent
-    return hashlib.sha256(b"".join((here / name).read_bytes() for name in RULE_FILES)).hexdigest()
+    return hashlib.sha256(b"".join((here / name).read_bytes() for name in rule_files)).hexdigest()
 
 
-class SlackThreadParser(NodeParser):
+class SlackNodeParser(NodeParser):
+    """What SLACK-9 and SLACK-10 share: our nodes carry their own metadata, ids and links, so
+    the library settings that would change them are off and cannot be turned on."""
+
+    include_metadata: bool = Field(default=False, description="Our node sets its own metadata.")
+    include_prev_next_rel: bool = Field(default=False, description="A thread is one conversation: nothing to link.")
+
+    @model_validator(mode="after")
+    def refuse_settings_that_would_change_our_nodes(self) -> "SlackNodeParser":
+        if self.include_metadata or self.include_prev_next_rel or self.id_func is not default_id_func:
+            raise ValueError(f"{self.class_name()} sets its own metadata, ids and links; "
+                             "include_metadata, include_prev_next_rel and id_func cannot be changed")
+        return self
+
+
+class SlackThreadParser(SlackNodeParser):
     """One TextNode per clean Slack thread Document (from `thread_documents`).
 
     Each Document must be a root Document with `file_name` in its metadata and the thread's
     dsid as its id: the docstore recognises a thread on a re-run by that id.
     """
 
-    include_metadata: bool = Field(default=False, description="Our node sets its own metadata.")
-    include_prev_next_rel: bool = Field(default=False, description="One node per thread: nothing to link.")
     rules_fingerprint: str = Field(default_factory=rules_fingerprint, description="Changes the cache key.")
 
     @classmethod
     def class_name(cls) -> str:
         return "SlackThreadParser"
-
-    @model_validator(mode="after")
-    def refuse_settings_that_would_change_our_nodes(self) -> "SlackThreadParser":
-        if self.include_metadata or self.id_func is not default_id_func:
-            raise ValueError("SlackThreadParser sets its own metadata and ids; "
-                             "include_metadata and id_func cannot be changed")
-        return self
 
     def _parse_nodes(self, nodes: Sequence[BaseNode], show_progress: bool = False, **kwargs: Any) -> List[BaseNode]:
         documents = get_tqdm_iterable(nodes, show_progress, "Parsing Slack threads")  # the library's bar
