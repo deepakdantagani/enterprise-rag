@@ -22,41 +22,65 @@ Only `channel` and `participants` are embedded: an identical prefix on every nod
 when it is unknown (9,053 threads). Roles need no field; they are in the speaker lines.
 
 A complete node, for reference: the real NovaCare thread, read with SimpleDirectoryReader's
-defaults (text shortened; the rest printed as the code builds it). Where each key comes from:
-[ours] this module, [reader] SimpleDirectoryReader, copied onto the node by LlamaIndex,
-[lib] LlamaIndex itself.
+defaults (tests/fixtures/slack_truth/, dsid_a4e702bd...__1793045678-novacare-vra-check.txt).
 
-    TextNode(
-      id_='baf7ae0d43d3e0f6...',            [ours] sha256("a4e702bd...:0:15"), same every run
-      embedding=None,                       [lib] filled by the embed model (SLACK-11)
-      metadata={
-        'file_path': '.../dsid_a4e702bd...novacare-vra-check.txt',   [reader] hidden
-        'file_name': 'dsid_a4e702bd...__1793045678-novacare-vra-check.txt',  [reader] hidden
-        'file_type': 'text/plain', 'file_size': 2202,                [reader] hidden (bytes)
-        'creation_date': '2026-09-25', 'last_modified_date': '2026-09-25',
-                                            [reader] hidden: the file's copy date, not the chat's
-        'channel': 'customer-success',      [ours] channel_of, SLACK-5; embedded
-        'participants': 'Aisha, Priya, Ben, Tom, questionnaire-bot',
-                                            [ours] speakers, SLACK-7/8, joined; embedded
-        'doc_id': 'a4e702bd03254699b0e7bed0000972ab',   [ours] file name, SLACK-8; LLM only
-        'channel_route': 'line1',           [ours] SLACK-5; hidden (SLACK-12 splits on it)
-        'first_turn': 0, 'last_turn': 15},  [ours] turn_range; hidden
-      excluded_embed_metadata_keys=['doc_id', 'channel_route', 'first_turn', 'last_turn',
-        'file_path', 'file_name', 'file_type', 'file_size', 'creation_date', 'last_modified_date'],
-      excluded_llm_metadata_keys=[the same, minus 'doc_id'],
-      relationships={SOURCE: RelatedNodeInfo(node_id='a4e702bd...', node_type=DOCUMENT,
-                                             metadata={the 6 file fields}, hash='5dcf1544...')},
-                                            [ours] the link; [lib] its type, copy and hash
-      text="Aisha (CS): Hey team — NovaCare sent an updated vendor risk assessment...
-            ...questionnaire-bot: Thread closed by inactivity after 48h (reminder set for 2026-03-30).\n",
-                                            [ours] node_text: the clean file minus 'customer-success\n\n'
-      start_char_idx=18, end_char_idx=2192, [lib] where the text sits in the Document
-      metadata_template='{key}: {value}', metadata_separator='\n',
-      text_template='{metadata_str}\n\n{content}', mimetype='text/plain')   [lib] defaults
+1. What each reader of the node sees (LlamaIndex renders these from the fields below)
+
+    embedding model, get_content(MetadataMode.EMBED):
+        channel: customer-success
+        participants: Aisha, Priya, Ben, Tom, questionnaire-bot
+
+        Aisha (CS): Hey team — NovaCare sent an updated vendor risk assessment...
+
+    answering LLM, get_content(MetadataMode.LLM): the same, plus one line to cite from:
+        doc_id: a4e702bd03254699b0e7bed0000972ab
+
+2. Identity and text
+
+    id_             baf7ae0d43d3e0f6...        ours: sha256("a4e702bd...:0:15"), same every run
+    text            "Aisha (CS): Hey team..."  ours: the clean file minus "customer-success\n\n"
+    start_char_idx  18                         library: where the text starts in the Document
+    end_char_idx    2192                       library: where it ends
+    embedding       None                       library: filled by the embed model (SLACK-11)
+
+3. metadata: 12 keys, and who sees each
+
+    key                 value                        from                        seen by
+    channel             customer-success             ours, channel_of (SLACK-5)  embed + LLM
+    participants        Aisha, Priya, Ben, Tom,      ours, speakers (SLACK-7/8)  embed + LLM
+                        questionnaire-bot
+    doc_id              a4e702bd0325...              ours, file name (SLACK-8)   LLM only
+    channel_route       line1                        ours, channel_of (SLACK-5)  hidden
+    first_turn          0                            ours, turn_range            hidden
+    last_turn           15                           ours, turn_range            hidden
+    file_path           .../dsid_a4e702bd....txt     reader                      hidden
+    file_name           dsid_a4e702bd...__17930...   reader                      hidden
+    file_type           text/plain                   reader                      hidden
+    file_size           2202 (bytes, not chars)      reader                      hidden
+    creation_date       2026-09-25                   reader: file copy date      hidden
+    last_modified_date  2026-09-25                   reader: file copy date      hidden
+
+    "hidden" is set by two lists on the node, both ours:
+    excluded_embed_metadata_keys  every key except channel and participants
+    excluded_llm_metadata_keys    the same, minus doc_id
+    The reader keys reach the node because LlamaIndex copies the Document's metadata onto it.
+    A thread with no message has no first_turn/last_turn; an unknown channel, no channel.
+
+4. Link to the Document, and library defaults
+
+    relationships[SOURCE]  node_id  a4e702bd0325...   the Document's id (the dsid)
+                           type     DOCUMENT
+                           hash     5dcf1544...       library: tells the docstore if it changed
+                           metadata the 6 reader keys
+    metadata_template   "{key}: {value}"               library defaults, not set by us
+    metadata_separator  "\n"
+    text_template       "{metadata_str}\n\n{content}"
+    mimetype            text/plain
 
 The node text is the thread minus its channel line, and minus any line that is only the
-thread's own id (`dsid_02f44014...`: line 1 in 151 threads, line 3 in 7 more). The rest of the header stays: 157 threads carry real text
-there (a summary, an odd speaker line) and 64 have no message at all.
+thread's own id (`dsid_02f44014...`: line 1 in 151 threads, line 3 in 7 more). The rest of the
+header stays: 157 threads carry real text there (a summary, an odd speaker line) and 64 have
+no message at all.
 
     >>> node_id("47db1d5b12a44a9885495cde5305c45d", 0, 5)[:12]
     '18577a92a262'
