@@ -12,7 +12,9 @@ the local Phoenix server by default, or a given provider (the tests pass an in-m
 
 Two settings from the first sample run (207 docs, 822 chunks): embedding vectors are left out of
 the spans, because 1,024 numbers per chunk pushed one export batch to 12 MB; and spans go over
-HTTP, because Phoenix's gRPC receiver rejects any message over 4 MB.
+HTTP, because Phoenix's gRPC receiver rejects any message over 4 MB. A span keeps up to 1,024
+attributes: a 50-chunk retrieval writes ~200, and OpenTelemetry's default of 128 dropped the
+best-ranked chunks from Phoenix in the first `--sample` run ("Attributes dict is full").
 
 The provider is plain OpenTelemetry, not phoenix.otel.register: register(protocol="http/protobuf")
 in arize-phoenix-otel 0.17.1 raises AttributeError on the HTTP exporter's `_headers`, which
@@ -22,7 +24,7 @@ Start the UI first, then open http://localhost:6006:
 
     uv run --with arize-phoenix phoenix serve
 
-    >>> from opentelemetry.sdk.trace import TracerProvider
+    >>> from opentelemetry.sdk.trace import SpanLimits, TracerProvider
     >>> provider = TracerProvider()
     >>> trace_to_phoenix(tracer_provider=provider) is provider
     True
@@ -34,16 +36,24 @@ from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
 from openinference.semconv.resource import ResourceAttributes
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace import SpanLimits, TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 
 PHOENIX_PROJECT = "enterprise-rag-eval"
 PHOENIX_TRACES = "http://localhost:6006/v1/traces"  # Phoenix's OTLP-over-HTTP receiver
+SPAN_ATTRIBUTES = 1024  # a 50-chunk retrieval writes ~200; OpenTelemetry's default of 128 drops the best-ranked
+
+
+def phoenix_provider(project: str, exporter: Optional[SpanExporter] = None) -> TracerProvider:
+    """Spans tagged with the Phoenix project, batched to `exporter` (Phoenix over HTTP by default)."""
+    provider = TracerProvider(resource=Resource({ResourceAttributes.PROJECT_NAME: project}),
+                              span_limits=SpanLimits(max_span_attributes=SPAN_ATTRIBUTES))
+    provider.add_span_processor(BatchSpanProcessor(exporter or OTLPSpanExporter(endpoint=PHOENIX_TRACES)))
+    return provider
 
 
 def trace_to_phoenix(project: str = PHOENIX_PROJECT, tracer_provider: Optional[TracerProvider] = None) -> TracerProvider:
     if tracer_provider is None:
-        tracer_provider = TracerProvider(resource=Resource({ResourceAttributes.PROJECT_NAME: project}))
-        tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=PHOENIX_TRACES)))
+        tracer_provider = phoenix_provider(project)
     LlamaIndexInstrumentor().instrument(tracer_provider=tracer_provider, config=TraceConfig(hide_embeddings_vectors=True))
     return tracer_provider
