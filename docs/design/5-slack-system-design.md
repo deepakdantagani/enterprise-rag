@@ -34,7 +34,7 @@
 | FR-7 | Every message yields its speaker, team or role, and whether the speaker is a bot | SLACK-7 |
 | FR-8 | Every thread becomes one record: channel, participants, ordered messages, doc id | SLACK-8 (record), SLACK-8b (truth set) |
 | FR-9 | A thread `Document` becomes a `TextNode` carrying channel and participants into the embedded text, via a custom `NodeParser` | SLACK-9 |
-| FR-10 | A node over the token ceiling splits on a message boundary; ~99% pass through whole | SLACK-10 |
+| FR-10 | One node per thread, never split; the run stops if a node is over the embedding model's window | SLACK-10 |
 | FR-11 | An `IngestionPipeline` embeds and indexes the nodes for both dense and lexical retrieval | SLACK-11 |
 | FR-12 | Retrieval quality is measured as recall@20 on the benchmark's Slack questions | SLACK-12 |
 
@@ -76,9 +76,12 @@ Measured over all 58 slices unless a row says otherwise.
 |---|---|---|---|---|
 | tokens | 821 | 1,256 | 1,725 | 3,101 |
 
+Re-measured in SLACK-10 over all 285,597 nodes with LlamaIndex's default tokenizer, on the
+embedded text: p50 831, p90 1,254, p99 1,714, **max 4,143** (slice 1 missed the largest).
+
 Every thread fits in an 8k embedding window with room to spare. Unlike Confluence, where
-every page had to be split, **splitting here is the exception**: at a 2,048-token ceiling
-about 99% of threads are never cut.
+every page had to be split, **nothing is split here**: one node per thread
+([decision 0002](../decisions/0002-slack-one-node-per-thread.md)).
 
 **Speakers per thread** (slice 1):
 
@@ -229,8 +232,8 @@ flowchart LR
     C --> CL["clean/ + _manifest.json"]
     CL --> RD["SimpleDirectoryReader<br/>Document per thread, id = dsid"]
     subgraph IP["IngestionPipeline (LlamaIndex)"]
-        P["SlackThreadParser<br/>ours: parse_thread -> TextNode"] --> K["SlackMessageChunker<br/>ours: split over-budget, between messages"]
-        K --> E["embed model"]
+        P["SlackThreadParser<br/>ours: parse_thread -> TextNode"] --> K["EmbeddingWindowGuard<br/>ours: stop if a node is over the window"]
+        K --> E["embed model, 8k window"]
     end
     RD --> P
     E --> V[("vector store + docstore")]
@@ -241,8 +244,8 @@ Nothing is written between the clean files and the index: `parse_thread` runs in
 inside `SlackThreadParser` (the whole corpus parses in about 35 s), and the pipeline's
 docstore and cache are the persisted state.
 
-Ours: the cleaning rules, the parsing rules, and turning a thread into nodes. Library:
-the cutting, the indexing, the retrieval.
+Ours: the cleaning rules, the parsing rules, turning a thread into one node, and the window
+check. Library: the embedding, the indexing, the retrieval. Nothing is cut.
 
 **Hybrid, not dense-only.** 72.8% of threads carry an exact-match token that dense retrieval
 alone loses. **Channel is a free authority signal**: `postmortems` and `incidents` are
@@ -256,11 +259,12 @@ Checked against the LlamaIndex docs on 2026-09-23, re-checked 2026-09-24 (NFR-7)
 |---|---|---|
 | Read Slack | `SlackReader` (`llama-index-readers-slack`) | **Not usable.** It calls the Slack Web API for a live workspace. Our input is a static `.txt` export, so the reader has nothing to talk to. |
 | Read the clean files | `SimpleDirectoryReader` | **Use it** (re-checked 2026-09-24). It reads the clean `.txt` files as they are, so we write no loader. `file_metadata` keeps only `file_name`: by default it adds `creation_date` and `last_modified_date`, which would reach the embedded text as invented dates. `filename_as_id` gives the full path, so the Document id is set to the dsid. |
-| Run parsing + chunking + embedding as a pipeline | `IngestionPipeline` + `NodeParser` / `TransformComponent` | **Use it.** Our parser (SLACK-9) and chunker (SLACK-10) are custom `NodeParser`s: thin wrappers whose insides are SLACK-5 to 8. Cleaning is not in it (SLACK-4): its output is files and a manifest, not nodes. |
+| Run parsing + chunking + embedding as a pipeline | `IngestionPipeline` + `NodeParser` / `TransformComponent` | **Use it.** Our parser (SLACK-9) is a custom `NodeParser`, a thin wrapper whose insides are SLACK-5 to 8; the window check (SLACK-10) is a pass-through `TransformComponent`. Cleaning is not in it (SLACK-4): its output is files and a manifest, not nodes. |
 | Split chat by speaker | node parsers: `SentenceSplitter`, `TokenTextSplitter`, `SemanticSplitter`, `Markdown`/`JSON`/`HTML`, `Hierarchical`; add-ons `chonkie`, `slide`, `docling` | **None fits**, re-checked 2026-09-24: they cut by size, meaning or markup, and none knows a speaker line. So the parser is ours, wrapped as a `NodeParser`. |
 | Skip work already done on a re-run (NFR-3) | `IngestionCache`, `pipeline.persist()` / `.load()` | **Use it.** Each node+transformation pair is hashed and cached. This is most of what a hand-written resume would do. |
 | Dedup and upsert by document id | docstore + `refresh_ref_docs()`, `upsert` | **Use it** for index-side identity, keyed on the dsid. Our `_manifest.json` stays, because it answers a different question — which raw bytes produced which clean bytes — and the docstore does not track that. |
-| Split an over-budget thread | `SentenceSplitter` | **Not for the thread**: it cuts wherever the size runs out, mid-message. SLACK-10 cuts between messages; `SentenceSplitter` only for a single message longer than the ceiling, if any exists. |
+| Split a thread | `SentenceSplitter`, `TokenTextSplitter`, `HierarchicalNodeParser` + `AutoMergingRetriever`, chunk references (`IndexNode` + `RecursiveRetriever`) | **Not needed**, measured 2026-09-26 on all 285,597 nodes: every thread fits an 8k window, so each is one node. `SentenceSplitter(2048)` would put 352 of its 759 cuts inside a message; chunk references cost 2× the embedding and stay a SLACK-12 variant. [Decision 0002](../decisions/0002-slack-one-node-per-thread.md). |
+| Check a node fits the embedding window | none: embed models truncate silently (Ollama `num_ctx`, `HuggingFaceEmbedding` `max_length`) | **Ours**, SLACK-10: `EmbeddingWindowGuard`, a pass-through `TransformComponent` before the embed model. |
 | Put channel and participants into the embedded text | `TextNode.metadata` + `text_template` + `metadata_template` + `excluded_embed_metadata_keys` | **Use it.** A node already renders `{metadata_str}\n\n{content}` with `{key}: {value}` per line, and can exclude a key from the embedded text while keeping it on the node. So SLACK-9's parser sets fields; it does **not** hand-build a header string. |
 | Lexical retrieval | `BM25Retriever` | **Use it.** |
 | Combine dense and lexical | `QueryFusionRetriever` (reciprocal rank fusion, relative score fusion) | **Use it.** |

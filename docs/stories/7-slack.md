@@ -17,8 +17,8 @@ Slack-specific glossary (the shared one is in [stories.md](../stories.md)):
   75,272 distinct values cover the corpus, 1,069 files share `1765432100`, the years run from
   2001 to 2513, and the values are keyboard walks (`1923456789`). Do not treat it as a time,
   and do not rank on recency. There are no per-message timestamps anywhere in the corpus.
-- **Chunk**: what goes to the embedder. One thread, unless the thread is over the token
-  ceiling, in which case it splits on a message boundary. About 99% of threads are one chunk.
+- **Chunk**: what goes to the embedder. One whole thread, always: every thread fits an
+  8k-token embedding window (the largest is 4,143 tokens), so no thread is split (SLACK-10).
 - **TextNode**: LlamaIndex's unit. Our custom `NodeParser`s (SLACK-9, 10) make them inside
   LlamaIndex's `IngestionPipeline`; everything downstream of a node is library code — see
   section 8 of the design.
@@ -57,7 +57,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-8b  truth set | ✅ |
 | SLACK-6b  label words from the truth set | ✅ |
 | SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ✅ |
-| SLACK-10  `SlackMessageChunker` | ⬜ |
+| SLACK-10  `EmbeddingWindowGuard`: one node per thread | ✅ |
 | SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
 | SLACK-12  recall@20 on the benchmark questions | ⬜ |
 
@@ -626,8 +626,8 @@ of a thread (`sre-oncall: executing step A now.```, 1,434 threads) is treated as
 cannot swallow the messages after it. Checked and rejected: LlamaIndex's `SentenceSplitter`
 and `TokenTextSplitter` cut by size, `MarkdownNodeParser`, `JSONNodeParser` and
 `HTMLNodeParser` by markup, `SemanticSplitterNodeParser` by embedding distance, and
-`SlackReader` reads the live API. None splits chat by speaker. `SentenceSplitter` returns in
-SLACK-10, only for a single message longer than the ceiling.
+`SlackReader` reads the live API. None splits chat by speaker. No splitter is used at all:
+every thread is one node (SLACK-10).
 
 **Result:** 5,741,020 messages; 62 threads have none (a bare list of handles, a key-value
 dump, a lone dsid).
@@ -1038,7 +1038,7 @@ story sets fields; it does not build a header string.
 | `metadata.participants` | `Thread.participants`, joined with `, `; left out when nobody speaks | yes | yes |
 | `metadata.doc_id` | the dsid | no | yes, to cite |
 | `metadata.channel_route` | `line1` / `export_path` / `unknown`, for SLACK-12's split | no | no |
-| `metadata.first_turn`, `last_turn` | the first and last `Message.turn`; left out when nobody speaks; SLACK-10 narrows them on a split | no | no |
+| `metadata.first_turn`, `last_turn` | the first and last `Message.turn`; left out when nobody speaks | no | no |
 | `metadata.slug` | the readable part of the file name (`novacare-vra-check`); left out when there is none | no | no |
 | `id_` | a UUID from `doc_id:first_turn:last_turn` (uuid5), the same on every run | — | — |
 | source relationship | the Document the node came from; its metadata is `{file_name}` | — | — |
@@ -1092,7 +1092,7 @@ metadata (their slug repeats it); every node keeps its char offsets.
   channel.py, messages.py, speaker.py, thread.py, nodes.py) among its settings, so a cache kept
   across runs misses after a rule change instead of replaying old nodes.
 - **Node id** is a UUID (uuid5 of `doc_id:first_turn:last_turn`): Qdrant and Weaviate accept
-  only UUIDs. SLACK-10 reuses it per piece.
+  only UUIDs.
 - **Progress bar:** `show_progress` goes to the library's `get_tqdm_iterable`, as its own
   parsers do.
 - **Later, with shared storage (e.g. S3):** a `source_uri` field is the one to add.
@@ -1155,46 +1155,79 @@ APIs data contracts: SLACK-8 · Service Bus: N/A · Database: N/A · UI: N/A
 
 ---
 
-## SLACK-10  `SlackMessageChunker`: split over-budget threads between messages ⬜
+## SLACK-10  `EmbeddingWindowGuard`: one node per thread, and a check that it fits ✅
 
-**Status** To do
+**Status** Done
 **As a** retrieval index whose unit is the conversation
-**I want to** a node over the token ceiling split into nodes on message boundaries
-**So that** ~99% of threads reach the embedder whole and no message is cut in half
+**I want to** every thread embedded whole, and the run to stop if a node would not fit the model
+**So that** no thread is cut, and no thread is silently cut short by the embedding model
 
-A second custom `NodeParser` (or `TransformComponent`), placed after `SlackThreadParser` in the
-pipeline. A node under the ceiling passes through untouched; an over-budget node is cut
-between messages, never inside one. `SentenceSplitter` alone does not do this: it cuts by
-size wherever the size runs out.
+**Decision (2026-09-26): one node per thread, no chunker.** Measured over all 285,597 nodes with
+LlamaIndex's default tokenizer (tiktoken `cl100k_base`), on what the embedder sees
+(`get_content(MetadataMode.EMBED)`: the channel and participants lines plus the text):
 
-Measured by the design: thread tokens are p50 821, p90 1,256, p99 1,725, max 3,101. At a
-2,048-token ceiling about 99% of threads never split. Re-measure with the embedding model's
-own tokenizer when it is chosen.
+| | p50 | p90 | p99 | max |
+|---|---|---|---|---|
+| tokens per node | 831 | 1,254 | 1,714 | 4,143 |
+
+The design's 821 / 1,256 / 1,725 / 3,101 came from 4 characters per token on slice 1; the
+maximum did not hold. Every node fits an 8k-window embedding model with room to spare, so
+SLACK-11 uses one (local: Qwen3-Embedding, bge-m3, nomic-embed-text, arctic-embed2; hosted:
+OpenAI text-embedding-3, Voyage, Cohere v4) and nothing is ever cut. Why not a chunker, with
+every LlamaIndex option measured: [0002-slack-one-node-per-thread.md](../decisions/0002-slack-one-node-per-thread.md).
+
+**The one risk that is left** is silent truncation: an embedding model given more tokens than
+its window drops the rest without an error (Ollama cuts at its `num_ctx`, which can be set
+below the model's maximum; `HuggingFaceEmbedding` cuts at `max_length`). A thread cut short
+loses its last messages from the vector and nobody notices. No LlamaIndex component checks
+this, so this story adds one small `TransformComponent` that does, placed right before the
+embed model:
+
+```text
+IngestionPipeline(transformations=[SlackThreadParser(), EmbeddingWindowGuard(max_tokens, tokenizer), embed_model])
+```
+
+It returns the nodes unchanged when every node fits, and raises naming every node that does
+not. `max_tokens` and `tokenizer` are the embedding model's (SLACK-11); the defaults are 8,192
+and LlamaIndex's default tokenizer.
+
+**Built.** `pipeline/slack/window.py`: `EmbeddingWindowGuard(TransformComponent)` with
+`embedded_tokens(node)`, `too_long(nodes)` and `__call__`. The tokenizer is a field (it survives
+pickling for `num_workers`) kept out of the cache key; `max_tokens` is in it.
+
+**Measured** by the real-corpus test: 285,597 nodes, 0 over 8,192, largest 4,143.
+
+At other windows (why the window matters):
+
+| window | nodes over it |
+|---|---|
+| 512 | 253,575 (89%) |
+| 1,024 | 75,198 |
+| 2,048 | 697 (0.24%) |
+| 4,096 | 2 |
+| 8,192 | 0 |
 
 ### Acceptance Criteria
 
 ```gherkin
-Scenario: a normal thread passes through
-  Given the NovaCare node, about 780 tokens, and a ceiling of 2,048
-  Then the chunker returns the same node unchanged
+Scenario: every real thread fits an 8k window
+  Given all 285,597 nodes and the default tokenizer
+  Then the guard returns them unchanged, and the largest is 4,143 tokens
 
-Scenario: an over-budget thread splits on a message boundary
-  Given a thread of 3,101 tokens and a ceiling of 2,048
-  Then it becomes 2 nodes, each with its own first_turn and last_turn
-  And no message is cut in half
-  And every message lands in exactly one node
-  And both keep the thread's channel, participants and doc_id
+Scenario: a node over the window stops the run
+  Given a window of 2,048
+  Then the guard raises and names the 697 nodes over it by doc_id
 
-Scenario: ids are stable
-  Then a node id is the UUID nodes.node_id(doc_id, first_turn, last_turn) and does not change between runs
+Scenario: the guard counts what the embedder sees
+  Then a node's size includes its embedded metadata lines, not only its text
+
+Scenario: the guard changes nothing
+  Then the nodes it returns are the same objects, in the same order
 ```
-
-A single message longer than the ceiling, if any exists, is the one place `SentenceSplitter`
-is allowed; count them first.
 
 ### Non-functional Requirements
 
-Shared list.
+Shared list. The window and the tokenizer are settings; the guard holds no rules of its own.
 
 ### Dependencies
 
@@ -1209,7 +1242,7 @@ All library code, wired together:
 ```text
 SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
   -> Document per thread, id = the dsid
-  -> IngestionPipeline(transformations=[SlackThreadParser(), SlackMessageChunker(), embed_model],
+  -> IngestionPipeline(transformations=[SlackThreadParser(), EmbeddingWindowGuard(...), embed_model],
                        docstore=..., vector_store=..., cache=IngestionCache)
   -> vector index  +  BM25Retriever over the same nodes  ->  QueryFusionRetriever
 ```
@@ -1223,6 +1256,10 @@ SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
 - **BM25 is required, not optional.** 72.8% of threads carry an exact-match token —
   `r_9f8e7d6c`, `OF-ACME-001`, `Photon9B-int4` — that dense retrieval alone loses. 56.2% carry
   a URL and 72.8% a fenced code block, which push the same way.
+- **Embedding model: an 8k window or more**, local first (Qwen3-Embedding-0.6B, then bge-m3),
+  its tokenizer and window passed to `EmbeddingWindowGuard` (SLACK-10). With Ollama, set
+  `num_ctx` to the model's window: its default can be lower, and it truncates silently.
+  Recount the largest threads with the model's own tokenizer.
 - **No date** on any node (design section 5).
 - Channel is also an authority signal available for free: `postmortems` and `incidents` are
   verified outcomes, `random` and `lunch-plans` are not.
@@ -1239,6 +1276,8 @@ whose gold documents are Slack.
 | dense only | the floor |
 | hybrid, dense + BM25 | whether BM25 earns its place |
 | hybrid + channel authority | whether the free metadata signal helps |
+| chunk references: thread parent + `SentenceSplitter(512)` children as `IndexNode`s, `RecursiveRetriever` | whether small children find a detail inside a long thread better than the whole-thread vector (2× the embedding cost; SLACK-10's decision record) |
+| late chunking (one pass over the thread, one vector per slice) | the same question, without embedding twice |
 
 **Does a missing channel hurt retrieval?** (from SLACK-5) 9,053 threads (3.2%) have channel
 `unknown`, and nothing in them says where they came from. Report recall@20 separately for
