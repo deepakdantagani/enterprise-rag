@@ -102,4 +102,4 @@ Confluence's; each source file carries its own, so a story can be read without t
 | LINEAR-8  Golden fingerprints for the Linear corpus  ⬜ | [6-linear.md](stories/6-linear.md) |
 | LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [6-linear.md](stories/6-linear.md) |
 | EVAL-1  `DocumentRetrieverEvaluator`  ✅ | [8-eval.md](stories/8-eval.md) |
-| EVAL-2a  `load_questions`  ✅ · EVAL-2b  `metrics_report`  ⬜ · EVAL-3  Naive baseline  ⬜ | [8-eval.md](stories/8-eval.md) |
+| EVAL-2a  `load_questions`  ✅ · EVAL-2b  `metrics_report`  ✅ · EVAL-3  Naive baseline  ⬜ | [8-eval.md](stories/8-eval.md) |
