@@ -33,7 +33,7 @@ Eval glossary:
 |---|---|
 | EVAL-1  `DocumentRetrieverEvaluator` | ✅ |
 | EVAL-2a  `load_questions` | ✅ |
-| EVAL-2b  `metrics_report`: overall, per question type, per source, at k = 5, 10, 20 | ⬜ |
+| EVAL-2b  `metrics_report`: overall, per question type, per source, at k = 5, 10, 20 | ✅ |
 | EVAL-3  baseline: every document, `SentenceSplitter(512)`, local embedder  *(module-level)* | ⬜ |
 
 ---
@@ -119,9 +119,9 @@ for an emergency rollback…", ("dsid_f6e3b7ad…", "dsid_840703a1…"))`. `qst_
 
 ---
 
-## EVAL-2b  `metrics_report`  ⬜
+## EVAL-2b  `metrics_report`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** RAG developer
 **I want to** one table of mean `hit_rate`, `recall`, `mrr`, `ndcg` at k = 5, 10 and 20,
@@ -146,6 +146,7 @@ conflicting_info 20, completeness 20, miscellaneous 20.
 - Shared NFRs. Pure: results in, rows out. Writing a run's files is EVAL-3.
 
 **Dependencies**
-- APIs: `metrics_report(results) -> list[ReportRow]` in `pipeline/eval/report.py`
+- APIs: `metrics_report(scored: Iterable[Scored(question, k, metrics)]) -> list[ReportRow(group, k, questions, means)]`
+  in `pipeline/eval/report.py`; groups are `overall`, `type:<question_type>`, `source:<source_type>`
 - Uses: EVAL-1's `RetrievalEvalResult.metric_vals_dict`, EVAL-2a's `Question`
 - Service Bus: N/A · Database: N/A · UI: N/A
