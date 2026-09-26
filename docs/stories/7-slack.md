@@ -56,7 +56,7 @@ its contract, its Gherkin and a real-data example. The system design is
 | SLACK-8  `parse_thread` | ✅ |
 | SLACK-8b  truth set | ✅ |
 | SLACK-6b  label words from the truth set | ✅ |
-| SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ⬜ |
+| SLACK-9  `SlackThreadParser` (custom `NodeParser`) | ✅ |
 | SLACK-10  `SlackMessageChunker` | ⬜ |
 | SLACK-11  Ingestion run: reader, pipeline, stores, hybrid retrieval | ⬜ |
 | SLACK-12  recall@20 on the benchmark questions | ⬜ |
@@ -1011,9 +1011,9 @@ APIs data contracts: SLACK-6, SLACK-8b · Service Bus: N/A · Database: N/A · U
 
 ---
 
-## SLACK-9  `SlackThreadParser`: a custom LlamaIndex `NodeParser` ⬜
+## SLACK-9  `SlackThreadParser`: a custom LlamaIndex `NodeParser` ✅
 
-**Status** To do
+**Status** Done
 **As a** pipeline that runs inside LlamaIndex's `IngestionPipeline`
 **I want to** a `NodeParser` that turns one clean-thread `Document` into one `TextNode`
 **So that** our parsing rules run as a library `Transformation`, and everything after the node is library code
@@ -1031,50 +1031,103 @@ parsers are general or document-oriented). A `TextNode` already renders
 `excluded_embed_metadata_keys` keeps a field on the node but out of the embedded text. So this
 story sets fields; it does not build a header string.
 
-| node field | value | in the embedded text? |
-|---|---|---|
-| `text` | the messages, speaker lines included (the header is dropped: it is the channel line) | yes |
-| `metadata.channel` | `Thread.channel.name`; left out when `unknown` | yes |
-| `metadata.participants` | `Thread.participants`, joined with `, ` | yes |
-| `metadata.doc_id` | the dsid | no |
-| `metadata.channel_route` | `line1` / `export_path` / `unknown`, for SLACK-12's split | no |
-| `metadata.first_turn`, `last_turn` | `0` and the last turn; SLACK-10 narrows them on a split | no |
-| source relationship | the Document the node came from | not text |
+| node field | value | embedded? | LLM? |
+|---|---|---|---|
+| `text` | the thread minus its channel line, minus a line 1 that is the export's file name, minus lines that are only its own dsid; other header text stays | yes | yes |
+| `metadata.channel` | `Thread.channel.name`; left out when `unknown` | yes | yes |
+| `metadata.participants` | `Thread.participants`, joined with `, `; left out when nobody speaks | yes | yes |
+| `metadata.doc_id` | the dsid | no | yes, to cite |
+| `metadata.channel_route` | `line1` / `export_path` / `unknown`, for SLACK-12's split | no | no |
+| `metadata.first_turn`, `last_turn` | the first and last `Message.turn`; left out when nobody speaks; SLACK-10 narrows them on a split | no | no |
+| `metadata.slug` | the readable part of the file name (`novacare-vra-check`); left out when there is none | no | no |
+| `id_` | a UUID from `doc_id:first_turn:last_turn` (uuid5), the same on every run | — | — |
+| source relationship | the Document the node came from; its metadata is `{file_name}` | — | — |
 
 The tension to manage: a header helps the vector carry channel and participants, but an
 identical prefix on every chunk pushes 285,605 vectors toward each other. Only the two keys
 that carry meaning are embedded.
 
-**What a preview run showed** (throwaway code, NovaCare, LlamaIndex 0.14.24): the wrapper works
-inside `IngestionPipeline`, and three things must be handled here or in SLACK-11:
-1. The node must link to its source Document, or the docstore cannot upsert it on a re-run.
-2. `SimpleDirectoryReader` adds `creation_date`, `last_modified_date`, `file_path`,
-   `file_size`, `file_type` to the Document. They are copied to nodes and would land in the
-   embedded text as an invented date. SLACK-11 loads with
-   `file_metadata=lambda path: {"file_name": Path(path).name}`, verified to keep only the name;
-   this story still excludes anything it did not set.
-3. The Document id is a random UUID by default (see SLACK-11).
+**Built.**
+- `pipeline/slack/documents.py`: `thread_documents(clean_dir)` configures LlamaIndex's
+  `SimpleDirectoryReader` (`.txt` only; `file_name` as the only metadata) and sets each
+  Document's id to its dsid.
+- `pipeline/slack/nodes.py`: `SlackThreadParser(NodeParser)` implements the one method
+  LlamaIndex asks for, `_parse_nodes`; the library's `get_nodes_from_documents` calls it and
+  then records where each node's text sits in the Document.
+
+**Measured, all 285,605 threads:** 285,597 nodes with 285,597 distinct ids; 8 threads make no
+node; `channel` left out on 9,049, `participants` on 56; no node carries its own dsid in the
+embedded text or starts with an export file name; the file name's timestamp is in 2 nodes'
+metadata (their slug repeats it); every node keeps its char offsets.
+
+**Decisions:**
+- **Node text.** Everything before the first message stays except the channel line: 157
+  threads carry real text there (a summary, an odd speaker line such as `emily(sec):`). Lines
+  that are only the thread's own dsid are dropped (151 threads: on line 1 in 148, on line 3 in
+  7, 4 of them both).
+- **No text, no node.** 8 threads hold only a channel line and/or their own dsid
+  (`general\n`, `eng-security\n\ndsid_2f448e0d...`); a node would embed nothing but metadata.
+- **No fake timestamp in the node.** On an unknown-channel thread, a line 1 that is the
+  export's file name (`1719998880`, `3476543210-launch-wedge-preflight.json`: it starts with
+  the file name's timestamp and has no space) is dropped: 6,577 threads, none left. The node
+  keeps `slug`, not `file_name`. Timestamps inside messages stay (`...triggered at
+  1771009876`, 45,054 nodes): the generator wrote the same number into the conversations.
+- **Embedded metadata** is `channel` and `participants` (names only; roles are in the speaker
+  lines). A key with no value is left out, never empty or `None`: LlamaIndex's docs ask for
+  flat `str`/`float`/`int` values, and an empty `participants:` line would mean nothing.
+- **Documents are tagged where they are read**, not only checked in the parser. The pipeline's
+  cache recognises input by text and metadata, not by id, so on a cache hit the parser never
+  runs. Measured: with a docstore, a second run of the same 3 threads stores nothing twice.
+  `file_name` as the only metadata keeps a Document's hash the same when the files are
+  re-copied or moved, so the docstore does not re-embed unchanged threads. The reader's
+  `exclude_hidden` is off: it treats any dotted folder in the path (`.claude/worktrees/...`)
+  as hidden and finds no file.
+- **The parser still refuses a bad Document**: a wrong id, or one that is not a root thread
+  Document (a chunk from a splitter, or a Document with its own source link, which LlamaIndex
+  would put in place of ours).
+- **The parser owns its metadata, ids and links.** `include_metadata` and
+  `include_prev_next_rel` default to False (one node per thread: nothing to copy or link), and
+  `include_metadata=True` or a custom `id_func` is refused.
+- **Cache key.** The parser has its own `class_name` and a `rules_fingerprint` (sha256 of
+  channel.py, messages.py, speaker.py, thread.py, nodes.py) among its settings, so a cache kept
+  across runs misses after a rule change instead of replaying old nodes.
+- **Node id** is a UUID (uuid5 of `doc_id:first_turn:last_turn`): Qdrant and Weaviate accept
+  only UUIDs. SLACK-10 reuses it per piece.
+- **Progress bar:** `show_progress` goes to the library's `get_tqdm_iterable`, as its own
+  parsers do.
+- **Later, with shared storage (e.g. S3):** a `source_uri` field is the one to add.
+
+**Reviewed** twice by code-review agents against the installed library source and the corpus;
+the second, max-effort review found 15 issues, all fixed above.
 
 ### Acceptance Criteria
 
 ```gherkin
 Scenario: one thread, one node
-  Given the NovaCare Document
+  Given the NovaCare Document from thread_documents
   When SlackThreadParser runs inside an IngestionPipeline
   Then it returns one TextNode whose embedded text starts
        "channel: customer-success\nparticipants: Aisha, Priya, Ben, Tom, questionnaire-bot\n\n"
-  And doc_id, channel_route, first_turn and last_turn are on the node but not in that text
+  And doc_id, channel_route, turns and slug are on the node but not in that text
   And the node's source relationship is the Document
 
 Scenario: an unknown channel contributes nothing to the text
   Given a thread whose channel is unknown
-  Then "unknown" does not appear in the embedded text
+  Then neither "unknown" nor its export file name appears in the embedded text
 
 Scenario: no date anywhere
-  Then no timestamp appears in the node metadata or the embedded text
+  Then no timestamp from the file name appears in the node metadata or as an export line
+  (text inside messages is what was said and stays)
 
 Scenario: a thread with no speaker line
-  Then it still becomes one node holding its text, with no participants
+  Then it still becomes one node holding its text, with no participants field
+
+Scenario: a thread with no text left
+  Then it makes no node
+
+Scenario: a re-run
+  Given the same threads loaded again with thread_documents
+  Then the docstore stores none of them twice
 ```
 
 ### Example with real data
@@ -1133,7 +1186,7 @@ Scenario: an over-budget thread splits on a message boundary
   And both keep the thread's channel, participants and doc_id
 
 Scenario: ids are stable
-  Then a node id is sha256(doc_id:first_turn:last_turn) and does not change between runs
+  Then a node id is the UUID nodes.node_id(doc_id, first_turn, last_turn) and does not change between runs
 ```
 
 A single message longer than the ceiling, if any exists, is the one place `SentenceSplitter`
@@ -1161,8 +1214,8 @@ SimpleDirectoryReader(data/slack/clean, file_metadata=name only)
   -> vector index  +  BM25Retriever over the same nodes  ->  QueryFusionRetriever
 ```
 
-- **Reader.** `SimpleDirectoryReader` reads the clean `.txt` files as they are; no loader of
-  our own. `file_metadata` keeps only `file_name` (verified: no dates reach the Document).
+- **Reader.** `thread_documents(clean_dir)` (SLACK-9): LlamaIndex's `SimpleDirectoryReader`,
+  `.txt` only, `file_name` as the only metadata, each Document's id set to its dsid.
 - **Document id = the dsid.** `filename_as_id=True` gives the full file path, which changes with
   the checkout location, so the id is set to the dsid after loading. The docstore upserts on
   it, so a re-run updates a thread's nodes instead of duplicating them.
