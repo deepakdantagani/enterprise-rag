@@ -26,7 +26,7 @@ from pipeline.slack.speaker import Speaker, parse_speaker
 
 THREAD_FILE_NAME = re.compile(
     r"dsid_(?P<doc_id>[0-9a-f]{32})"  # the id
-    r"__\d+(?:_\d+)?"                 # the timestamp, not kept: 2987654321, 1859999999_1
+    r"__(?P<timestamp>\d+(?:_\d+)?)"  # not kept on the Thread: 2987654321, 1859999999_1
     r"(?:-?(?P<slug>.+))?\.txt"       # -novacare-vra-check; nothing; 1 name lacks the dash
 )
 
