@@ -8,6 +8,8 @@ collected on 2026-09-25 from https://developers.llamaindex.ai.
 found anywhere in the docs text (`/api/grep`) plus the headings of each "Module
 Guides" page. Base classes and made-up example names are left out.
 
+The full page-by-page tree is in [LLAMAINDEX_DOCS_TREE.md](LLAMAINDEX_DOCS_TREE.md).
+
 To refresh this file, re-run those two endpoints. `llms.txt` at the site root
 describes the endpoints.
 
