@@ -1,0 +1,36 @@
+"""EVAL-3a: parquet_documents, documents.parquet rows as LlamaIndex Documents, in batches, no cleaning.
+
+The naive baseline reads the benchmark's whole corpus as it ships: data/_full/documents.parquet,
+511,962 rows of doc_id, source_type, title, content across all 9 sources, 2.46B chars of
+content. That is too much to hold as Documents at once, so rows come in batches.
+
+Each row becomes Document(id_=doc_id): the dsid is the id, so every chunk's ref_doc_id is the
+dsid and EVAL-1 can score it. Only `content` is embedded. `title` and `source_type` stay as
+metadata for reports but are excluded from the embedded and LLM text: the first sample run
+failed on titles that hold a whole body (497 of them, 493 in Slack, the longest 10,693 chars
+in dsid_c655aa63...), because SentenceSplitter counts embedded metadata against the 512-token
+chunk.
+
+    >>> import pyarrow as pa, pyarrow.parquet as pq, tempfile, os
+    >>> path = os.path.join(tempfile.mkdtemp(), "documents.parquet")
+    >>> pq.write_table(pa.Table.from_pylist([{"doc_id": "dsid_a", "source_type": "confluence",
+    ...     "title": "Runbook", "content": "Roll back the release."}]), path)
+    >>> [document] = next(parquet_documents(path))
+    >>> document.id_, document.text, document.metadata
+    ('dsid_a', 'Roll back the release.', {'source_type': 'confluence', 'title': 'Runbook'})
+"""
+from pathlib import Path
+from typing import Iterator, List, Union
+
+import pyarrow.parquet as pq
+from llama_index.core import Document
+
+METADATA_KEYS = ["source_type", "title"]  # kept for reports, never embedded
+
+
+def parquet_documents(path: Union[str, Path], batch_size: int = 1000) -> Iterator[List[Document]]:
+    for batch in pq.ParquetFile(path).iter_batches(batch_size=batch_size):
+        yield [Document(id_=row["doc_id"], text=row["content"],
+                        metadata={key: row[key] for key in METADATA_KEYS},
+                        excluded_embed_metadata_keys=METADATA_KEYS, excluded_llm_metadata_keys=METADATA_KEYS)
+               for row in batch.to_pylist()]

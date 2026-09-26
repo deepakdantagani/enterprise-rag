@@ -8,6 +8,7 @@ dependencies = [
   "llama-index-core==0.14.24",
   "markdown-it-py==4.2.0",
   "openinference-instrumentation-llama-index==4.5.2",
+  "pyarrow==25.0.1",
   "python-dotenv>=1,<2",
   "tzdata>=2024.1",
 ]
