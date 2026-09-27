@@ -438,6 +438,34 @@ as a later experiment against this baseline.
   reason; the local model is one row in `EMBEDDERS` away if it is ever needed again
 - Files: `pipeline/eval/embedders.py`, `--embed` in `pipeline/eval/baseline.py`
 
+## EVAL-3g  Skip blank documents  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** `parquet_documents` to skip a row whose content is blank
+**So that** the full run does not stop on a document that has nothing to embed
+
+**Acceptance Criteria (Gherkin)**
+- Given rows with content `""` and `" \n "`, Then no Document is yielded for them, and batch
+  boundaries stay those of the file (a batch may come out shorter)
+- Given the real file, Then batch 279 holds 999 Documents and not `dsid_33cbedf0…`
+
+**Example with real data**
+The full voyage-4 run stopped at batch 279 (279,000 documents, 1,080,790 chunks in Qdrant) with
+`voyageai.error.InvalidRequestError: Input cannot contain empty strings`. The cause is
+`dsid_33cbedf0709949fd9416c8c864a86cf2` (Slack), content `''`: the only blank row of 511,962
+(0 null, 0 whitespace-only). It is no question's expected doc.
+
+**Non-functional Requirements**
+- Shared NFRs. This is not text cleaning: every non-blank row is still embedded unchanged.
+- A resumed run skips the 279,000 documents already in Qdrant (EVAL-3d1), so the fix costs
+  nothing already paid for.
+
+**Dependencies**
+- APIs: `parquet_documents` in `pipeline/eval/documents.py`, unchanged signature
+- Service Bus: N/A · Database: N/A · UI: N/A
+
 ## EVAL-3e  The full run  ⬜
 
 **Status:** To do
