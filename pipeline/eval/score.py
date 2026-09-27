@@ -8,6 +8,10 @@ against Qdrant failed on the second question with "Event loop is closed", becaus
 Qdrant client stays bound to the loop it was first used in. So every question is awaited with
 aevaluate() inside a single asyncio.run.
 
+EVAL-3h adds precision: relevant documents over the documents returned (at most k, fewer when
+the retrieved chunks hold fewer distinct documents). 377 of the 470 questions have one relevant
+document, so their precision@10 can never pass 0.1: read it to compare runs, not as a grade.
+
     >>> from llama_index.core import Document, SummaryIndex
     >>> from pipeline.eval.questions import Question
     >>> index = SummaryIndex.from_documents([Document(id_="dsid_a", text="Roll back."), Document(id_="dsid_b", text="Pin.")])
@@ -24,7 +28,7 @@ from pipeline.eval.evaluator import DocumentRetrieverEvaluator
 from pipeline.eval.questions import Question
 from pipeline.eval.report import Scored
 
-METRICS = ["hit_rate", "recall", "mrr", "ndcg"]
+METRICS = ["hit_rate", "recall", "precision", "mrr", "ndcg"]
 KS = (5, 10, 20)
 
 

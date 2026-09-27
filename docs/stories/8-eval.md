@@ -466,6 +466,34 @@ The full voyage-4 run stopped at batch 279 (279,000 documents, 1,080,790 chunks 
 - APIs: `parquet_documents` in `pipeline/eval/documents.py`, unchanged signature
 - Service Bus: N/A · Database: N/A · UI: N/A
 
+## EVAL-3h  Precision in the report  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** `score_retriever` to report `precision` next to hit rate, recall, MRR and NDCG
+**So that** a clean-up story can show it sends the LLM less noise, not only that it finds more
+
+**Acceptance Criteria (Gherkin)**
+- Every `Scored` row carries `hit_rate`, `recall`, `precision`, `mrr`, `ndcg`
+- Given a retriever returning 4 documents with 1 relevant, Then precision@10 is 0.25:
+  LlamaIndex's `Precision` divides by the documents returned (at most k), not by k
+
+**Example with real data**
+377 of the 470 questions (80%) have exactly one relevant document, so their precision@10 can
+never pass 0.1, even with the right document at rank 1. That is why EVAL-3c left precision out:
+as a grade it looks like failure. As a comparison between two runs it is still the one number
+that shows noise going down.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: LlamaIndex's `precision` metric, no code of our own.
+- The full baseline (EVAL-3e) was scored before this story; its precision is filled in by
+  re-scoring the 470 questions (~25K Voyage tokens, ~$0.0015), no re-embedding.
+
+**Dependencies**
+- APIs: `METRICS` in `pipeline/eval/score.py`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
 ## EVAL-3e  The full run  ⬜
 
 **Status:** To do

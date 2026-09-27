@@ -61,9 +61,13 @@ class ScoreRetriever(unittest.TestCase):
         scored = score_retriever(BoundToFirstLoop(), [ROLLBACK, METRIC], ks=(5, 10, 20))
         self.assertEqual(len(scored), 6)
 
-    def test_reports_all_four_metrics(self):
+    def test_reports_all_five_metrics(self):
         [one] = score_retriever(RanksAThenB(), [METRIC], ks=(10,))
-        self.assertEqual(sorted(one.metrics), ["hit_rate", "mrr", "ndcg", "recall"])
+        self.assertEqual(sorted(one.metrics), ["hit_rate", "mrr", "ndcg", "precision", "recall"])
+
+    def test_precision_is_relevant_documents_over_documents_returned(self):
+        scored = score_retriever(RanksAThenB(), [ROLLBACK, METRIC], ks=(2, 10))
+        self.assertEqual([one.metrics["precision"] for one in scored], [0.5, 0.25, 0.0, 0.25])
 
     def test_doctests(self):
         self.assertEqual(doctest.testmod(score_module).failed, 0)
