@@ -8,6 +8,7 @@ import unittest
 import warnings
 from pathlib import Path
 
+from llama_index.core import MockEmbedding
 from llama_index.core.schema import TextNode
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
@@ -16,7 +17,7 @@ from qdrant_client.models import PointStruct
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import hybrid as hybrid_module  # noqa: E402
-from pipeline.eval.hybrid import copy_to_hybrid, hybrid_store, sparse_retriever  # noqa: E402
+from pipeline.eval.hybrid import copy_to_hybrid, dense_retriever, hybrid_retriever, hybrid_store, sparse_retriever  # noqa: E402
 
 QDRANT_URL = "http://localhost:6333"
 RUNBOOK_CHUNK = "0e9ae45d-cb1e-4c5c-ad98-f5e090a0c7a9"  # first chunk of the perf-canary runbook in v0
@@ -90,6 +91,46 @@ class SparseRetriever(unittest.TestCase):
 
     def test_returns_at_most_top_k_chunks(self):
         self.assertEqual(len(self.retrieved_texts("the Q3 budget office release", top_k=2)), 2)
+
+
+class QuestionAt(MockEmbedding):
+    """Embeds every question as the dense vector of one chosen chunk, so dense search is predictable."""
+    def _get_query_embedding(self, query):
+        return [0.3, 0.2, 0.3, 0.4]  # NODES[2] ("The Berlin office moved.")
+
+    async def _aget_query_embedding(self, query):
+        return self._get_query_embedding(query)
+
+
+class DenseAndHybridRetrievers(unittest.TestCase):
+    def setUp(self):
+        client = source_with(NODES)
+        self.store = hybrid_store(client, "hybrid")
+        copy_to_hybrid(client, "v0", self.store)
+        self.embed = QuestionAt(embed_dim=4)
+
+    def texts(self, retriever, question):
+        return [found.node.text for found in retriever.retrieve(question)]
+
+    def test_dense_ranks_by_the_question_vector_and_searches_exactly(self):
+        retriever = dense_retriever(self.store, self.embed)
+        self.assertEqual(self.texts(retriever, "Who approved the Q3 budget?")[0], "The Berlin office moved.")
+        self.assertEqual(retriever._kwargs, {"search_params": {"exact": True}})
+
+    def test_relative_score_fusion_keeps_the_best_of_both_lists(self):
+        found = self.texts(hybrid_retriever(self.store, self.embed, fusion="relative"), "Who approved the Q3 budget?")
+        self.assertIn("The Berlin office moved.", found[:2])  # dense's first
+        self.assertIn("Priya approved the Q3 budget.", found[:2])  # BM25's first
+
+    def test_rrf_keeps_the_best_of_both_lists_without_an_llm(self):
+        retriever = hybrid_retriever(self.store, self.embed, fusion="rrf")
+        found = self.texts(retriever, "Who approved the Q3 budget?")
+        self.assertEqual(set(found[:2]), {"The Berlin office moved.", "Priya approved the Q3 budget."})
+        self.assertEqual((retriever.mode, retriever.num_queries), ("reciprocal_rerank", 1))
+
+    def test_an_unknown_fusion_names_the_known_ones(self):
+        with self.assertRaisesRegex(ValueError, "relative, rrf"):
+            hybrid_retriever(self.store, self.embed, fusion="max")
 
 
 def local_qdrant_has_v0():

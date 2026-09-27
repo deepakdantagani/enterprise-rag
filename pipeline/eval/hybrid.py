@@ -17,6 +17,14 @@ gets MockEmbedding instead of Voyage: pure BM25, $0. On qst_0017 ("… tiered up
 counteroffer for the maritime logistics SaaS customer …") BM25 ranks the expected HubSpot
 record first; on qst_0063 "NorthPoint" pulls in a different company's Fireflies meeting instead.
 
+RET-3b: dense_retriever and hybrid_retriever, searching exactly. Qdrant's HNSW index is
+approximate: on the 470 questions it returned the true top 50 chunks for only 254 (v0) and 212
+(hybrid collection), and understated dense recall@10 by 0.017 to 0.027. Exact search scores
+0.625 on both collections, costs 53 ms a question instead of 7, and turns a 0.01 fusion gap from
+noise into a measurement. Two fusions, both LlamaIndex's: "relative" (the hybrid store's default
+relative_score_fusion, scores min-max scaled then averaged) and "rrf" (QueryFusionRetriever,
+1 / (60 + rank) summed, with num_queries=1 and MockLLM so no LLM rewrites the question).
+
     >>> from qdrant_client.models import Record
     >>> node = node_from_point(Record(id="c1", vector=[0.5, 0.5], payload={
     ...     "_node_content": '{"id_": "c1", "text": "Roll back.", "class_name": "TextNode"}',
@@ -27,6 +35,9 @@ record first; on qst_0063 "NorthPoint" pulls in a different company's Fireflies 
 from typing import Optional
 
 from llama_index.core import MockEmbedding, VectorStoreIndex
+from llama_index.core.base.embeddings.base import BaseEmbedding
+from llama_index.core.llms import MockLLM
+from llama_index.core.retrievers import QueryFusionRetriever
 from llama_index.core.base.base_retriever import BaseRetriever
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.utils import metadata_dict_to_node
@@ -37,6 +48,8 @@ from qdrant_client.models import Record
 SPARSE_MODEL = "Qdrant/bm25"  # FastEmbed's BM25; LlamaIndex's default sparse model is a SPLADE-style one
 RETRIEVED_CHUNKS = 50  # as in v0, so dense and BM25 are compared on the same depth
 UNUSED_QUERY_EMBEDDING = MockEmbedding(embed_dim=1024)  # sparse mode never reads the question's dense vector
+EXACT_SEARCH = {"search_params": {"exact": True}}  # brute force: no HNSW approximation in evaluation
+FUSIONS = ("relative", "rrf")
 
 
 def hybrid_store(client: QdrantClient, collection_name: str,
@@ -69,3 +82,21 @@ def copy_to_hybrid(client: QdrantClient, source: str, store: QdrantVectorStore, 
 def sparse_retriever(store: QdrantVectorStore, top_k: int = RETRIEVED_CHUNKS) -> BaseRetriever:
     index = VectorStoreIndex.from_vector_store(store, embed_model=UNUSED_QUERY_EMBEDDING)
     return index.as_retriever(vector_store_query_mode="sparse", sparse_top_k=top_k, similarity_top_k=top_k)
+
+
+def dense_retriever(store: QdrantVectorStore, embed_model: BaseEmbedding, top_k: int = RETRIEVED_CHUNKS) -> BaseRetriever:
+    index = VectorStoreIndex.from_vector_store(store, embed_model=embed_model)
+    return index.as_retriever(similarity_top_k=top_k, vector_store_kwargs=EXACT_SEARCH)
+
+
+def hybrid_retriever(store: QdrantVectorStore, embed_model: BaseEmbedding, fusion: str,
+                     top_k: int = RETRIEVED_CHUNKS) -> BaseRetriever:
+    if fusion == "relative":
+        index = VectorStoreIndex.from_vector_store(store, embed_model=embed_model)
+        return index.as_retriever(vector_store_query_mode="hybrid", similarity_top_k=top_k, sparse_top_k=top_k,
+                                  hybrid_top_k=top_k, vector_store_kwargs=EXACT_SEARCH)
+    if fusion == "rrf":
+        return QueryFusionRetriever([dense_retriever(store, embed_model, top_k), sparse_retriever(store, top_k)],
+                                    mode="reciprocal_rerank", similarity_top_k=top_k, num_queries=1, llm=MockLLM(),
+                                    use_async=False)  # sync calls stay sync; the scorer uses aretrieve
+    raise ValueError(f"unknown fusion {fusion!r}; known: {', '.join(FUSIONS)}")
