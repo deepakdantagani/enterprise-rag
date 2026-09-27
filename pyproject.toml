@@ -5,7 +5,6 @@ description = "Enterprise knowledge-base RAG on EnterpriseRAG-Bench"
 requires-python = ">=3.11"
 dependencies = [
   "llama-index-core==0.14.24",
-  "llama-index-embeddings-ollama==0.10.0",
   "llama-index-embeddings-voyageai==0.7.0",
   "llama-index-vector-stores-qdrant==0.10.3",
   "markdown-it-py==4.2.0",

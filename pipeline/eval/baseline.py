@@ -1,6 +1,6 @@
 """EVAL-3b: baseline_pipeline, the naive baseline as one LlamaIndex IngestionPipeline.
 EVAL-3d3: ingest_corpus, the corpus through that pipeline batch by batch; `python -m
-pipeline.eval.baseline [--sample]` ingests on Ollama + Qdrant, then scores every question
+pipeline.eval.baseline [--sample]` ingests with voyage-4 into Qdrant, then scores every question
 (EVAL-3c) with Phoenix tracing, and writes runs/<date>-<collection>/metrics.json.
 
 The baseline is the plain default: SentenceSplitter (the splitter VectorStoreIndex uses when you

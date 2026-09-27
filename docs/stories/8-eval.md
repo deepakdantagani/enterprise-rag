@@ -393,8 +393,8 @@ wiring; its recall is inflated (a 207-document haystack) and is not the baseline
 **Status:** Done
 
 **As a** RAG developer
-**I want to** `python -m pipeline.eval.baseline --embed <model>` with the local model or the
-Voyage API, each into its own Qdrant collection
+**I want to** `python -m pipeline.eval.baseline --embed <model>`, each embedder into its own
+Qdrant collection, voyage-4 the only one kept
 **So that** the full run is not ~20 h on this Mac, and the embedder is chosen on our questions
 
 **Why** (measured 2026-09-26): `qwen3-embedding:0.6b` runs at ~22 chunks/s here, the same
@@ -403,8 +403,8 @@ the GPU is ~95% busy (macOS `ioreg`), so one 512-token chunk already fills it. T
 is ~1.56M chunks (3.05 per document on 500 random documents) → ~20 h.
 
 **Acceptance Criteria (Gherkin)**
-- Given `qwen3-embedding:0.6b`, Then an `OllamaEmbedding`; given `voyage-4`, Then a
-  `VoyageEmbedding` at 1,024 dimensions; given an unknown name, Then an error listing the known
+- Given `voyage-4`, Then a `VoyageEmbedding` at 1,024 dimensions; given any other name
+  (including the removed `qwen3-embedding:0.6b`), Then an error listing the known ones
 - Given an embedder and `--sample` or not, Then its own collection, e.g.
   `baseline_sample__voyage_4`: vectors of two models are never mixed
 - `VOYAGE_API_KEY` is read from `.env` (gitignored), never from the command line
@@ -432,6 +432,10 @@ as a later experiment against this baseline.
 **Non-functional Requirements**
 - New dependencies: `llama-index-embeddings-voyageai==0.7.0` and `voyageai==0.5.0` for Python ≥
   3.13 (the integration declares its client only below 3.13, so on 3.14 it was missing)
+- The local path is removed (Deepak's call, 2026-09-26): `llama-index-embeddings-ollama` is no
+  longer a dependency, and its Qdrant collections, the Ollama model in memory and the
+  downloaded HuggingFace weights (1.1 GB) were deleted. The measurements above stay as the
+  reason; the local model is one row in `EMBEDDERS` away if it is ever needed again
 - Files: `pipeline/eval/embedders.py`, `--embed` in `pipeline/eval/baseline.py`
 
 ## EVAL-3e  The full run  ⬜
