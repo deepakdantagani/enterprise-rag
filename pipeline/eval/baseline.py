@@ -91,7 +91,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     from pipeline.eval.sample import sample_corpus
     from pipeline.eval.tracing import trace_to_phoenix
 
-    parser = argparse.ArgumentParser(description="Naive baseline: every document, SentenceSplitter(512), local embedder, Qdrant.")
+    parser = argparse.ArgumentParser(description="Naive baseline: every document, SentenceSplitter(512), voyage-4, Qdrant.")
     parser.add_argument("--sample", action="store_true", help="27 questions, 207 documents from all 9 sources (EVAL-3d2)")
     parser.add_argument("--embed", choices=list(EMBEDDERS), default=next(iter(EMBEDDERS)), help="embedding model (EVAL-3f)")
     args = parser.parse_args(argv)

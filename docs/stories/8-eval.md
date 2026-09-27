@@ -494,10 +494,20 @@ that shows noise going down.
 - APIs: `METRICS` in `pipeline/eval/score.py`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-## EVAL-3e  The full run  ⬜
+## EVAL-3e  The full run  ✅
 
-**Status:** To do
+**Status:** Done
 
-Needs Docker Desktop at 16 GB (decided above). `uv run python -m pipeline.eval.baseline`:
-511,962 documents, ~1.3M chunks (estimated), ~2.5 h, then 470 questions. Its row on
-`docs/eval/results.md` is the baseline every clean-up story must beat.
+`uv run python -m pipeline.eval.baseline --embed voyage-4`, recorded as **v0** in
+`docs/eval/results.md` with its whole system (every stage, every choice, and the story behind it):
+511,957 documents, 1,609,717 chunks, 470 questions, **recall@10 = 0.609**, the number every
+clean-up story must beat.
+
+Estimates that were wrong, kept so the next estimate starts from the real numbers:
+- Chunks: ~1.3M estimated, 1,609,717 measured (3.1 per document).
+- Time: ~2.5 h estimated with a local model; the local model ran at 22 chunks/s (~20 h), so
+  EVAL-3f moved to Voyage, which ran at 80–160 chunks/s.
+- Cost: ~425 Voyage tokens per chunk estimated; ~0.27 tokens per character held, so ~660M
+  tokens in all.
+- The run stopped once, at document 279,000, on the corpus's one empty row (EVAL-3g), and
+  resumed without re-embedding what was done.
