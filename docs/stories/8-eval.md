@@ -34,7 +34,10 @@ Eval glossary:
 | EVAL-1  `DocumentRetrieverEvaluator` | ✅ |
 | EVAL-2a  `load_questions` | ✅ |
 | EVAL-2b  `metrics_report`: overall, per question type, per source, at k = 5, 10, 20 | ✅ |
-| EVAL-3  baseline: every document, `SentenceSplitter(512)`, local embedder  *(module-level)* | ⬜ |
+| EVAL-3a  `parquet_documents` | ✅ |
+| EVAL-3b  `baseline_pipeline`: `SentenceSplitter(512)` + embedder into a vector store | ⬜ |
+| EVAL-3c  `score_retriever`: every question × k in one event loop | ⬜ |
+| EVAL-3d  `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
 ---
@@ -194,3 +197,103 @@ documents they came from.
   in `pipeline/eval/tracing.py`
 - Uses: `openinference.instrumentation.llama_index.LlamaIndexInstrumentor`, `phoenix.otel.register`
 - Service Bus: N/A · Database: N/A · UI: Arize Phoenix at `http://localhost:6006` (local)
+
+---
+
+## EVAL-3  The naive baseline (3a–3d)
+
+Every document from `documents.parquet`, no cleaning, `SentenceSplitter(chunk_size=512,
+chunk_overlap=50)`, `qwen3-embedding:0.6b` on Ollama (1,024 dimensions, ~150 chunks/s measured
+on this Mac), Qdrant as the vector store, then the 470 questions scored with EVAL-1 and 2b and
+traced with EVAL-4. Estimated ~1.3M chunks and ~2.5 h of embedding for the full corpus.
+
+Decisions:
+- **Splitter: `SentenceSplitter`.** LlamaIndex's default, so the baseline is the plain
+  default. Smarter parsers are what the per-source stories must prove against it.
+- **Vector store: Qdrant** (Docker, `localhost:6333`, data under `data/_index/qdrant/`).
+  Chosen over LanceDB for native hybrid (dense + sparse) search later and a managed version
+  for AWS. Docker has 8.3 GB of memory here and the full-precision vectors are ~5.3 GB, so the
+  full run keeps vectors on disk with an int8 copy in memory (decided in 3d).
+
+What the first sample run found (3 single-source questions + 20 other docs per source: 207
+documents → 822 chunks, ~50 s; recall@10 0.96 over 27 questions, all `basic`; inflated, as the
+haystack is 207 docs, not 511,962):
+1. 497 titles hold a whole body (493 Slack, 3 Confluence, 1 Google Drive; longest 10,693
+   chars) and `SentenceSplitter` counts embedded metadata against the chunk → only `content`
+   is embedded (3a).
+2. Span batches with embedding vectors reached 12 MB, over Phoenix's 4 MB → vectors redacted,
+   spans over HTTP (EVAL-4).
+3. The evaluator retrieves async, so `QdrantVectorStore` needs `aclient=AsyncQdrantClient(...)`
+   (3d).
+4. `evaluate()` opens a new event loop per call and the async Qdrant client is bound to the
+   first one → all questions are scored inside one loop with `aevaluate` (3c).
+
+## EVAL-3a  `parquet_documents`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** `parquet_documents(path, batch_size)` to yield the corpus as batches of LlamaIndex
+`Document`s, one per row, unchanged
+**So that** the baseline reads all 511,962 documents without holding 2.46B chars at once, and
+every chunk can be traced back to its dsid
+
+**Acceptance Criteria (Gherkin)**
+- Given 5 rows and `batch_size = 2`, Then batches of 2, 2, 1 in file order
+- Given a row, Then `Document(id_=doc_id, text=content, metadata={source_type, title})`
+- Given any document, Then its embedded and LLM text is the content alone
+- Given the real file, Then 511,962 rows, and the first document is
+  `dsid_e54ef48b…` "Runbook: Deploy / Upgrade / Roll Back perf-canary (Prod)"
+
+**Example with real data**
+`dsid_c655aa63…` (Confluence) has a 10,693-char title that is the page's whole body. With the
+title embedded, `SentenceSplitter(512)` raised "Metadata length (1864) is longer than chunk
+size (512)"; with only the content embedded it splits like any other page.
+
+**Non-functional Requirements**
+- Shared NFRs. No cleaning of any kind: that is the point of the baseline.
+- Reuse: `pyarrow.parquet.ParquetFile.iter_batches` for the batching. LlamaIndex's
+  `PandasParquetReader` (llama-index-readers-file) was not taken: it loads the whole file and
+  writes every column into the text. New dependency: `pyarrow==25.0.1`.
+- The file is one row group, so pyarrow decompresses it whole on first read (~3 GB of memory);
+  fine on this 64 GB Mac.
+
+**Dependencies**
+- APIs: `parquet_documents(path, batch_size=1000) -> Iterator[list[Document]]` in
+  `pipeline/eval/documents.py`
+- Service Bus: N/A · Database: N/A · UI: N/A
+
+## EVAL-3b  `baseline_pipeline`  ⬜
+
+**Status:** To do
+
+**I want to** `baseline_pipeline(embed_model, vector_store, docstore)` to return the one
+`IngestionPipeline([SentenceSplitter(512, 50), embed_model], vector_store=..., docstore=...)`
+**So that** the baseline is library code only, and a re-run after a crash skips documents
+already embedded (the docstore keeps each document's hash; `DocstoreStrategy.UPSERTS`)
+
+- Given two documents and `MockEmbedding`, Then their chunks land in the vector store with
+  `ref_doc_id` = dsid
+- Given the same documents run twice, Then the second run embeds nothing
+- File: `pipeline/eval/baseline.py`
+
+## EVAL-3c  `score_retriever`  ⬜
+
+**Status:** To do
+
+**I want to** `score_retriever(retriever, questions, ks=(5, 10, 20))` to return one `Scored`
+per question and k, all inside one event loop (`aevaluate`)
+**So that** EVAL-2b can report it, and async vector stores such as Qdrant work (finding 4)
+
+## EVAL-3d  `python -m pipeline.eval.baseline`  ⬜
+
+**Status:** To do
+
+**I want to** one command that wires 3a → 3b → Qdrant → 3c → 2b with Phoenix tracing, with
+`--sample` (the 207-document run above) and the full run
+**So that** the baseline is one reproducible command, and its result is the first row of
+`docs/eval/results.md`
+
+- New dependencies: `llama-index-embeddings-ollama==0.10.0`,
+  `llama-index-vector-stores-qdrant==0.10.3` (resolve with `llama-index-core` 0.14.24)
+- Writes `runs/<date>-baseline/metrics.json` (gitignored) and one row of `docs/eval/results.md`
