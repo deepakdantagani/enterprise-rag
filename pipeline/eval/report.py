@@ -12,10 +12,17 @@ low (recall rises with k) from one not found at all (it does not).
     ReportRow(group='overall', k=10, questions=1, means={'recall': 0.5, 'mrr': 1.0})
     ReportRow(group='type:completeness', k=10, questions=1, means={'recall': 0.5, 'mrr': 1.0})
     ReportRow(group='source:confluence', k=10, questions=1, means={'recall': 0.5, 'mrr': 1.0})
+
+EVAL-5a: write_run, a run's evidence kept in git: metrics.json (config + these rows) and
+scored.jsonl (one line per question and k). Runs used to go to runs/, which is gitignored, and
+kept only averages: RET-2 could not say which questions BM25 found that dense missed, and the
+eleven runs behind v0 and v1 existed only on this laptop. They now go to docs/eval/runs/<name>/.
 """
+import json
 from collections import defaultdict
+from pathlib import Path
 from statistics import fmean
-from typing import Dict, Iterable, List, NamedTuple
+from typing import Any, Dict, Iterable, List, Mapping, NamedTuple, Sequence
 
 from pipeline.eval.questions import Question
 
@@ -47,3 +54,13 @@ def metrics_report(scored: Iterable[Scored]) -> List[ReportRow]:
     return [ReportRow(group, k, len(members[(group, k)]),
                       {name: fmean(metrics[name] for metrics in members[(group, k)]) for name in members[(group, k)][0]})
             for group, k in overall_first]
+
+
+def write_run(run_dir: Path, config: Mapping[str, Any], scored: Sequence[Scored]) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    rows = [row._asdict() for row in metrics_report(scored)]
+    (run_dir / "metrics.json").write_text(json.dumps({"config": dict(config), "rows": rows}, indent=2) + "\n")
+    (run_dir / "scored.jsonl").write_text("".join(
+        json.dumps({"question_id": one.question.question_id, "question_type": one.question.question_type,
+                    "source_types": list(one.question.source_types), "k": one.k, "metrics": one.metrics}) + "\n"
+        for one in scored))

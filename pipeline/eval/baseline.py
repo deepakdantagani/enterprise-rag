@@ -1,7 +1,7 @@
 """EVAL-3b: baseline_pipeline, the naive baseline as one LlamaIndex IngestionPipeline.
 EVAL-3d3: ingest_corpus, the corpus through that pipeline batch by batch; `python -m
 pipeline.eval.baseline [--sample]` ingests with voyage-4 into Qdrant, then scores every question
-(EVAL-3c) with Phoenix tracing, and writes runs/<date>-<collection>/metrics.json.
+(EVAL-3c) with Phoenix tracing, and writes docs/eval/runs/<date>-<collection>/ (EVAL-5a).
 
 The baseline is the plain default: SentenceSplitter (the splitter VectorStoreIndex uses when you
 choose none) at 512 tokens with 50 overlap, then the embedder, into the vector store. Every
@@ -23,7 +23,6 @@ documents is a ~2.5 GB JSON file. `--sample` runs the same code on EVAL-3d2's 20
     []
 """
 import argparse
-import json
 import subprocess
 import time
 from datetime import date
@@ -39,7 +38,7 @@ from llama_index.core.vector_stores.types import BasePydanticVectorStore
 
 from pipeline.eval.documents import parquet_documents
 from pipeline.eval.questions import load_questions
-from pipeline.eval.report import metrics_report
+from pipeline.eval.report import metrics_report, write_run
 from pipeline.eval.score import score_retriever
 from pipeline.observability import PipelineEvent, StageDone, dispatcher, events_logged_to
 
@@ -49,6 +48,7 @@ RETRIEVED_CHUNKS = 50  # enough chunks for 20 distinct documents in almost every
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = ROOT / "data/_full/documents.parquet"
 QUESTIONS = ROOT / "data/_full/questions.jsonl"
+RUNS = ROOT / "docs/eval/runs"  # metrics.json + scored.jsonl, kept in git (EVAL-5a)
 QDRANT_URL = "http://localhost:6333"
 
 
@@ -112,12 +112,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         ingest_corpus(DOCUMENTS, vector_store, embed_model, skip_doc_ids=embedded_doc_ids(client, collection),
                       keep_doc_ids=keep_doc_ids)
     retriever = VectorStoreIndex.from_vector_store(vector_store, embed_model=embed_model).as_retriever(similarity_top_k=RETRIEVED_CHUNKS)
-    rows = metrics_report(score_retriever(retriever, questions))
+    scored = score_retriever(retriever, questions)
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
     config = {"commit": commit, "collection": collection, "embed_model": args.embed, "chunk_size": CHUNK_SIZE,
               "chunk_overlap": CHUNK_OVERLAP, "retrieved_chunks": RETRIEVED_CHUNKS, "questions": len(questions)}
-    (run_dir / "metrics.json").write_text(json.dumps({"config": config, "rows": [row._asdict() for row in rows]}, indent=2))
-    for row in rows:
+    write_run(RUNS / run_dir.name, config, scored)
+    for row in metrics_report(scored):
         print(f"{row.group:34} k={row.k:<3} n={row.questions:<4}", "  ".join(f"{name}={value:.3f}" for name, value in row.means.items()))
 
 
