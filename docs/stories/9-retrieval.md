@@ -29,7 +29,7 @@ Retrieval glossary:
 | RET-1  `copy_to_hybrid`: v0 chunks into a hybrid collection, dense unchanged, plus BM25 | ✅ |
 | RET-2  `sparse_retriever`: BM25 alone scored on the 470 questions | ✅ |
 | RET-3a  `saved_query_embeddings`: re-score without paying Voyage again | ✅ |
-| RET-3b  exact dense search for evaluation; re-score dense, BM25, relative-score and RRF fusion | ⬜ |
+| RET-3b  `dense_retriever`, `hybrid_retriever`: exact search; RRF chosen for v1 | ✅ |
 | RET-4  v1 full run: hybrid scored, row in `results.md` | ⬜ |
 
 ---
@@ -198,3 +198,68 @@ Exact search costs 53 ms per question against 7 ms: ~75 s per scoring run.
 - APIs: `SavedQueryEmbedding(saved, fallback=None)`, `saved_query_embeddings(path, fallback=None)`
   in `pipeline/eval/embedders.py`
 - Service Bus: N/A · Database: reads `data/_index/question_embeddings/voyage-4.jsonl` · UI: N/A
+
+## RET-3b  `dense_retriever` and `hybrid_retriever`: exact search, RRF chosen  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** dense and hybrid retrievers that search exactly, with the fusion as a choice
+**So that** fusion options are compared on numbers the HNSW index cannot blur, and v1 is chosen
+on a measurement
+
+**Acceptance Criteria (Gherkin)**
+- Given a question embedded as one chunk's vector, Then `dense_retriever` returns that chunk
+  first, and passes `search_params {"exact": true}` to Qdrant
+- Given fusion "relative", Then the first two chunks are dense's first and BM25's first
+- Given fusion "rrf", Then the same two, from `QueryFusionRetriever` in `reciprocal_rerank` mode
+  with `num_queries = 1` (no LLM rewrites the question)
+- Given an unknown fusion, Then `ValueError` naming "relative, rrf"
+
+**Result: all 470 questions, exact search, saved question vectors: 0 Voyage calls, ~5 min, $0**
+
+| exact search | recall@5 | recall@10 | recall@20 | mrr@10 | ndcg@10 | hit@10 |
+|---|---|---|---|---|---|---|
+| v0 dense (`baseline__voyage_4`) | 0.548 | 0.626 | 0.698 | 0.508 | 0.508 | 0.687 |
+| dense (hybrid collection) | 0.548 | 0.626 | 0.698 | 0.508 | 0.508 | 0.687 |
+| BM25 alone | 0.587 | 0.650 | 0.721 | 0.560 | 0.554 | 0.709 |
+| hybrid, relative score (alpha 0.5) | 0.664 | 0.727 | 0.784 | 0.638 | 0.630 | 0.781 |
+| **hybrid, RRF (k 60)** | **0.676** | **0.722** | **0.791** | 0.622 | 0.619 | 0.777 |
+
+Recall@10 by source (dense / BM25 / relative / RRF): Confluence 0.572 / 0.606 / 0.667 / 0.680,
+Fireflies 0.345 / 0.620 / 0.580 / 0.540, GitHub 0.673 / 0.617 / 0.716 / 0.717, Gmail
+0.554 / 0.672 / 0.694 / 0.696, Google Drive 0.585 / 0.603 / 0.691 / 0.666, HubSpot
+0.353 / 0.574 / 0.544 / 0.515, Jira 0.738 / 0.724 / 0.787 / 0.782, Linear 0.593 / 0.706 / 0.754 /
+0.756, Slack 0.684 / 0.583 / 0.731 / 0.721.
+
+What it says:
+- Exact search makes the two collections identical (0.626): the copy is faithful, and v0's true
+  dense score is 0.626, not the 0.609 the approximate index gave.
+- Hybrid adds ~0.10 recall@10 over dense, with either fusion.
+- Relative score and RRF are a tie: 0.005 apart at k = 10 (2–3 questions), RRF ahead at k = 5
+  and k = 20, relative ahead on MRR and NDCG.
+- Fireflies (10,173 meeting summaries, median 11,080 chars, ~7 chunks each) and HubSpot (15,017
+  account notes, median 3,025 chars) still score higher with BM25 alone: many documents share
+  topics (POCs, latency, pricing), and the customer name that tells them apart is what BM25
+  matches and a dense vector blurs.
+
+**Decisions**
+- **RRF for v1.** The two are tied on our questions, and RRF is the default of Azure AI Search,
+  Elasticsearch's `rrf` retriever and Qdrant's hybrid queries: no weights to tune. It is not
+  LlamaIndex's default (its hybrid mode uses relative score), so v1 uses `QueryFusionRetriever`.
+- Relative score with a tuned `alpha` stays a future story: weighted score fusion is where
+  engines go once an evaluation set exists (OpenSearch reports RRF ~3.9% lower NDCG@10 on BEIR).
+- Exact search for every evaluation (53 ms a question vs 7 ms); `hnsw_ef` tuning is a later
+  latency story, measured against the exact number.
+- `use_async=False` on `QueryFusionRetriever`: only a plain `retrieve()` call reads it; the
+  scorer's `aretrieve` always runs both searches concurrently.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: `as_retriever(vector_store_kwargs={"search_params": {"exact": True}})`,
+  LlamaIndex's hybrid mode and `QueryFusionRetriever`; no fusion code of our own.
+- $0: question vectors from RET-3a.
+
+**Dependencies**
+- APIs: `dense_retriever(store, embed_model, top_k=50)`,
+  `hybrid_retriever(store, embed_model, fusion, top_k=50)` in `pipeline/eval/hybrid.py`
+- Service Bus: N/A · Database: reads `hybrid__voyage_4__bm25` and `baseline__voyage_4` · UI: N/A
