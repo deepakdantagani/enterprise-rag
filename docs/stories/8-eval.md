@@ -35,7 +35,7 @@ Eval glossary:
 | EVAL-2a  `load_questions` | ✅ |
 | EVAL-2b  `metrics_report`: overall, per question type, per source, at k = 5, 10, 20 | ✅ |
 | EVAL-3a  `parquet_documents` | ✅ |
-| EVAL-3b  `baseline_pipeline`: `SentenceSplitter(512)` + embedder into a vector store | ⬜ |
+| EVAL-3b  `baseline_pipeline`: `SentenceSplitter(512)` + embedder into a vector store | ✅ |
 | EVAL-3c  `score_retriever`: every question × k in one event loop | ⬜ |
 | EVAL-3d  `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
@@ -263,19 +263,24 @@ size (512)"; with only the content embedded it splits like any other page.
   `pipeline/eval/documents.py`
 - Service Bus: N/A · Database: N/A · UI: N/A
 
-## EVAL-3b  `baseline_pipeline`  ⬜
+## EVAL-3b  `baseline_pipeline`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **I want to** `baseline_pipeline(embed_model, vector_store, docstore)` to return the one
 `IngestionPipeline([SentenceSplitter(512, 50), embed_model], vector_store=..., docstore=...)`
 **So that** the baseline is library code only, and a re-run after a crash skips documents
 already embedded (the docstore keeps each document's hash; `DocstoreStrategy.UPSERTS`)
 
-- Given two documents and `MockEmbedding`, Then their chunks land in the vector store with
-  `ref_doc_id` = dsid
-- Given the same documents run twice, Then the second run embeds nothing
-- File: `pipeline/eval/baseline.py`
+- Given the pipeline, Then its first step is `SentenceSplitter(chunk_size=512, chunk_overlap=50)`
+- Given a long and a short page and `MockEmbedding`, Then more than two chunks, each embedded,
+  each with `ref_doc_id` = its dsid, and every one of them in the vector store
+- Given the same documents run twice, Then the second run returns no chunks and embeds nothing
+- Reuse: all LlamaIndex; the function is the declaration. Verified before writing: with a
+  docstore, `IngestionPipeline` defaults to `DocstoreStrategy.UPSERTS` and skips unchanged
+  documents
+- File: `pipeline/eval/baseline.py`; tests with `SimpleVectorStore` and `SimpleDocumentStore`,
+  no model, no network
 
 ## EVAL-3c  `score_retriever`  ⬜
 
