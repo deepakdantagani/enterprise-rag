@@ -3,7 +3,9 @@
 Run: uv run python -m unittest discover tests
 """
 import doctest
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import report as report_module  # noqa: E402
 from pipeline.eval.questions import Question, load_questions  # noqa: E402
-from pipeline.eval.report import ReportRow, Scored, metrics_report  # noqa: E402
+from pipeline.eval.report import ReportRow, Scored, metrics_report, write_run  # noqa: E402
 
 QUESTIONS = ROOT / "data/_full/questions.jsonl"
 SLACK_BASIC = Question("q1", "basic", ("slack",), "…", ("dsid_a",))
@@ -49,6 +51,31 @@ class MetricsReport(unittest.TestCase):
 
     def test_doctests(self):
         self.assertEqual(doctest.testmod(report_module).failed, 0)
+
+
+SCORED = [Scored(SLACK_BASIC, 10, {"recall": 1.0, "mrr": 1.0}), Scored(SLACK_AND_JIRA, 10, {"recall": 0.5, "mrr": 0.25}),
+          Scored(SLACK_BASIC, 5, {"recall": 0.0, "mrr": 0.0})]
+
+
+class WriteRun(unittest.TestCase):
+    def setUp(self):
+        self.run_dir = Path(tempfile.mkdtemp()) / "2026-09-27-hybrid-rrf-exact"
+        write_run(self.run_dir, {"mode": "hybrid-rrf", "exact": True}, SCORED)
+
+    def test_metrics_json_holds_the_config_and_the_report_rows(self):
+        written = json.loads((self.run_dir / "metrics.json").read_text())
+        self.assertEqual(written["config"], {"mode": "hybrid-rrf", "exact": True})
+        self.assertEqual(written["rows"], [row._asdict() for row in metrics_report(SCORED)])
+
+    def test_scored_jsonl_has_one_line_per_question_and_k(self):
+        lines = [json.loads(line) for line in (self.run_dir / "scored.jsonl").read_text().splitlines()]
+        self.assertEqual([(line["question_id"], line["k"]) for line in lines], [("q1", 10), ("q2", 10), ("q1", 5)])
+        self.assertEqual(lines[1], {"question_id": "q2", "question_type": "semantic", "source_types": ["slack", "jira"],
+                                    "k": 10, "metrics": {"recall": 0.5, "mrr": 0.25}})
+
+    def test_a_rerun_overwrites_instead_of_appending(self):
+        write_run(self.run_dir, {"mode": "hybrid-rrf", "exact": True}, SCORED[:1])
+        self.assertEqual(len((self.run_dir / "scored.jsonl").read_text().splitlines()), 1)
 
 
 @unittest.skipUnless(QUESTIONS.is_file(), "needs data/_full/questions.jsonl")

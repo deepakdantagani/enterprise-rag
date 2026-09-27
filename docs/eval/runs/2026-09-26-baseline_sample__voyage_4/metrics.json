@@ -1,0 +1,376 @@
+{
+  "config": {
+    "commit": "ca6a5d4",
+    "collection": "baseline_sample__voyage_4",
+    "embed_model": "voyage-4",
+    "chunk_size": 512,
+    "chunk_overlap": 50,
+    "retrieved_chunks": 50,
+    "questions": 27
+  },
+  "rows": [
+    {
+      "group": "overall",
+      "k": 5,
+      "questions": 27,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9351851851851852,
+        "ndcg": 0.9515754098228263
+      }
+    },
+    {
+      "group": "overall",
+      "k": 10,
+      "questions": 27,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9351851851851852,
+        "ndcg": 0.9515754098228263
+      }
+    },
+    {
+      "group": "overall",
+      "k": 20,
+      "questions": 27,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9351851851851852,
+        "ndcg": 0.9515754098228263
+      }
+    },
+    {
+      "group": "type:basic",
+      "k": 5,
+      "questions": 27,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9351851851851852,
+        "ndcg": 0.9515754098228263
+      }
+    },
+    {
+      "group": "source:confluence",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "type:basic",
+      "k": 10,
+      "questions": 27,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9351851851851852,
+        "ndcg": 0.9515754098228263
+      }
+    },
+    {
+      "group": "source:confluence",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "type:basic",
+      "k": 20,
+      "questions": 27,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.9351851851851852,
+        "ndcg": 0.9515754098228263
+      }
+    },
+    {
+      "group": "source:confluence",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:fireflies",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:fireflies",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:fireflies",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:github",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:github",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:github",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:gmail",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.8333333333333334,
+        "ndcg": 0.8769765845238192
+      }
+    },
+    {
+      "group": "source:gmail",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.8333333333333334,
+        "ndcg": 0.8769765845238192
+      }
+    },
+    {
+      "group": "source:gmail",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.8333333333333334,
+        "ndcg": 0.8769765845238192
+      }
+    },
+    {
+      "group": "source:google_drive",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.75,
+        "ndcg": 0.8102255193577976
+      }
+    },
+    {
+      "group": "source:google_drive",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.75,
+        "ndcg": 0.8102255193577976
+      }
+    },
+    {
+      "group": "source:google_drive",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.75,
+        "ndcg": 0.8102255193577976
+      }
+    },
+    {
+      "group": "source:hubspot",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:hubspot",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:hubspot",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:jira",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:jira",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:jira",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:linear",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:linear",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:linear",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      }
+    },
+    {
+      "group": "source:slack",
+      "k": 5,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.8333333333333334,
+        "ndcg": 0.8769765845238192
+      }
+    },
+    {
+      "group": "source:slack",
+      "k": 10,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.8333333333333334,
+        "ndcg": 0.8769765845238192
+      }
+    },
+    {
+      "group": "source:slack",
+      "k": 20,
+      "questions": 3,
+      "means": {
+        "hit_rate": 1.0,
+        "recall": 1.0,
+        "mrr": 0.8333333333333334,
+        "ndcg": 0.8769765845238192
+      }
+    }
+  ]
+}

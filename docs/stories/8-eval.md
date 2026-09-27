@@ -45,6 +45,9 @@ Eval glossary:
 | EVAL-3h  precision in the report | ✅ |
 | EVAL-3e  the full run (v0): 511,957 documents, 470 questions, recall@10 0.609 | ✅ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
+| EVAL-5a  `write_run`: every run's metrics and per-question scores kept in git | ✅ |
+| EVAL-5b  `results_tables`: `results.md` tables generated from the runs | ⬜ |
+| EVAL-5c  `html_report`: the interactive report, generated and published | ⬜ |
 
 ---
 
@@ -513,3 +516,41 @@ Estimates that were wrong, kept so the next estimate starts from the real number
   tokens in all.
 - The run stopped once, at document 279,000, on the corpus's one empty row (EVAL-3g), and
   resumed without re-embedding what was done.
+
+## EVAL-5  The evaluation report: three layers  (5a ✅, 5b ⬜, 5c ⬜)
+
+Every number in the report is generated from the runs, never typed: one source of truth (the run
+files in git), a summary generated from it (`results.md`), and an interactive page generated from
+it (published as an artifact). Layer 1 is EVAL-5a, layer 2 EVAL-5b, layer 3 EVAL-5c.
+
+## EVAL-5a  `write_run`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** each run's config, report rows and per-question scores written to a folder in git
+**So that** every number in `results.md` traces to a committed file, and two runs can be
+compared question by question
+
+**Acceptance Criteria (Gherkin)**
+- Given a config and 3 `Scored`, Then `metrics.json` holds the config and exactly the rows of
+  `metrics_report` for them
+- Given the same, Then `scored.jsonl` has one line per question and k, in order, each with
+  `question_id`, `question_type`, `source_types`, `k` and `metrics`
+- Given a re-run into the same folder, Then both files are replaced, not appended to
+
+**Example with real data**
+Before: the runs behind v0 and v1 (dense, BM25, relative and RRF fusion, exact and HNSW) lived
+in `runs/`, which is gitignored, and kept only averages; RET-2 could not list the questions BM25
+found and dense missed. After: `python -m pipeline.eval.baseline` writes
+`docs/eval/runs/<date>-<collection>/metrics.json` and `scored.jsonl`; `events.jsonl` (a run log)
+stays in `runs/`. The 12 existing runs' `metrics.json` are copied in (168 KB); their
+per-question files come from re-scoring the exact runs after RET-3b (saved question vectors, $0).
+A full run's `scored.jsonl` is 1,410 lines (470 questions × 3 k), ~0.3 MB.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: `metrics_report` (EVAL-2b) makes the rows; `write_run` only writes them.
+
+**Dependencies**
+- APIs: `write_run(run_dir, config, scored)` in `pipeline/eval/report.py`; `baseline.RUNS`
+- Service Bus: N/A · Database: N/A · UI: N/A
