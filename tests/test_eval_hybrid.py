@@ -16,7 +16,7 @@ from qdrant_client.models import PointStruct
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import hybrid as hybrid_module  # noqa: E402
-from pipeline.eval.hybrid import copy_to_hybrid, hybrid_store  # noqa: E402
+from pipeline.eval.hybrid import copy_to_hybrid, hybrid_store, sparse_retriever  # noqa: E402
 
 QDRANT_URL = "http://localhost:6333"
 RUNBOOK_CHUNK = "0e9ae45d-cb1e-4c5c-ad98-f5e090a0c7a9"  # first chunk of the perf-canary runbook in v0
@@ -72,6 +72,26 @@ class CopyToHybrid(unittest.TestCase):
         self.assertEqual(doctest.testmod(hybrid_module).failed, 0)
 
 
+class SparseRetriever(unittest.TestCase):
+    def setUp(self):
+        client = source_with(NODES)
+        self.store = hybrid_store(client, "hybrid")
+        copy_to_hybrid(client, "v0", self.store)
+
+    def retrieved_texts(self, question, top_k=50):
+        return [found.node.text for found in sparse_retriever(self.store, top_k=top_k).retrieve(question)]
+
+    def test_ranks_by_shared_words_not_by_the_dense_vectors(self):
+        # the dense vectors of NODES differ only by 0.1 * n, so dense search would rank Berlin first
+        self.assertEqual(self.retrieved_texts("Who approved the Q3 budget?")[0], "Priya approved the Q3 budget.")
+
+    def test_a_chunk_without_any_question_word_is_not_returned(self):
+        self.assertEqual(self.retrieved_texts("Roll back perf-canary"), ["Roll back the perf-canary release."])
+
+    def test_returns_at_most_top_k_chunks(self):
+        self.assertEqual(len(self.retrieved_texts("the Q3 budget office release", top_k=2)), 2)
+
+
 def local_qdrant_has_v0():
     try:
         return QdrantClient(url=QDRANT_URL, timeout=5).collection_exists("baseline__voyage_4")
@@ -93,6 +113,24 @@ class RealRunbookChunk(unittest.TestCase):
         sparse = point(client, "hybrid", RUNBOOK_CHUNK).vector["text-sparse-new"]
         self.assertEqual(len(sparse.indices), 157)
         self.assertEqual(round(max(sparse.values), 3), 1.986)  # 'canari': 11 times in the chunk
+
+
+def local_qdrant_has_hybrid():
+    try:
+        return QdrantClient(url=QDRANT_URL, timeout=5).collection_exists("hybrid__voyage_4__bm25")
+    except Exception:
+        return False
+
+
+@unittest.skipUnless(local_qdrant_has_hybrid(), "needs the RET-1 collection hybrid__voyage_4__bm25 in a local Qdrant")
+class RealSparseSearch(unittest.TestCase):
+    def test_bm25_puts_the_sla_counteroffer_record_first(self):
+        # qst_0017: "What service credit percentages were proposed in the tiered uptime SLA counteroffer ..."
+        store = hybrid_store(QdrantClient(url=QDRANT_URL, timeout=60), "hybrid__voyage_4__bm25")
+        found = sparse_retriever(store).retrieve("What service credit percentages were proposed in the tiered uptime SLA "
+                                                 "counteroffer for the maritime logistics SaaS customer using dedicated "
+                                                 "GPU capacity?")
+        self.assertEqual(found[0].node.ref_doc_id, "dsid_03af1e44970d4d6db6e85bc2c5fce8de")
 
 
 if __name__ == "__main__":

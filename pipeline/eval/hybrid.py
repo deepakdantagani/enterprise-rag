@@ -11,6 +11,12 @@ The first runbook chunk (dsid_e54ef48b…) keeps all 1,024 numbers and payload f
 157 BM25 words, led by 'canari' (canary, 11 times, weight 1.986). The model's default average
 length of 256 words is kept for v1 (ours measure 195 on 2,000 chunks); tuning it is its own story.
 
+RET-2: sparse_retriever, keyword search alone, to score BM25 with v0's metrics before fusing it.
+LlamaIndex's retriever embeds every question even in sparse mode and never uses the vector, so it
+gets MockEmbedding instead of Voyage: pure BM25, $0. On qst_0017 ("… tiered uptime SLA
+counteroffer for the maritime logistics SaaS customer …") BM25 ranks the expected HubSpot
+record first; on qst_0063 "NorthPoint" pulls in a different company's Fireflies meeting instead.
+
     >>> from qdrant_client.models import Record
     >>> node = node_from_point(Record(id="c1", vector=[0.5, 0.5], payload={
     ...     "_node_content": '{"id_": "c1", "text": "Roll back.", "class_name": "TextNode"}',
@@ -20,6 +26,8 @@ length of 256 words is kept for v1 (ours measure 195 on 2,000 chunks); tuning it
 """
 from typing import Optional
 
+from llama_index.core import MockEmbedding, VectorStoreIndex
+from llama_index.core.base.base_retriever import BaseRetriever
 from llama_index.core.schema import BaseNode
 from llama_index.core.vector_stores.utils import metadata_dict_to_node
 from llama_index.vector_stores.qdrant import QdrantVectorStore
@@ -27,6 +35,8 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.models import Record
 
 SPARSE_MODEL = "Qdrant/bm25"  # FastEmbed's BM25; LlamaIndex's default sparse model is a SPLADE-style one
+RETRIEVED_CHUNKS = 50  # as in v0, so dense and BM25 are compared on the same depth
+UNUSED_QUERY_EMBEDDING = MockEmbedding(embed_dim=1024)  # sparse mode never reads the question's dense vector
 
 
 def hybrid_store(client: QdrantClient, collection_name: str,
@@ -54,3 +64,8 @@ def copy_to_hybrid(client: QdrantClient, source: str, store: QdrantVectorStore, 
         copied += len(nodes)
         if offset is None:
             return copied
+
+
+def sparse_retriever(store: QdrantVectorStore, top_k: int = RETRIEVED_CHUNKS) -> BaseRetriever:
+    index = VectorStoreIndex.from_vector_store(store, embed_model=UNUSED_QUERY_EMBEDDING)
+    return index.as_retriever(vector_store_query_mode="sparse", sparse_top_k=top_k, similarity_top_k=top_k)
