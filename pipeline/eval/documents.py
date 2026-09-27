@@ -11,6 +11,10 @@ failed on titles that hold a whole body (497 of them, 493 in Slack, the longest 
 in dsid_c655aa63...), because SentenceSplitter counts embedded metadata against the 512-token
 chunk.
 
+EVAL-3g: a row with blank content is skipped. The full run crashed at batch 279 on the one empty
+document in the corpus, dsid_33cbedf0... (Slack, content ''), because Voyage rejects an empty
+input. It is no question's expected doc, and there is nothing in it to embed or retrieve.
+
     >>> import pyarrow as pa, pyarrow.parquet as pq, tempfile, os
     >>> path = os.path.join(tempfile.mkdtemp(), "documents.parquet")
     >>> pq.write_table(pa.Table.from_pylist([{"doc_id": "dsid_a", "source_type": "confluence",
@@ -33,4 +37,4 @@ def parquet_documents(path: Union[str, Path], batch_size: int = 1000) -> Iterato
         yield [Document(id_=row["doc_id"], text=row["content"],
                         metadata={key: row[key] for key in METADATA_KEYS},
                         excluded_embed_metadata_keys=METADATA_KEYS, excluded_llm_metadata_keys=METADATA_KEYS)
-               for row in batch.to_pylist()]
+               for row in batch.to_pylist() if row["content"].strip()]
