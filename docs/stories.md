@@ -49,7 +49,7 @@ Glossary (terms used across the stories; a story should make sense without chat 
 Stories live in `docs/stories/`, one file per stage, numbered in pipeline order: `1-parsing`,
 `2-chunking`, `3-llamaindex`, `4-tools`. Each additional source then gets its own slot,
 assigned alphabetically so branches built in parallel do not collide: `5-gmail`, `6-linear`,
-`7-slack`, then `8-eval` for the cross-source scoring; `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
+`7-slack`, then `8-eval` for the cross-source scoring and `9-retrieval` for search beyond v0 (`RET-n`); `docs/design/` follows the same scheme, `3-gmail`, `4-linear`, `5-slack`. Story
 numbers are stable and prefixed by source — `PARSE-n` for the Confluence stages, `GMAIL-n`,
 `LINEAR-n`, `SLACK-n` — and a story keeps its number when it moves. The glossary above is
 Confluence's; each source file carries its own, so a story can be read without the others.
@@ -103,3 +103,4 @@ Confluence's; each source file carries its own, so a story can be read without t
 | LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [6-linear.md](stories/6-linear.md) |
 | EVAL-1  `DocumentRetrieverEvaluator`  ✅ | [8-eval.md](stories/8-eval.md) |
 | EVAL-2a  `load_questions`  ✅ · EVAL-2b  `metrics_report`  ✅ · EVAL-3a  `parquet_documents`  ✅ · EVAL-3b  `baseline_pipeline`  ✅ · EVAL-3c  `score_retriever`  ✅ · EVAL-3d1  `embedded_doc_ids`  ✅ · EVAL-3d2  `sample_corpus`  ✅ · EVAL-3d3  `--sample` run  ✅ · EVAL-3f  `--embed` (voyage-4)  ✅ · EVAL-3g  Skip blank documents  ✅ · EVAL-3h  Precision in the report  ✅ · EVAL-3e  Full baseline run (v0)  ✅ · EVAL-4  Phoenix tracing  ✅ | [8-eval.md](stories/8-eval.md) |
+| RET-1  `copy_to_hybrid`: v0 chunks + BM25 into a hybrid collection  ✅ · RET-2  BM25 alone  ⬜ · RET-3  RRF fusion  ⬜ · RET-4  v1 full run  ⬜ | [9-retrieval.md](stories/9-retrieval.md) |

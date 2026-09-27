@@ -41,7 +41,9 @@ Eval glossary:
 | EVAL-3d2  `sample_corpus`: 27 questions, 207 documents from all 9 sources | ✅ |
 | EVAL-3d3  `ingest_corpus` + `python -m pipeline.eval.baseline --sample` | ✅ |
 | EVAL-3f  `--embed`: choose the embedder; voyage-4 chosen | ✅ |
-| EVAL-3e  the full run: 511,962 documents, 470 questions | ⬜ |
+| EVAL-3g  skip blank documents | ✅ |
+| EVAL-3h  precision in the report | ✅ |
+| EVAL-3e  the full run (v0): 511,957 documents, 470 questions, recall@10 0.609 | ✅ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
 ---
