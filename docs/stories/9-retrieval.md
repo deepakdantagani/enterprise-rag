@@ -28,7 +28,8 @@ Retrieval glossary:
 |---|---|
 | RET-1  `copy_to_hybrid`: v0 chunks into a hybrid collection, dense unchanged, plus BM25 | ✅ |
 | RET-2  `sparse_retriever`: BM25 alone scored on the 470 questions | ✅ |
-| RET-3  RRF fusion of dense and BM25 | ⬜ |
+| RET-3a  `saved_query_embeddings`: re-score without paying Voyage again | ✅ |
+| RET-3b  exact dense search for evaluation; re-score dense, BM25, relative-score and RRF fusion | ⬜ |
 | RET-4  v1 full run: hybrid scored, row in `results.md` | ⬜ |
 
 ---
@@ -147,3 +148,53 @@ which is the case for fusing them in RET-3 (per-question overlap is not measured
 **Dependencies**
 - APIs: `sparse_retriever(store, top_k=50) -> BaseRetriever` in `pipeline/eval/hybrid.py`
 - Service Bus: N/A · Database: reads `hybrid__voyage_4__bm25` · UI: N/A
+
+## RET-3a  `saved_query_embeddings`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** the scorer to reuse the 470 question vectors already embedded by Voyage
+**So that** every re-score (exact search, fusion choices, per-source clean-up) costs $0 and
+runs in seconds
+
+**Acceptance Criteria (Gherkin)**
+- Given a saved question, Then its saved vector comes back and the fallback is never called
+- Given the async path the scorer uses (`aget_query_embedding`), Then the same saved vector
+- Given a question not in the file, Then the fallback (Voyage) embeds it
+- Given a question not in the file and no fallback, Then `KeyError` naming the question
+- Given the real file, Then 470 vectors of 1,024 numbers
+
+**Example with real data**
+The RET-3 measure step scored dense, relative-score and RRF retrieval on the hybrid collection.
+The scorer retrieves each question once per k (5, 10, 20), and LlamaIndex's retriever embeds
+the question each time: 1,410 Voyage calls per run, ~10 minutes, ~$0.0045; the three runs cost
+~$0.013, three times the estimate. The 470 questions were then embedded once (95 s,
+`input_type` "query") into `data/_index/question_embeddings/voyage-4.jsonl` (10.8 MB). Dense
+re-scored from that file, with no fallback so any Voyage call would fail: recall@10 0.599 and
+MRR@10 0.486, identical to the paid run, in 12 s, 0 Voyage calls.
+
+**What the saved vectors found (the reason for RET-3b)**
+With exact (brute-force) search, v0 and the hybrid collection both score recall@10 **0.625**,
+and 462 of 470 questions get identical top-50 chunks: the RET-1 copy is faithful. Approximate
+(HNSW) search scored 0.608 on v0 and 0.598 on the hybrid collection, and matched the exact
+top 50 for only 254 and 212 of 470 questions. So every dense number so far is understated by
+index settings, and that noise (0.01–0.03) is as big as the relative-score vs RRF gap (0.010).
+Exact search costs 53 ms per question against 7 ms: ~75 s per scoring run.
+
+**Decisions**
+- Keyed by question text, not id: the retriever only sees the text.
+- No write-back of new questions: the fallback embeds them, the file stays the 470 of
+  `questions.jsonl`. A new question set gets its own file.
+- Chunk embedding is refused (`NotImplementedError`): this model is for questions only.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: LlamaIndex's `BaseEmbedding` is the extension point for embed models;
+  there is no built-in query-embedding cache (`IngestionCache` covers documents).
+- Known issue: a script that loads FastEmbed can print `libc++abi … recursive_mutex lock failed`
+  at interpreter exit, after its work is done; results are unaffected.
+
+**Dependencies**
+- APIs: `SavedQueryEmbedding(saved, fallback=None)`, `saved_query_embeddings(path, fallback=None)`
+  in `pipeline/eval/embedders.py`
+- Service Bus: N/A · Database: reads `data/_index/question_embeddings/voyage-4.jsonl` · UI: N/A
