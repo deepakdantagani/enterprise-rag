@@ -554,3 +554,42 @@ A full run's `scored.jsonl` is 1,410 lines (470 questions × 3 k), ~0.3 MB.
 **Dependencies**
 - APIs: `write_run(run_dir, config, scored)` in `pipeline/eval/report.py`; `baseline.RUNS`
 - Service Bus: N/A · Database: N/A · UI: N/A
+
+## EVAL-5c  `html_report`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** one self-contained HTML page, generated from the runs, that shows every v1 step
+side by side for all questions and for each source
+**So that** I can see where each retrieval step wins or loses without typing a number, and share
+the page as an artifact
+
+**Acceptance Criteria (Gherkin)**
+- Given two runs with groups overall, `type:basic`, `source:jira` (3 questions) and
+  `source:slack` (1), Then the buttons are All, jira, slack (sources by question count, no types)
+- Given the same, Then for overall and each source the page embeds, at k = 10, 5 and 20 in that
+  order, one row per step with its label, search and values to 3 decimals
+- Given the same, Then each row names the metric columns where its value is the best, and the
+  page draws those cells with the `best` class
+- Given a step whose run folder has no `metrics.json`, Then `FileNotFoundError` names the run
+- Given the page, Then it loads no external script or stylesheet and has a dark mode
+
+**Example with real data**
+Before: the v1 step table showed overall recall@10 only (dense 0.626, BM25 0.650, relative 0.727,
+RRF 0.722, all exact), so nothing showed where RRF loses. After: `python -m pipeline.eval.html_report`
+writes `docs/eval/report.html` (39 KB) from the 7 runs in `V1_STEPS`: buttons All (470),
+confluence (114), jira (100), slack (79), github (60), google_drive (60), linear (58), gmail (55),
+hubspot (34), fireflies (25). On All, k = 10, RRF (v1) exact reads hit rate 0.777, recall 0.722,
+precision 0.102, MRR 0.622, NDCG 0.619; relative exact is best in every column (recall 0.727).
+On hubspot, BM25 alone is best in every column (recall 0.574) and RRF (v1) exact trails it at
+0.515; on jira RRF (v1) exact reaches 0.782.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: reads the `metrics.json` that `write_run` (EVAL-5a) writes; no number is
+  recomputed or typed. No external scripts, CSS inline, data embedded as JSON; light and dark mode
+  via CSS variables; tables scroll inside their own container at phone width.
+
+**Dependencies**
+- APIs: `html_report(steps, runs_dir, title)`, `V1_STEPS`, `main()` in `pipeline/eval/html_report.py`
+- Service Bus: N/A · Database: N/A · UI: `docs/eval/report.html`
