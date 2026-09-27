@@ -14,7 +14,7 @@ from llama_index.core.instrumentation import get_dispatcher, root_dispatcher  # 
 from llama_index.core.instrumentation.events.embedding import EmbeddingStartEvent  # noqa: E402
 
 from pipeline.observability import (  # noqa: E402
-    FileCleaned, FileFailed, StageDone, dispatcher, events_logged_to,
+    FileCleaned, FileFailed, PipelineEvent, StageDone, dispatcher, events_logged_to,
 )
 
 
@@ -55,6 +55,14 @@ class EventsLoggedTo(unittest.TestCase):
         with events_logged_to(self.log_path):
             library_dispatcher.event(EmbeddingStartEvent(model_dict={"model": "test"}))
         self.assertEqual(read_lines(self.log_path)[0]["event"], "EmbeddingStartEvent")
+
+    def test_only_logs_just_the_given_event_types(self):
+        # the baseline embeds ~1.3M chunks; LlamaIndex's embedding events carry every vector
+        library_dispatcher = get_dispatcher("llama_index.core.base.embeddings.base")
+        with events_logged_to(self.log_path, only=PipelineEvent):
+            library_dispatcher.event(EmbeddingStartEvent(model_dict={"model": "test"}))
+            dispatcher.event(StageDone(source="all", stage="embed batch 0", files=1000, failed=0, seconds=6.7))
+        self.assertEqual([line["event"] for line in read_lines(self.log_path)], ["StageDone"])
 
     def test_a_span_id_ties_events_to_the_stage_that_emitted_them(self):
         @dispatcher.span

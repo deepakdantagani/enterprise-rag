@@ -39,7 +39,8 @@ Eval glossary:
 | EVAL-3c  `score_retriever`: every question × k in one event loop | ✅ |
 | EVAL-3d1  `embedded_doc_ids`: resume from what Qdrant already holds | ✅ |
 | EVAL-3d2  `sample_corpus`: 27 questions, 207 documents from all 9 sources | ✅ |
-| EVAL-3d3  `run_baseline` + `python -m pipeline.eval.baseline`: sample run, then the full run | ⬜ |
+| EVAL-3d3  `ingest_corpus` + `python -m pipeline.eval.baseline --sample` | ✅ |
+| EVAL-3e  the full run: 511,962 documents, 470 questions | ⬜ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
 ---
@@ -178,6 +179,9 @@ returned, instead of guessing
 - Given an embedding call, Then its span keeps the text but the vector is `__REDACTED__`: in
   the first sample run (207 docs, 822 chunks) the 1,024-number vectors pushed one export batch
   to 12 MB, over the 4 MB Phoenix accepts over gRPC, and those traces were lost
+- Given a retrieval of 50 chunks, Then its span keeps every chunk, the best-ranked included: a
+  span holds up to 1,024 attributes (`phoenix_provider`); OpenTelemetry's default of 128 dropped
+  the first chunks in the first `--sample` run ("Attributes dict is full")
 
 **Example with real data**
 To be filled by EVAL-3's first run: qst_0431 opened in Phoenix, with its top chunks and the
@@ -188,16 +192,21 @@ documents they came from.
 - Reuse: no span is written by our code. OpenInference's `LlamaIndexInstrumentor` hooks
   LlamaIndex's instrumentation dispatcher, the same one `pipeline/observability.py` listens
   to; the function only chooses where spans go.
-- Dependency discipline: two new runtime dependencies, `openinference-instrumentation-llama-index`
-  4.5.2 and `arize-phoenix-otel` 0.17.1 (resolve with the pinned `llama-index-core` 0.14.24,
-  no other pin moves). The Phoenix server itself is not a dependency: it runs on demand with
+- Dependency discipline: two runtime dependencies, `openinference-instrumentation-llama-index`
+  4.5.2 and `opentelemetry-exporter-otlp-proto-http` 1.45.0 (resolve with the pinned
+  `llama-index-core` 0.14.24). EVAL-4b dropped `arize-phoenix-otel`: its
+  `register(protocol="http/protobuf")` raises AttributeError on the exporter's `_headers` with
+  the current OpenTelemetry exporter, so the provider is plain OpenTelemetry (a `Resource` with
+  `openinference.project.name`, a `BatchSpanProcessor`, an OTLP HTTP exporter to
+  `localhost:6006/v1/traces`). A test now takes that default path, and a live check sent a span
+  to the running Phoenix. The Phoenix server itself is not a dependency: it runs on demand with
   `uv run --with arize-phoenix phoenix serve`. Considered and not taken: Langfuse (a server to
   host), MLflow (weaker per-question view).
 
 **Dependencies**
 - APIs: `trace_to_phoenix(project="enterprise-rag-eval", tracer_provider=None) -> TracerProvider`
   in `pipeline/eval/tracing.py`
-- Uses: `openinference.instrumentation.llama_index.LlamaIndexInstrumentor`, `phoenix.otel.register`
+- Uses: `openinference.instrumentation.llama_index.LlamaIndexInstrumentor`, OpenTelemetry's `OTLPSpanExporter` (HTTP)
 - Service Bus: N/A · Database: N/A · UI: Arize Phoenix at `http://localhost:6006` (local)
 
 ---
@@ -335,16 +344,53 @@ random other documents from that source
   sample run's corpus (822 chunks, recall@10 0.96; inflated, the haystack is 207 documents)
 - File: `pipeline/eval/sample.py`; pure
 
-## EVAL-3d3  `python -m pipeline.eval.baseline`  ⬜
+## EVAL-3d3  `ingest_corpus` + `python -m pipeline.eval.baseline`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** one command that loads (3a), splits and embeds (3b) into Qdrant, resuming from
+what Qdrant holds (3d1), then scores every question (3c) into the report (2b), traced to
+Phoenix (EVAL-4), with `--sample` for the 207-document corpus (3d2)
+**So that** the baseline is one reproducible command whose output is a row on the scoreboard
+
+**Acceptance Criteria (Gherkin)**
+- Given 5 documents, Then `ingest_corpus` embeds all 5 and returns 5
+- Given `skip_doc_ids = {dsid_1, dsid_2}`, Then only the other 3 are embedded
+- Given `keep_doc_ids = {dsid_0, dsid_4}`, Then only those 2 are embedded
+- Given batches of 2, Then one `StageDone` per batch with the number of documents embedded
+- Given `events_logged_to(path, only=PipelineEvent)`, Then LlamaIndex's own events (whose
+  embedding events carry every vector, ~25 GB estimated on the full run) are not logged
+- Given `python -m pipeline.eval.baseline --sample` against Ollama, Qdrant and Phoenix, Then
+  it finishes and writes `runs/<date>-baseline_sample/metrics.json` and `events.jsonl`
+- Given the same command again, Then it embeds nothing and reports the same numbers
+
+**Example with real data** (run on 2026-09-26)
+First run: 207 documents → 832 chunks in collection `baseline_sample`, 57 s; 512 `StageDone`
+lines (one per 1,000-row batch). Overall at k = 10: hit_rate 0.963, recall 0.963, mrr 0.854,
+ndcg 0.880 over 27 `basic` questions; Slack is the weakest source (recall 0.667 at every k).
+Re-run: 7 s, 0 documents embedded, 832 chunks, identical numbers. The sample proves the
+wiring; its recall is inflated (a 207-document haystack) and is not the baseline.
+
+**Non-functional Requirements**
+- Shared NFRs. `ingest_corpus` is tested with `SimpleVectorStore` and `MockEmbedding`; the
+  command is proven by the run above (it needs Ollama, Qdrant and Phoenix).
+- Scoring is not in `ingest_corpus`: a retriever needs a vector store that keeps text, which
+  `SimpleVectorStore` does not; the command builds it from Qdrant and calls 3c.
+- `baseline_pipeline`'s docstore becomes optional (default none): resume is 3d1's job.
+- New dependency: `llama-index-embeddings-ollama==0.10.0`. `runs/` is gitignored.
+- Shared module change: `events_logged_to` gains `only=` (default: every event, as before).
+
+**Dependencies**
+- APIs: `ingest_corpus(documents_path, vector_store, embed_model, skip_doc_ids, keep_doc_ids, batch_size) -> int`
+  and `main()` in `pipeline/eval/baseline.py`; `events_logged_to(path, only=BaseEvent)` in
+  `pipeline/observability.py`
+- Service Bus: N/A · Database: Qdrant (Docker, `localhost:6333`) · UI: Phoenix (`localhost:6006`)
+
+## EVAL-3e  The full run  ⬜
 
 **Status:** To do
 
-**I want to** one command that wires 3a → 3b → Qdrant → 3c → 2b with Phoenix tracing, with
-`--sample` (the 207-document run above) and the full run
-**So that** the baseline is one reproducible command, and its result is the first row of
-`docs/eval/results.md`
-
-- New dependency: `llama-index-embeddings-ollama==0.10.0` (resolves with `llama-index-core` 0.14.24)
-- `QdrantVectorStore` gets both `client` and `aclient=AsyncQdrantClient(...)` (finding 3)
-- Each batch: drop `embedded_doc_ids`, run 3b, and log the batch number to the run log first
-- Writes `runs/<date>-baseline/metrics.json` (gitignored) and one row of `docs/eval/results.md`
+Needs Docker Desktop at 16 GB (decided above). `uv run python -m pipeline.eval.baseline`:
+511,962 documents, ~1.3M chunks (estimated), ~2.5 h, then 470 questions. Its row on
+`docs/eval/results.md` is the baseline every clean-up story must beat.
