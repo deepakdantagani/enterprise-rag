@@ -27,7 +27,7 @@ Retrieval glossary:
 | Story | Status |
 |---|---|
 | RET-1  `copy_to_hybrid`: v0 chunks into a hybrid collection, dense unchanged, plus BM25 | ✅ |
-| RET-2  BM25 alone: score keyword search on the 470 questions | ⬜ |
+| RET-2  `sparse_retriever`: BM25 alone scored on the 470 questions | ✅ |
 | RET-3  RRF fusion of dense and BM25 | ⬜ |
 | RET-4  v1 full run: hybrid scored, row in `results.md` | ⬜ |
 
@@ -89,3 +89,61 @@ words after stopwords: `1 × 2.2 / (1 + 1.2 × (0.25 + 0.75 × 251/256)) = 1.008
 - APIs: `hybrid_store(client, collection_name, aclient=None)`, `node_from_point(point)`,
   `copy_to_hybrid(client, source, store, page_size=1000) -> int` in `pipeline/eval/hybrid.py`
 - Service Bus: N/A · Database: new Qdrant collection `hybrid__voyage_4__bm25` · UI: N/A
+
+## RET-2  `sparse_retriever`: BM25 alone  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** keyword search scored on its own, with v0's metrics, on the RET-1 collection
+**So that** I know what BM25 finds and misses before fusing it with dense search (RET-3)
+
+**Acceptance Criteria (Gherkin)**
+- Given 3 chunks whose dense vectors would rank "The Berlin office moved." first, When asked
+  "Who approved the Q3 budget?", Then BM25 returns "Priya approved the Q3 budget." first
+- Given "Roll back perf-canary", Then only the chunk sharing those words is returned
+- Given `top_k = 2`, Then at most 2 chunks come back
+- Given the real collection and qst_0017 ("… tiered uptime SLA counteroffer for the maritime
+  logistics SaaS customer …"), Then the first chunk is from `dsid_03af1e44970d4d6db6e85bc2c5fce8de`
+
+**Example with real data**
+Four HubSpot questions, BM25 only: qst_0017 and qst_0042 find their record at rank 1 (rare
+words like "counteroffer", "maritime", "Hacker News"); qst_0015 misses (its words — latency,
+concurrent, streaming, chat — are common); qst_0063 misses because "NorthPoint" matches a
+different company's Fireflies meeting ("Strategic Health & Burn Council - Northpoint Health Q1").
+
+**Result: all 470 questions, 12 s, $0** (row in [results.md](../eval/results.md))
+
+| | hit@10 | recall@5 | recall@10 | recall@20 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| dense (v0) | 0.668 | 0.531 | 0.609 | 0.673 | 0.085 | 0.493 | 0.494 |
+| BM25 alone | 0.709 | 0.587 | **0.650** | 0.721 | 0.094 | 0.560 | 0.554 |
+
+Recall@10 by source, dense → BM25: Fireflies 0.265 → **0.620**, HubSpot 0.353 → **0.574**,
+Gmail 0.536 → 0.672, Linear 0.611 → 0.706, Confluence 0.567 → 0.606, Google Drive 0.575 → 0.603,
+Jira 0.719 → 0.724, Slack 0.632 → **0.583**, GitHub 0.669 → **0.617**.
+By type: intra_document_reasoning 0.700 → 1.000, conflicting_info 0.500 → 0.750, miscellaneous
+0.700 → 0.900, completeness 0.402 → 0.496, project_related 0.558 → 0.594, basic 0.697 → 0.703,
+semantic 0.440 → **0.416**, constrained 0.900 → **0.800**.
+
+What it says: keyword search alone beats v0's dense search, most on the sources full of exact
+names (transcripts, CRM records, email). It loses where meaning matters more than words
+(semantic questions, chatty Slack, code). The two win on different sources and question types,
+which is the case for fusing them in RET-3 (per-question overlap is not measured yet).
+
+**Decisions**
+- Sparse only: the dense-vs-BM25 per-question table (complementarity) is left out; it needs
+  per-question results saved for both runs, a story of its own if RET-3 needs it.
+- `MockEmbedding` as the retriever's embed model: LlamaIndex's retriever embeds every question
+  even in sparse mode (`is_embedding_query`) and never reads that vector, so a mock costs $0
+  where Voyage would cost ~$0.0015. Still the library retriever, no query code of our own.
+- 50 chunks, as in v0, so both are compared at the same depth.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: `VectorStoreIndex.as_retriever(vector_store_query_mode="sparse")`,
+  `score_retriever` (EVAL-3c) and `metrics_report` (EVAL-2b), unchanged.
+- $0 and deterministic: BM25 is local, the mock embedding is fixed.
+
+**Dependencies**
+- APIs: `sparse_retriever(store, top_k=50) -> BaseRetriever` in `pipeline/eval/hybrid.py`
+- Service Bus: N/A · Database: reads `hybrid__voyage_4__bm25` · UI: N/A

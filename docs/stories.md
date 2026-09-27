@@ -103,4 +103,4 @@ Confluence's; each source file carries its own, so a story can be read without t
 | LINEAR-9  Counts for every stage (`_stats.json`)  ⬜ | [6-linear.md](stories/6-linear.md) |
 | EVAL-1  `DocumentRetrieverEvaluator`  ✅ | [8-eval.md](stories/8-eval.md) |
 | EVAL-2a  `load_questions`  ✅ · EVAL-2b  `metrics_report`  ✅ · EVAL-3a  `parquet_documents`  ✅ · EVAL-3b  `baseline_pipeline`  ✅ · EVAL-3c  `score_retriever`  ✅ · EVAL-3d1  `embedded_doc_ids`  ✅ · EVAL-3d2  `sample_corpus`  ✅ · EVAL-3d3  `--sample` run  ✅ · EVAL-3f  `--embed` (voyage-4)  ✅ · EVAL-3g  Skip blank documents  ✅ · EVAL-3h  Precision in the report  ✅ · EVAL-3e  Full baseline run (v0)  ✅ · EVAL-4  Phoenix tracing  ✅ | [8-eval.md](stories/8-eval.md) |
-| RET-1  `copy_to_hybrid`: v0 chunks + BM25 into a hybrid collection  ✅ · RET-2  BM25 alone  ⬜ · RET-3  RRF fusion  ⬜ · RET-4  v1 full run  ⬜ | [9-retrieval.md](stories/9-retrieval.md) |
+| RET-1  `copy_to_hybrid`: v0 chunks + BM25 into a hybrid collection  ✅ · RET-2  `sparse_retriever`: BM25 alone  ✅ · RET-3  RRF fusion  ⬜ · RET-4  v1 full run  ⬜ | [9-retrieval.md](stories/9-retrieval.md) |
