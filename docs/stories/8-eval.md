@@ -40,6 +40,7 @@ Eval glossary:
 | EVAL-3d1  `embedded_doc_ids`: resume from what Qdrant already holds | ✅ |
 | EVAL-3d2  `sample_corpus`: 27 questions, 207 documents from all 9 sources | ✅ |
 | EVAL-3d3  `ingest_corpus` + `python -m pipeline.eval.baseline --sample` | ✅ |
+| EVAL-3f  `--embed`: choose the embedder; voyage-4 chosen | ✅ |
 | EVAL-3e  the full run: 511,962 documents, 470 questions | ⬜ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 
@@ -386,6 +387,52 @@ wiring; its recall is inflated (a 207-document haystack) and is not the baseline
   and `main()` in `pipeline/eval/baseline.py`; `events_logged_to(path, only=BaseEvent)` in
   `pipeline/observability.py`
 - Service Bus: N/A · Database: Qdrant (Docker, `localhost:6333`) · UI: Phoenix (`localhost:6006`)
+
+## EVAL-3f  `--embed`: choose the embedder  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** `python -m pipeline.eval.baseline --embed <model>` with the local model or the
+Voyage API, each into its own Qdrant collection
+**So that** the full run is not ~20 h on this Mac, and the embedder is chosen on our questions
+
+**Why** (measured 2026-09-26): `qwen3-embedding:0.6b` runs at ~22 chunks/s here, the same
+through Ollama and through PyTorch on MPS, at any batch size or number of parallel requests;
+the GPU is ~95% busy (macOS `ioreg`), so one 512-token chunk already fills it. The full corpus
+is ~1.56M chunks (3.05 per document on 500 random documents) → ~20 h.
+
+**Acceptance Criteria (Gherkin)**
+- Given `qwen3-embedding:0.6b`, Then an `OllamaEmbedding`; given `voyage-4`, Then a
+  `VoyageEmbedding` at 1,024 dimensions; given an unknown name, Then an error listing the known
+- Given an embedder and `--sample` or not, Then its own collection, e.g.
+  `baseline_sample__voyage_4`: vectors of two models are never mixed
+- `VOYAGE_API_KEY` is read from `.env` (gitignored), never from the command line
+
+**Example with real data** (`--sample`, 27 questions, 207 documents)
+
+| embedder | dims | recall@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|
+| qwen3-embedding:0.6b (local) | 1,024 | 0.963 | 0.854 | 0.880 |
+| voyage-4 | 256 | 1.000 | 0.878 | 0.909 |
+| voyage-4 | 512 | 1.000 | 0.917 | 0.938 |
+| voyage-4 | 1,024 | 1.000 | 0.935 | 0.952 |
+| voyage-4 | 2,048 | 1.000 | 0.935 | 0.952 |
+
+27 easy questions, so a signal, not proof. Decided: **voyage-4 at 1,024** for the baseline
+(2,048 adds nothing here; same size as the local model, so the same Qdrant memory).
+
+Measured cost and speed for the full corpus: 1,000 random documents are 1,305,021 voyage-4
+tokens (0.270 per character, overlap included) → ~665M tokens → ~$40 at $0.06 per 1M, ~$28
+after the account's 200M free voyage-4 tokens. One request at a time runs at 126 chunks/s
+(~3.1M tokens per minute, the account's cap is 8M) → ~3.4 h. Splitting alone is 4,389 chunks/s.
+`voyage-4-large` (+4.8% retrieval in Voyage's own benchmark, $0.12 per 1M, 3M TPM cap) is left
+as a later experiment against this baseline.
+
+**Non-functional Requirements**
+- New dependencies: `llama-index-embeddings-voyageai==0.7.0` and `voyageai==0.5.0` for Python ≥
+  3.13 (the integration declares its client only below 3.13, so on 3.14 it was missing)
+- Files: `pipeline/eval/embedders.py`, `--embed` in `pipeline/eval/baseline.py`
 
 ## EVAL-3e  The full run  ⬜
 

@@ -49,7 +49,6 @@ RETRIEVED_CHUNKS = 50  # enough chunks for 20 distinct documents in almost every
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = ROOT / "data/_full/documents.parquet"
 QUESTIONS = ROOT / "data/_full/questions.jsonl"
-EMBED_MODEL = "qwen3-embedding:0.6b"
 QDRANT_URL = "http://localhost:6333"
 
 
@@ -81,19 +80,24 @@ def ingest_corpus(documents_path: Path, vector_store: BasePydanticVectorStore, e
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     import pyarrow.parquet as pq
-    from llama_index.embeddings.ollama import OllamaEmbedding
+    import os
+
+    from dotenv import load_dotenv
     from llama_index.vector_stores.qdrant import QdrantVectorStore
     from qdrant_client import AsyncQdrantClient, QdrantClient
 
+    from pipeline.eval.embedders import EMBEDDERS, collection_name, embed_model_named
     from pipeline.eval.resume import embedded_doc_ids
     from pipeline.eval.sample import sample_corpus
     from pipeline.eval.tracing import trace_to_phoenix
 
     parser = argparse.ArgumentParser(description="Naive baseline: every document, SentenceSplitter(512), local embedder, Qdrant.")
     parser.add_argument("--sample", action="store_true", help="27 questions, 207 documents from all 9 sources (EVAL-3d2)")
+    parser.add_argument("--embed", choices=list(EMBEDDERS), default=next(iter(EMBEDDERS)), help="embedding model (EVAL-3f)")
     args = parser.parse_args(argv)
 
-    collection = "baseline_sample" if args.sample else "baseline"
+    load_dotenv(ROOT / ".env")  # VOYAGE_API_KEY for the Voyage models
+    collection = collection_name(args.embed, args.sample)
     questions, keep_doc_ids = load_questions(QUESTIONS).questions, None
     if args.sample:
         table = pq.read_table(DOCUMENTS, columns=["doc_id", "source_type"])
@@ -103,14 +107,14 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                                      collection_name=collection)
     run_dir = ROOT / "runs" / f"{date.today()}-{collection}"
     trace_to_phoenix(project=collection)
-    embed_model = OllamaEmbedding(model_name=EMBED_MODEL, embed_batch_size=32)
+    embed_model = embed_model_named(args.embed, voyage_api_key=os.environ.get("VOYAGE_API_KEY"))
     with events_logged_to(run_dir / "events.jsonl", only=PipelineEvent):
         ingest_corpus(DOCUMENTS, vector_store, embed_model, skip_doc_ids=embedded_doc_ids(client, collection),
                       keep_doc_ids=keep_doc_ids)
     retriever = VectorStoreIndex.from_vector_store(vector_store, embed_model=embed_model).as_retriever(similarity_top_k=RETRIEVED_CHUNKS)
     rows = metrics_report(score_retriever(retriever, questions))
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
-    config = {"commit": commit, "collection": collection, "embed_model": EMBED_MODEL, "chunk_size": CHUNK_SIZE,
+    config = {"commit": commit, "collection": collection, "embed_model": args.embed, "chunk_size": CHUNK_SIZE,
               "chunk_overlap": CHUNK_OVERLAP, "retrieved_chunks": RETRIEVED_CHUNKS, "questions": len(questions)}
     (run_dir / "metrics.json").write_text(json.dumps({"config": config, "rows": [row._asdict() for row in rows]}, indent=2))
     for row in rows:
