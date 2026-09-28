@@ -34,7 +34,7 @@ Retrieval glossary:
 | RET-5  `rerank_saved`, `replay_retriever`: v1's top 50 reranked by three Voyage cross-encoders | ✅ |
 | RET-6  v2 recorded: v1 + rerank-3-lite, recall@10 0.800; the scoreboard page published | ✅ |
 | RET-7  `multi_query_retriever`: the question + 3 local-LLM queries, fused by RRF (measured: worse than v1) | ✅ |
-| RET-7b  the query prompt: keep the question's details (recall@50 0.838 → 0.848, above v1) | ✅ |
+| RET-7b  the query prompt: keep the question's details (recall@50 0.838 → 0.848; reranked 0.807 vs v2 0.800, within noise: v2 stays) | ✅ |
 
 ---
 
@@ -452,7 +452,7 @@ was not run (it can only re-sort a top 50 that now holds fewer relevant document
 
 ## RET-7b  The query prompt: keep the question's details  ✅
 
-**Status:** Done (before reranking)
+**Status:** Done (measured; not adopted)
 
 **Why:** RET-7 lost 42 relevant documents, and 35 of them were found by none of the 3 generated
 queries, only by the question. LlamaIndex's default prompt asks for queries "related to" the
@@ -485,7 +485,26 @@ reverse.) What it says: the loss was the prompt, not multi-query. Keeping the de
 project questions. Completeness is still below v1 (0.626 vs 0.651): rephrasing does not split a
 multi-part question; that needs decomposition.
 
-**Next:** rerank the keep-details top 50 with rerank-3-lite and compare with v2 (0.800).
+**After reranking** (rerank-3-lite on the keep-details top 50: 11,421,145 tokens, 165 s, free
+pool):
+
+| exact, reranked | recall@5 | recall@10 | recall@20 | hit@10 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| v2: v1 top 50 + rerank-3-lite | 0.777 | 0.800 | 0.820 | 0.851 | 0.112 | 0.785 | 0.762 |
+| keep-details top 50 + rerank-3-lite | **0.786** | **0.807** | **0.827** | **0.864** | 0.112 | **0.795** | **0.769** |
+
+Recall@10 by source, v2 → keep-details: Linear 0.826 → **0.891**, Fireflies 0.645 → 0.665, Google
+Drive 0.748 → 0.767, HubSpot 0.765 → **0.735**, Jira 0.823 → 0.819, GitHub 0.781 → 0.779, the rest
+within 0.001. By type: semantic 0.688 → **0.720**, conflicting_info 0.825 → 0.850, completeness
+0.576 → **0.545**, project_related 0.634 → 0.622, basic 0.851 unchanged.
+
+Question by question (k = 10): recall is better for 13, worse for 11 and the same for 446; the mean
+gain +0.007 has a 95% bootstrap interval of [−0.008, +0.022] (MRR +0.010, [−0.003, +0.023]).
+
+**Verdict: not adopted; v2 stays.** The gain is within noise, while multi-query adds a planner
+call (~1.4 s a question locally) and 4× the searches. It moves recall between question types
+(semantic up, completeness down) more than it raises it. Completeness, the weakest type, needs
+the question split per part (decomposition), which rephrasing does not do.
 
 **Dependencies**
 - APIs: `PERSPECTIVE_PROMPT`, `KEEP_DETAILS_PROMPT`, `prompt=` on `query_prompt`,
