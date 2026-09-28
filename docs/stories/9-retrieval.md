@@ -563,6 +563,11 @@ ran together; top 200 alone waits out the limit.
 deeper pool cost less than the documents it adds. Completeness and HubSpot barely move: they
 need different fixes (decomposition; a HubSpot-specific look).
 
+**With RET-7b's 3 keep-details queries, 200 deep** (search only, 136 s, $0): pool recall at top
+50 / 100 / 200 goes 0.851 / 0.879 / 0.914 (question alone) → 0.853 / 0.888 / 0.914, gaining 7 and
+losing 8 relevant documents at top 200. A deep pool already holds what the extra queries find,
+so they were not reranked: top 200 with the question alone, no LLM planner, is the candidate.
+
 **Dependencies**
 - APIs: `hybrid_retriever(..., top_k=200)`, `rerank_saved`, `voyage_rerank`, `replay_retriever` (unchanged)
 - Database: `data/_index/rerank/v1_top{100,200}_candidates.jsonl`, `top{100,200}-rerank-3-lite.jsonl`
