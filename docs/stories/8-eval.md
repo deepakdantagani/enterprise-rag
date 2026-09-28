@@ -47,7 +47,7 @@ Eval glossary:
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 | EVAL-5a  `write_run`: every run's metrics and per-question scores kept in git | ✅ |
 | EVAL-5b  `results_tables`: `results.md` tables generated from the runs | ✅ |
-| EVAL-5c  `html_report`: the interactive report, generated and published | ⬜ |
+| EVAL-5c  `html_report`: the interactive report, generated and published | ✅ |
 
 ---
 
@@ -517,7 +517,7 @@ Estimates that were wrong, kept so the next estimate starts from the real number
 - The run stopped once, at document 279,000, on the corpus's one empty row (EVAL-3g), and
   resumed without re-embedding what was done.
 
-## EVAL-5  The evaluation report: three layers  (5a ✅, 5b ✅, 5c ⬜)
+## EVAL-5  The evaluation report: three layers  (5a ✅, 5b ✅, 5c ✅)
 
 Every number in the report is generated from the runs, never typed: one source of truth (the run
 files in git), a summary generated from it (`results.md`), and an interactive page generated from
@@ -588,3 +588,42 @@ also shows 0.102; bold now follows what the reader sees.
 - APIs: `Step`, `V1_STEPS`, `results_tables(steps, runs_dir)`, `replace_generated(text, generated)`,
   `python -m pipeline.eval.results_tables` in `pipeline/eval/results_tables.py`
 - Service Bus: N/A · Database: reads `docs/eval/runs/*/metrics.json` · UI: N/A
+
+## EVAL-5c  `html_report`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** one self-contained HTML page, generated from the runs, that shows every v1 step
+side by side for all questions and for each source
+**So that** I can see where each retrieval step wins or loses without typing a number, and share
+the page as an artifact
+
+**Acceptance Criteria (Gherkin)**
+- Given two runs with groups overall, `type:basic`, `source:jira` (3 questions) and
+  `source:slack` (1), Then the buttons are All, jira, slack (sources by question count, no types)
+- Given the same, Then for overall and each source the page embeds, at k = 10, 5 and 20 in that
+  order, one row per step with its label, search and values to 3 decimals
+- Given the same, Then each row names the metric columns where its value is the best, and the
+  page draws those cells with the `best` class
+- Given a step whose run folder has no `metrics.json`, Then `FileNotFoundError` names the run
+- Given the page, Then it loads no external script or stylesheet and has a dark mode
+
+**Example with real data**
+Before: the v1 step table showed overall recall@10 only (dense 0.626, BM25 0.650, relative 0.727,
+RRF 0.722, all exact), so nothing showed where RRF loses. After: `python -m pipeline.eval.html_report`
+writes `docs/eval/report.html` (39 KB) from the 7 runs in `V1_STEPS`: buttons All (470),
+confluence (114), jira (100), slack (79), github (60), google_drive (60), linear (58), gmail (55),
+hubspot (34), fireflies (25). On All, k = 10, RRF (v1) exact reads hit rate 0.777, recall 0.722,
+precision 0.102, MRR 0.622, NDCG 0.619; relative exact is best in every column (recall 0.727).
+On hubspot, BM25 alone is best in every column (recall 0.574) and RRF (v1) exact trails it at
+0.515; on jira RRF (v1) exact reaches 0.782.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: reads the `metrics.json` that `write_run` (EVAL-5a) writes; no number is
+  recomputed or typed. No external scripts, CSS inline, data embedded as JSON; light and dark mode
+  via CSS variables; tables scroll inside their own container at phone width.
+
+**Dependencies**
+- APIs: `html_report(steps, runs_dir, title)`, `V1_STEPS`, `main()` in `pipeline/eval/html_report.py`
+- Service Bus: N/A · Database: N/A · UI: `docs/eval/report.html`
