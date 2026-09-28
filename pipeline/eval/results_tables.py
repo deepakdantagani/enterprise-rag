@@ -39,10 +39,8 @@ V1_STEPS = [
     Step("4. Hybrid RRF (v1)", "exact", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact"),
     Step("4. Hybrid RRF", "HNSW", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf"),
 ]
-RERANK_STEPS = [  # RET-5: v1's top 50 re-sorted by a Voyage cross-encoder
-    Step("5. v1 + rerank-2.5", "exact", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-2.5"),
+RERANK_STEPS = [  # RET-6: the reranker chosen for v2; rerank-2.5 and rerank-3 runs stay in docs/eval/runs
     Step("5. v1 + rerank-3-lite (v2)", "exact", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3-lite"),
-    Step("5. v1 + rerank-3", "exact", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3"),
 ]
 REPORT_STEPS = V1_STEPS + RERANK_STEPS
 
