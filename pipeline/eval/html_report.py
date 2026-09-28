@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
-from pipeline.eval.results_tables import V1_STEPS  # one step list for the tables (EVAL-5b) and this page
+from pipeline.eval.results_tables import REPORT_STEPS, V1_STEPS  # one step list for the tables (EVAL-5b) and this page
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "docs/eval/runs"
@@ -64,7 +64,7 @@ def html_report(steps: Sequence[Tuple[str, str, str]], runs_dir: Path, title: st
 
 
 def main() -> None:
-    REPORT.write_text(html_report(V1_STEPS, RUNS, "Retrieval evaluation: v0 → v1"))
+    REPORT.write_text(html_report(REPORT_STEPS, RUNS, "Retrieval evaluation: v0 → v1 → reranking"))
 
 
 PAGE = """<!doctype html>
