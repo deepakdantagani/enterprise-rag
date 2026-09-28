@@ -35,6 +35,7 @@ Retrieval glossary:
 | RET-6  v2 recorded: v1 + rerank-3-lite, recall@10 0.800; the scoreboard page published | ✅ |
 | RET-7  `multi_query_retriever`: the question + 3 local-LLM queries, fused by RRF (measured: worse than v1) | ✅ |
 | RET-7b  the query prompt: keep the question's details (recall@50 0.838 → 0.848; reranked 0.807 vs v2 0.800, within noise: v2 stays) | ✅ |
+| RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
 
 ---
 
@@ -511,3 +512,58 @@ the question split per part (decomposition), which rephrasing does not do.
   `save_completions` and `multi_query_retriever` in `pipeline/eval/multi_query.py`
 - Database: `data/_index/planner/gemma4-26b-{perspective,keep-details}.jsonl` (gitignored); runs
   in `docs/eval/runs/*-multi-query-{perspective,keep-details}-rrf-exact`
+
+## RET-8  A deeper pool for the reranker: top 100 and top 200  ✅
+
+**Status:** Done (measured; v3 pending a decision on latency)
+
+**Why:** the reranker only re-sorts what it is given, and 161 relevant documents never reach
+v1's top 50. It sorts well (v2: recall@10 0.722 → 0.800 on the same 50), so hand it more.
+
+**What changed:** only depth. v1's dense and BM25 retrievers each return 200 chunks, RRF fuses
+them (`hybrid_retriever(..., "rrf", top_k=200)`, exact), and the first 100 or all 200 go to
+rerank-3-lite. No new code: `rerank_saved` and `replay_retriever` as in RET-5. Searching 470
+questions 200 deep took 42 s ($0); the top 200 is saved in `data/_index/rerank/v1_top200_candidates.jsonl`.
+
+Recall of the fused list before reranking (by document, 470 questions):
+
+| candidates | overall | semantic | project | completeness | Fireflies | Linear | HubSpot |
+|---|---|---|---|---|---|---|---|
+| top 50 (v1, 50-deep lists) | 0.838 | 0.696 | 0.801 | 0.651 | | | |
+| top 50 (200-deep lists) | 0.850 | 0.728 | 0.830 | 0.663 | 0.690 | 0.868 | 0.765 |
+| top 100 | 0.878 | 0.768 | 0.878 | 0.669 | 0.730 | 0.951 | 0.765 |
+| top 200 | **0.913** | **0.840** | **0.922** | 0.711 | **0.840** | **0.983** | 0.765 |
+
+Deeper lists alone lift the top 50 (0.838 → 0.850): a chunk ranked 60th by one retriever still
+earns its RRF share. HubSpot does not move at any depth: those misses are not a depth problem.
+
+After rerank-3-lite:
+
+| exact, reranked | rerank tokens | recall@5 | recall@10 | recall@20 | hit@10 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|---|---|---|
+| v2: top 50 | 11,524,826 | 0.777 | 0.800 | 0.820 | 0.851 | 0.112 | 0.785 | 0.762 |
+| top 100 | 23,062,492 | 0.809 | 0.832 | 0.851 | 0.883 | 0.115 | 0.806 | 0.787 |
+| **top 200** | 46,017,479 | **0.827** | **0.853** | **0.867** | **0.902** | **0.118** | **0.826** | **0.807** |
+
+Question by question against v2 (k = 10): top 100 is better on 21 and worse on 5, recall@10
++0.033 [95% bootstrap +0.017, +0.050], MRR +0.021 [+0.008, +0.036]; top 200 is better on 34 and
+worse on 7, recall@10 **+0.053 [+0.032, +0.076]**, MRR +0.041 [+0.024, +0.060]. Both intervals
+exclude zero: a real gain, unlike RET-7b.
+
+Recall@10 by source, v2 → top 200: Linear 0.826 → **0.915**, Google Drive 0.748 → 0.824, Fireflies
+0.645 → 0.705, Confluence 0.717 → 0.767, Jira 0.823 → 0.861, GitHub 0.781 → 0.814, Gmail 0.791 →
+0.831, Slack 0.777 → 0.807, HubSpot 0.765 unchanged. By type: semantic 0.688 → **0.808**, basic
+0.851 → 0.903, project_related 0.634 → 0.655, completeness 0.576 → 0.583.
+
+**The price:** 4× the rerank tokens per question (~98K vs ~23K) and ~4× the rerank time. The
+free-pool run hit Voyage's limit of 4M rerank-3-lite tokens a minute when top 100 and top 200
+ran together; top 200 alone waits out the limit.
+
+**What it says:** depth is the biggest step since reranking itself (+0.053). The distractors of a
+deeper pool cost less than the documents it adds. Completeness and HubSpot barely move: they
+need different fixes (decomposition; a HubSpot-specific look).
+
+**Dependencies**
+- APIs: `hybrid_retriever(..., top_k=200)`, `rerank_saved`, `voyage_rerank`, `replay_retriever` (unchanged)
+- Database: `data/_index/rerank/v1_top{100,200}_candidates.jsonl`, `top{100,200}-rerank-3-lite.jsonl`
+  (gitignored); runs in `docs/eval/runs/*-rrf-top{100,200}-rerank-3-lite`
