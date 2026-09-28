@@ -46,8 +46,8 @@ Eval glossary:
 | EVAL-3e  the full run (v0): 511,957 documents, 470 questions, recall@10 0.609 | ✅ |
 | EVAL-4  `trace_to_phoenix`: see each question's retrieval in Arize Phoenix | ✅ |
 | EVAL-5a  `write_run`: every run's metrics and per-question scores kept in git | ✅ |
-| EVAL-5b  `results_tables`: `results.md` tables generated from the runs | ⬜ |
-| EVAL-5c  `html_report`: the interactive report, generated and published | ⬜ |
+| EVAL-5b  `results_tables`: `results.md` tables generated from the runs | ✅ |
+| EVAL-5c  `html_report`: the interactive report, generated and published | ✅ |
 
 ---
 
@@ -517,7 +517,7 @@ Estimates that were wrong, kept so the next estimate starts from the real number
 - The run stopped once, at document 279,000, on the corpus's one empty row (EVAL-3g), and
   resumed without re-embedding what was done.
 
-## EVAL-5  The evaluation report: three layers  (5a ✅, 5b ⬜, 5c ⬜)
+## EVAL-5  The evaluation report: three layers  (5a ✅, 5b ✅, 5c ✅)
 
 Every number in the report is generated from the runs, never typed: one source of truth (the run
 files in git), a summary generated from it (`results.md`), and an interactive page generated from
@@ -554,6 +554,40 @@ A full run's `scored.jsonl` is 1,410 lines (470 questions × 3 k), ~0.3 MB.
 **Dependencies**
 - APIs: `write_run(run_dir, config, scored)` in `pipeline/eval/report.py`; `baseline.RUNS`
 - Service Bus: N/A · Database: N/A · UI: N/A
+
+## EVAL-5b  `results_tables`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** the step-by-step tables in `results.md` generated from the run files
+**So that** no number in the report is typed by hand, and a new run updates it with one command
+
+**Acceptance Criteria (Gherkin)**
+- Given 2 steps and runs with an overall and a slack group, Then one section per group (all
+  sources first, then each source by question count), each with tables at k = 10, 5, 20
+- Given a step, Then one row with its label, search mode and the five metrics to 3 decimals
+- Given a column, Then its best value is bold, and so is every value that ties it as shown
+- Given a step whose run folder is missing, Then `FileNotFoundError` naming the run
+- Given `results.md` with the generated markers, Then only the text between them changes, and
+  running twice gives the same file
+- Given the real runs, Then the v1 row (hybrid RRF, exact) at k = 10 is hit 0.777, recall 0.722,
+  precision 0.102 (bold: it ties relative score as shown), MRR 0.622, NDCG 0.619
+
+**Example with real data**
+`uv run python -m pipeline.eval.results_tables` writes 10 sections × 3 tables × 7 rows into
+`docs/eval/results.md` under "v0 → v1, every step" (1,050 numbers). The first bolding rule
+compared unrounded values, so precision@10 bolded relative score (0.1017…) but not RRF, which
+also shows 0.102; bold now follows what the reader sees.
+
+**Non-functional Requirements**
+- Shared NFRs. Deterministic: same runs, same file. Hand-written text outside the markers is
+  never touched.
+
+**Dependencies**
+- APIs: `Step`, `V1_STEPS`, `results_tables(steps, runs_dir)`, `replace_generated(text, generated)`,
+  `python -m pipeline.eval.results_tables` in `pipeline/eval/results_tables.py`
+- Service Bus: N/A · Database: reads `docs/eval/runs/*/metrics.json` · UI: N/A
 
 ## EVAL-5c  `html_report`  ✅
 

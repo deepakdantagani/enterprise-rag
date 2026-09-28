@@ -15,20 +15,13 @@ import json
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
+from pipeline.eval.results_tables import V1_STEPS  # one step list for the tables (EVAL-5b) and this page
+
 ROOT = Path(__file__).resolve().parents[2]
 RUNS = ROOT / "docs/eval/runs"
 REPORT = ROOT / "docs/eval/report.html"
 METRICS = ("hit_rate", "recall", "precision", "mrr", "ndcg")
 KS = (10, 5, 20)
-V1_STEPS = (
-    ("1. Dense only", "exact", "2026-09-27-hybrid__voyage_4__bm25-dense-exact"),
-    ("1. Dense only", "HNSW", "2026-09-27-hybrid__voyage_4__bm25-dense"),
-    ("2. Sparse only (BM25)", "exact", "2026-09-27-hybrid__voyage_4__bm25-sparse"),
-    ("3. Hybrid A (relative)", "exact", "2026-09-27-hybrid__voyage_4__bm25-hybrid-relative-exact"),
-    ("3. Hybrid A (relative)", "HNSW", "2026-09-27-hybrid__voyage_4__bm25-hybrid-relative"),
-    ("4. Hybrid RRF (v1)", "exact", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact"),
-    ("4. Hybrid RRF", "HNSW", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf"),
-)
 
 
 def load_rows(runs_dir: Path, run_name: str) -> List[dict]:
