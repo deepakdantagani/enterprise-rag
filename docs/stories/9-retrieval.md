@@ -34,6 +34,7 @@ Retrieval glossary:
 | RET-5  `rerank_saved`, `replay_retriever`: v1's top 50 reranked by three Voyage cross-encoders | ✅ |
 | RET-6  v2 recorded: v1 + rerank-3-lite, recall@10 0.800; the scoreboard page published | ✅ |
 | RET-7  `multi_query_retriever`: the question + 3 local-LLM queries, fused by RRF (measured: worse than v1) | ✅ |
+| RET-7b  the query prompt: keep the question's details (recall@50 0.838 → 0.848, above v1) | ✅ |
 
 ---
 
@@ -448,3 +449,46 @@ was not run (it can only re-sort a top 50 that now holds fewer relevant document
   `llama-index-llms-ollama` added
 - Database: `data/_index/planner/gemma4-26b.jsonl` (gitignored); run in
   `docs/eval/runs/*-multi-query-rrf-exact`
+
+## RET-7b  The query prompt: keep the question's details  ✅
+
+**Status:** Done (before reranking)
+
+**Why:** RET-7 lost 42 relevant documents, and 35 of them were found by none of the 3 generated
+queries, only by the question. LlamaIndex's default prompt asks for queries "related to" the
+question, and gemma4 made them generic: qst_0064's "remediation timeline … proposed for the
+upcoming external pen test" (v1 rank 5) became "standard timeframe for fixing high vs low severity
+security vulnerabilities". In questions that lost documents, the generated queries were less
+similar to the question (cosine 0.724 vs 0.755 on average).
+
+**What changed:** only the prompt (`multi_query_retriever(..., prompt=)`), two tried:
+- `PERSPECTIVE_PROMPT`: the RAG-Fusion / LangChain `MultiQueryRetriever` style, "vary the wording
+  and perspective".
+- `KEEP_DETAILS_PROMPT`: keep every name, product, project, team, customer, number, date and
+  quoted term; change only the wording; self-contained queries. Built from what enterprise RAG
+  write-ups recommend (keep entities, time ranges and IDs; no vague references).
+
+Both keep qst_0064's "upcoming external penetration test"; neither splits qst_0436 by SDK. Planned
+locally by gemma4:26b (639 s and 745 s for 470), the 2,820 new queries embedded by voyage-4
+(89,796 tokens, $0.0054).
+
+| before reranking (exact) | recall@50 | recall@20 | recall@10 | mrr@10 | gained | lost | completeness@50 | project@50 | semantic@50 |
+|---|---|---|---|---|---|---|---|---|---|
+| v1: the question alone | 0.838 | 0.791 | 0.722 | **0.622** | | | **0.651** | 0.801 | 0.696 |
+| default prompt (RET-7) | 0.818 | 0.746 | 0.701 | 0.577 | 21 | 42 | 0.603 | 0.768 | 0.648 |
+| perspective | 0.838 | 0.772 | 0.721 | 0.610 | 16 | 17 | 0.597 | 0.826 | 0.696 |
+| **keep-details** | **0.848** | **0.797** | **0.736** | 0.618 | 17 | 9 | 0.626 | **0.834** | **0.728** |
+
+("gained" and "lost": relevant documents in the top 50 that v1's top 50 does not have, and the
+reverse.) What it says: the loss was the prompt, not multi-query. Keeping the details turns
+−0.020 recall@50 into +0.010, gaining more than it loses, with the biggest gains in semantic and
+project questions. Completeness is still below v1 (0.626 vs 0.651): rephrasing does not split a
+multi-part question; that needs decomposition.
+
+**Next:** rerank the keep-details top 50 with rerank-3-lite and compare with v2 (0.800).
+
+**Dependencies**
+- APIs: `PERSPECTIVE_PROMPT`, `KEEP_DETAILS_PROMPT`, `prompt=` on `query_prompt`,
+  `save_completions` and `multi_query_retriever` in `pipeline/eval/multi_query.py`
+- Database: `data/_index/planner/gemma4-26b-{perspective,keep-details}.jsonl` (gitignored); runs
+  in `docs/eval/runs/*-multi-query-{perspective,keep-details}-rrf-exact`

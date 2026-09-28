@@ -30,6 +30,20 @@ from pipeline.eval.questions import Question
 
 PLANNER = "gemma4:26b"  # local on Ollama
 NUM_QUERIES = 4  # LlamaIndex's default: the question itself + 3 generated
+# RET-7b: LlamaIndex's default asks for "related" queries and gemma4 made them generic (qst_0064's
+# "upcoming external pen test" became "standard timeframe for fixing ... vulnerabilities")
+PERSPECTIVE_PROMPT = (  # the RAG-Fusion / LangChain MultiQueryRetriever style
+    "Generate {num_queries} different versions of the user question to retrieve relevant documents "
+    "from a vector database. Vary the wording and perspective. One per line, no numbering.\n\n"
+    "Question: {query}\n")
+KEEP_DETAILS_PROMPT = (  # keep the question's key information, change only the wording
+    "Generate {num_queries} search queries to find the documents that answer the question below in a "
+    "company's internal knowledge base.\n"
+    "Keep every name, product, project, team, customer, number, date and quoted term from the question "
+    "in every query.\n"
+    "Change only the wording: use synonyms and the terms the documents are likely to use.\n"
+    "Each query must be self-contained. One per line, no numbering.\n\n"
+    "Question: {query}\nQueries:\n")
 
 
 def planner_llm(model: str = PLANNER) -> LLM:
@@ -37,9 +51,9 @@ def planner_llm(model: str = PLANNER) -> LLM:
     return Ollama(model=model, temperature=0, thinking=False, request_timeout=300)
 
 
-def query_prompt(question: str, num_queries: int = NUM_QUERIES) -> str:
+def query_prompt(question: str, prompt: str = QUERY_GEN_PROMPT, num_queries: int = NUM_QUERIES) -> str:
     """The exact prompt QueryFusionRetriever sends for `question`."""
-    return QUERY_GEN_PROMPT.format(num_queries=num_queries - 1, query=question)
+    return prompt.format(num_queries=num_queries - 1, query=question)
 
 
 class SavedCompletions(CustomLLM):
@@ -63,7 +77,8 @@ class SavedCompletions(CustomLLM):
         raise NotImplementedError("saved completions are replayed whole")
 
 
-def save_completions(questions: Sequence[Question], llm: LLM, out_path: Union[str, Path]) -> int:
+def save_completions(questions: Sequence[Question], llm: LLM, out_path: Union[str, Path],
+                     prompt: str = QUERY_GEN_PROMPT) -> int:
     """Plan every question not yet in `out_path`; returns how many were planned by this call."""
     out_path = Path(out_path)
     done = {json.loads(line)["question_id"] for line in out_path.read_text().splitlines()} if out_path.exists() else set()
@@ -72,9 +87,9 @@ def save_completions(questions: Sequence[Question], llm: LLM, out_path: Union[st
         for question in questions:
             if question.question_id in done:
                 continue
-            prompt = query_prompt(question.text)
-            out.write(json.dumps({"question_id": question.question_id, "prompt": prompt,
-                                  "completion": llm.complete(prompt).text}) + "\n")
+            sent = query_prompt(question.text, prompt)
+            out.write(json.dumps({"question_id": question.question_id, "prompt": sent,
+                                  "completion": llm.complete(sent).text}) + "\n")
             out.flush()
             planned += 1
     return planned
@@ -86,9 +101,9 @@ def saved_completions(path: Union[str, Path]) -> SavedCompletions:
 
 
 def multi_query_retriever(store: QdrantVectorStore, embed_model: BaseEmbedding, llm: LLM,
-                          top_k: int = RETRIEVED_CHUNKS) -> QueryFusionRetriever:
+                          top_k: int = RETRIEVED_CHUNKS, prompt: str = QUERY_GEN_PROMPT) -> QueryFusionRetriever:
     return QueryFusionRetriever([dense_retriever(store, embed_model, top_k), sparse_retriever(store, top_k)],
-                                llm=llm, mode="reciprocal_rerank", similarity_top_k=top_k, num_queries=NUM_QUERIES,
+                                llm=llm, query_gen_prompt=prompt, mode="reciprocal_rerank", similarity_top_k=top_k, num_queries=NUM_QUERIES,
                                 use_async=False)  # as v1: sync calls stay sync; the scorer uses aretrieve
 
 

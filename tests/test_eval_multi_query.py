@@ -58,6 +58,10 @@ class SaveCompletions(unittest.TestCase):
         llm = CountingLLM()
         self.assertEqual((save_completions(QUESTIONS, llm, self.out), llm.calls), (0, 0))
 
+    def test_another_prompt_is_saved_as_sent(self):
+        save_completions(QUESTIONS[:1], CountingLLM(), self.out, prompt="Rephrase {num_queries}x: {query}")
+        self.assertEqual(json.loads(self.out.read_text())["prompt"], "Rephrase 3x: Who approved the Q3 budget?")
+
     def test_the_saved_completions_replay_without_the_llm(self):
         save_completions(QUESTIONS, CountingLLM(), self.out)
         self.assertEqual(saved_completions(self.out).complete(query_prompt(QUESTIONS[1].text)).text, PLANNED)
@@ -85,6 +89,13 @@ class MultiQueryRetriever(unittest.TestCase):
         self.assertEqual((retriever.query_gen_prompt, retriever.num_queries, retriever.mode),
                          (QUERY_GEN_PROMPT, 4, "reciprocal_rerank"))
         self.assertEqual(generated_queries(retriever, "Who approved the Q3 budget?"), PLANNED.split("\n"))
+
+    def test_another_prompt_is_sent_and_saved_prompts_replay_under_it(self):
+        prompt = "Write {num_queries} versions of: {query}\n"
+        llm = SavedCompletions({query_prompt("Who approved the Q3 budget?", prompt): "Q3 budget approver"})
+        retriever = multi_query_retriever(self.store, QuestionAt(embed_dim=4), llm, prompt=prompt)
+        self.assertEqual(query_prompt("Who?", prompt), "Write 3 versions of: Who?\n")
+        self.assertEqual(generated_queries(retriever, "Who approved the Q3 budget?"), ["Q3 budget approver"])
 
     def test_a_chunk_only_the_generated_queries_find_is_returned(self):
         # the question alone: dense Berlin, BM25 the budget; each of the 3 generated queries: the runbook, twice
