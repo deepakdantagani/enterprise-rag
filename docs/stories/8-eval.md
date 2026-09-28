@@ -632,3 +632,52 @@ On hubspot, BM25 alone is best in every column (recall 0.574) and RRF (v1) exact
 MRR@10 and each gain), the three reranker steps, and the artifact page contract (theme tokens
 guarded for the viewer's light/dark/system setting, IBM Plex via Google Fonts, a one-column grid
 that keeps wide tables inside their own scroll box). Title: "EnterpriseRAG Retrieval Scoreboard".
+
+## EVAL-3i  `document_text`: the title merged into the text  ✅
+
+**Status:** Done (BM25 measured; dense not re-embedded)
+
+**As a** RAG developer
+**I want to** each document's title to open its text, so both searches can match it
+**So that** a question that names a record ("NorthPoint Signalworks") finds it
+
+**Why:** EVAL-3a kept `title` out of the embedded text for every document, because 497 titles
+(493 Slack) hold a whole body and overflowed SentenceSplitter's 512-token chunk as metadata. That
+hid the name of all the others: qst_0063 asks for "NorthPoint Signalworks", which appears only in
+its HubSpot record's title, so neither dense nor BM25 search could match it. At top 100, 4 misses
+had this cause (2 HubSpot, 2 Slack).
+
+**Acceptance Criteria (Gherkin)**
+- Given a title and a body, Then the text is the stripped title, a blank line, then the body
+- Given a body that already starts with the title, Then it is kept as it is (1,697 rows)
+- Given a blank or missing title, Then the body alone (15 Slack rows)
+- Given `parquet_documents(..., with_title=True)`, Then the text is `document_text` and the title
+  stays metadata; without it the baseline is unchanged
+- Given the real corpus, Then NorthPoint Signalworks' text starts with its name
+
+**Edge cases (all 511,962 rows):** median title 12 chars, p99 107, longest 10,692; 1,062 titles
+over 200 chars (1,057 Slack), prepended like any title since as text they cannot overflow.
+
+**Measured: BM25 only, $0.** A new collection `bm25_titles`: the corpus with titles, the
+baseline's SentenceSplitter(512, 50), BM25 (a 1-number placeholder dense vector, never searched),
+1,619,566 chunks in 20 min.
+
+| exact, top 50 | hit@10 | recall@10 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|
+| BM25 (RET-2) | 0.709 | 0.650 | 0.094 | 0.560 | 0.554 |
+| **BM25 with titles** | **0.740** | **0.688** | **0.099** | **0.590** | **0.586** |
+
+Question by question: recall@10 better for 27, worse for 5, +0.038 [95% bootstrap +0.021,
++0.056]; MRR +0.029 [+0.014, +0.047]. qst_0063 and qst_0120 go from 0 to 1. By source: HubSpot
+0.574 → **0.706**, Confluence 0.606 → 0.670, Google Drive 0.603 → 0.666, Gmail 0.672 → 0.695, the
+rest within ±0.02.
+
+**Not a fair hybrid yet.** Fusing v1's dense (chunks without titles) with this BM25 (chunks with
+titles) keeps recall@10 at 0.722 but drops MRR@10 from 0.622 to 0.498: the two lists no longer
+share chunks, so RRF never sees the same chunk found by both and loses its agreement boost. A
+fair hybrid needs the dense vectors of the same chunks, i.e. a Voyage re-embed of the corpus with
+titles (cost to be confirmed before running).
+
+**Dependencies**
+- APIs: `document_text(title, content)`, `parquet_documents(..., with_title=False)` in `pipeline/eval/documents.py`
+- Database: Qdrant `bm25_titles`; runs in `docs/eval/runs/*-bm25-titles`, `*-hybrid-rrf-titles-exact`
