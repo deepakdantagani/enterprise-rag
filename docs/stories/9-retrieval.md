@@ -30,7 +30,7 @@ Retrieval glossary:
 | RET-2  `sparse_retriever`: BM25 alone scored on the 470 questions | ✅ |
 | RET-3a  `saved_query_embeddings`: re-score without paying Voyage again | ✅ |
 | RET-3b  `dense_retriever`, `hybrid_retriever`: exact search; RRF chosen for v1 | ✅ |
-| RET-4  v1 full run: hybrid scored, row in `results.md` | ⬜ |
+| RET-4  v1 recorded: hybrid RRF, exact, recall@10 0.722 | ✅ |
 
 ---
 
@@ -263,3 +263,24 @@ What it says:
 - APIs: `dense_retriever(store, embed_model, top_k=50)`,
   `hybrid_retriever(store, embed_model, fusion, top_k=50)` in `pipeline/eval/hybrid.py`
 - Service Bus: N/A · Database: reads `hybrid__voyage_4__bm25` and `baseline__voyage_4` · UI: N/A
+
+## RET-4  v1 recorded  ✅
+
+**Status:** Done
+
+v1 is v0's chunks and Voyage vectors plus BM25 (RET-1), searched exactly and fused by RRF
+(RET-3b): `hybrid_retriever(store, embed_model, "rrf")` on `hybrid__voyage_4__bm25`, top 50
+chunks. Scored on the 470 questions (run `docs/eval/runs/2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact`):
+
+| | hit@10 | recall@5 | recall@10 | recall@20 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| v0, exact | 0.687 | 0.548 | 0.626 | 0.698 | 0.088 | 0.508 | 0.508 |
+| **v1** | 0.777 | 0.676 | **0.722** | 0.791 | 0.102 | 0.622 | 0.619 |
+
+Recorded as the headline rows of [results.md](../eval/results.md), with every step (dense, BM25,
+relative, RRF; exact and HNSW; all sources and each source) generated below them (EVAL-5b) and in
+`docs/eval/report.html` (EVAL-5c). v0's own row stays at 0.609: that is what the HNSW index
+returned then; the exact row (0.626) is the fair comparison.
+
+Where v1 is still weakest: HubSpot (0.515) and Fireflies (0.540), where BM25 alone scores higher
+(0.574, 0.620); and `completeness` (0.493) and `semantic` (0.496) questions.
