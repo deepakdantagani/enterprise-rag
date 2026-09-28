@@ -681,3 +681,13 @@ titles (cost to be confirmed before running).
 **Dependencies**
 - APIs: `document_text(title, content)`, `parquet_documents(..., with_title=False)` in `pipeline/eval/documents.py`
 - Database: Qdrant `bm25_titles`; runs in `docs/eval/runs/*-bm25-titles`, `*-hybrid-rrf-titles-exact`
+
+**Update (EVAL-3j): v3 recorded on BM25 with titles.** The chain re-run with this BM25 in place
+of the untitled one: v1's dense + BM25 with titles, RRF over 200-deep lists (exact), the top 100
+reranked by rerank-3-lite (23,060,737 tokens, 288 s, free pool). Pool recall at top 100 0.878 →
+0.888; after reranking recall@10 **0.845** against 0.832 without titles (better on 12 questions,
+worse on 2, +0.013 [95% CI +0.002, +0.025]), MRR@10 0.818, hit@10 0.891. HubSpot 0.765 → **0.853**,
+Fireflies 0.665 → 0.725, completeness 0.570 → 0.620. This is **v3** (+0.045 over v2's 0.800).
+`TITLED_STEPS` is now the report's step list (`results.md`, `report.html`), the untitled runs
+stay in `docs/eval/runs`; the highlighted row follows the last version. The dense vectors still
+lack titles: re-embedding them is the next paid step.

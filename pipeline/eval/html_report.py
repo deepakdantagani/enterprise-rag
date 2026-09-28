@@ -27,6 +27,7 @@ VERSIONS = (  # each version is one change on the one before, scored exactly on 
     ("v0", "2026-09-27-hybrid__voyage_4__bm25-dense-exact", "Dense search: voyage-4 vectors"),
     ("v1", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact", "+ BM25, fused by RRF"),
     ("v2", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3-lite", "+ rerank-3-lite on the top 50"),
+    ("v3", "2026-09-27-titles-rrf-top100-rerank-3-lite", "+ titles in BM25, the top 100 reranked"),
 )
 
 
@@ -186,7 +187,7 @@ function show(group) {
     const table = document.createElement("table"), head = table.insertRow();
     ["Step", "Search"].concat(columns.map(c => c[1])).forEach(h => head.append(el("th", h)));
     for (const row of rows) {
-      const tr = table.insertRow(); if (row.step.includes("(v2)")) tr.className = "current";
+      const tr = table.insertRow(); if (current && row.step.includes("(" + current.name + ")")) tr.className = "current";
       tr.append(el("td", row.step), el("td", row.search));
       columns.forEach(([m]) => tr.append(el("td", row.values[m].toFixed(3), row.best.includes(m) ? "best" : "")));
     }

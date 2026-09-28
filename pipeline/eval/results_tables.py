@@ -42,7 +42,13 @@ V1_STEPS = [
 RERANK_STEPS = [  # RET-6: the reranker chosen for v2; rerank-2.5 and rerank-3 runs stay in docs/eval/runs
     Step("5. v1 + rerank-3-lite (v2)", "exact", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3-lite"),
 ]
-REPORT_STEPS = V1_STEPS + RERANK_STEPS
+TITLED_STEPS = [  # EVAL-3i: BM25 with titles replaces BM25 without; the untitled runs stay in docs/eval/runs
+    Step("1. Dense only", "exact", "2026-09-27-hybrid__voyage_4__bm25-dense-exact"),
+    Step("2. BM25 with titles", "exact", "2026-09-27-bm25-titles"),
+    Step("3. Hybrid RRF, BM25 with titles", "exact", "2026-09-27-hybrid-rrf-titles-exact"),
+    Step("4. Top 100 + rerank-3-lite (v3)", "exact", "2026-09-27-titles-rrf-top100-rerank-3-lite"),
+]
+REPORT_STEPS = TITLED_STEPS
 
 Rows = Dict[Tuple[str, int], dict]  # (group, k) -> {"questions": n, "means": {...}}
 

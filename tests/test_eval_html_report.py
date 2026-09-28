@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import html_report as html_report_module  # noqa: E402
-from pipeline.eval.html_report import VERSIONS, V1_STEPS, html_report  # noqa: E402
+from pipeline.eval.html_report import REPORT_STEPS, VERSIONS, V1_STEPS, html_report  # noqa: E402
 
 RUNS = ROOT / "docs/eval/runs"
 RRF_EXACT = RUNS / "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact"
@@ -92,10 +92,16 @@ class RealV1Report(unittest.TestCase):
         self.assertEqual(rrf[0]["values"]["recall"], 0.722)
         self.assertEqual(len(rows), 7)
 
-    def test_v2_is_rerank_3_lite_at_recall_0_800(self):
-        [v0, v1, v2] = embedded(html_report(V1_STEPS, RUNS, "v2", versions=VERSIONS))["versions"]
-        self.assertEqual([(v["name"], v["recall"], v["gain"]) for v in (v0, v1, v2)],
-                         [("v0", 0.626, None), ("v1", 0.722, 0.096), ("v2", 0.8, 0.078)])
+    def test_v3_is_titled_bm25_and_the_top_100_reranked_at_recall_0_845(self):
+        versions = embedded(html_report(V1_STEPS, RUNS, "v3", versions=VERSIONS))["versions"]
+        self.assertEqual([(v["name"], v["recall"], v["gain"]) for v in versions],
+                         [("v0", 0.626, None), ("v1", 0.722, 0.096), ("v2", 0.8, 0.078), ("v3", 0.845, 0.045)])
+
+    def test_the_report_is_the_titled_chain_with_v3_last(self):
+        rows = embedded(html_report(REPORT_STEPS, RUNS, "v3"))["tables"]["overall"]["10"]
+        self.assertEqual([(row["step"], row["values"]["recall"]) for row in rows],
+                         [("1. Dense only", 0.626), ("2. BM25 with titles", 0.688),
+                          ("3. Hybrid RRF, BM25 with titles", 0.722), ("4. Top 100 + rerank-3-lite (v3)", 0.845)])
 
 
 if __name__ == "__main__":
