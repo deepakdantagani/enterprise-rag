@@ -691,3 +691,41 @@ Fireflies 0.665 → 0.725, completeness 0.570 → 0.620. This is **v3** (+0.045 
 `TITLED_STEPS` is now the report's step list (`results.md`, `report.html`), the untitled runs
 stay in `docs/eval/runs`; the highlighted row follows the last version. The dense vectors still
 lack titles: re-embedding them is the next paid step.
+
+## EVAL-3k  voyage-4-lite dense vectors with titles  ✅
+
+**Status:** Done (measured; not adopted, v3 stays)
+
+**Why:** in EVAL-3j the hybrid fused dense chunks without titles with BM25 chunks with titles, so
+RRF never saw the same chunk twice (MRR@10 0.498). Re-embedding the corpus with titles gives both
+searches the same chunks. `voyage-4-lite` ($0.02 per 1M tokens against $0.06, estimated 583M
+tokens) shares voyage-4's embedding space, so the 470 saved voyage-4 question vectors search it
+directly (the same text embedded by both: cosine 0.969).
+
+**What changed:** `EMBEDDERS` gains `voyage-4-lite` (1,024 dimensions);
+`ingest_corpus(..., with_title=True)`. One collection, `titles__voyage_4_lite__bm25`: dense
+(voyage-4-lite) and BM25 of the same titled chunks. 1,619,571 chunks in 3 h 32 min overnight
+(bm25_titles holds 1,619,566; 2 documents differ by 5 chunks, re-ingested with the same result).
+
+| exact | hit@10 | recall@10 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|
+| dense: voyage-4, no titles (v0 exact) | 0.687 | **0.626** | 0.088 | **0.508** | **0.508** |
+| dense: voyage-4-lite, titles | 0.666 | 0.606 | 0.086 | 0.483 | 0.487 |
+| hybrid RRF: v1 (no titles) | 0.777 | 0.722 | 0.102 | **0.622** | **0.619** |
+| hybrid RRF: voyage-4 dense + BM25 with titles (EVAL-3j) | 0.772 | 0.722 | 0.102 | 0.498 | 0.530 |
+| hybrid RRF: voyage-4-lite + BM25, both with titles | **0.785** | **0.732** | **0.104** | 0.612 | 0.615 |
+| **v3**: voyage-4 dense + BM25 with titles, top 100 reranked | **0.891** | **0.845** | **0.118** | **0.818** | **0.799** |
+| voyage-4-lite + BM25 with titles, top 100 reranked | 0.879 | 0.834 | 0.116 | 0.809 | 0.790 |
+
+Pool recall at top 100: 0.888 (v3) against 0.877 (lite). After reranking, against v3: recall@10
+−0.011 (better on 3 questions, worse on 11; 95% CI [−0.024, +0.001]), MRR −0.009. By source it
+loses most on Linear (0.887 → 0.852) and Google Drive (0.807 → 0.786); HubSpot stays 0.853.
+
+**What it says:** titles did not make up for the smaller model. voyage-4-lite with titles is
+0.020 below voyage-4 without them on dense alone, and the shared chunks restore RRF's agreement
+(hybrid MRR 0.498 → 0.612) without lifting the reranked result. v3 stays; the next dense step,
+if any, is voyage-4 with titles (~$35 at $0.06 per 1M tokens).
+
+**Dependencies**
+- APIs: `EMBEDDERS["voyage-4-lite"]`, `ingest_corpus(..., with_title=)`
+- Database: Qdrant `titles__voyage_4_lite__bm25`; runs in `docs/eval/runs/2026-09-28-titles__voyage_4_lite__bm25-*`

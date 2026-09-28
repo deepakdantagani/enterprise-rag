@@ -63,10 +63,11 @@ def baseline_pipeline(embed_model: BaseEmbedding, vector_store: BasePydanticVect
 
 def ingest_corpus(documents_path: Path, vector_store: BasePydanticVectorStore, embed_model: BaseEmbedding,
                   skip_doc_ids: AbstractSet[str] = frozenset(), keep_doc_ids: Optional[AbstractSet[str]] = None,
-                  batch_size: int = 1000) -> int:
-    """Embed every document not in `skip_doc_ids` (and in `keep_doc_ids`, if given); one StageDone per batch."""
+                  batch_size: int = 1000, with_title: bool = False) -> int:
+    """Embed every document not in `skip_doc_ids` (and in `keep_doc_ids`, if given); one StageDone per batch.
+    `with_title` opens each text with its title (EVAL-3i)."""
     pipeline, embedded = baseline_pipeline(embed_model, vector_store), 0
-    for number, batch in enumerate(parquet_documents(documents_path, batch_size=batch_size)):
+    for number, batch in enumerate(parquet_documents(documents_path, batch_size=batch_size, with_title=with_title)):
         to_embed = [document for document in batch if document.id_ not in skip_doc_ids
                     and (keep_doc_ids is None or document.id_ in keep_doc_ids)]
         started = time.monotonic()

@@ -36,6 +36,14 @@ class CountingEmbedding(MockEmbedding):
         return super()._get_text_embeddings(texts)
 
 
+class RecordingEmbedding(MockEmbedding):
+    texts: list = []
+
+    def _get_text_embeddings(self, texts):
+        self.texts = self.texts + list(texts)
+        return super()._get_text_embeddings(texts)
+
+
 def pipeline_with(embed_model):
     return baseline_pipeline(embed_model, SimpleVectorStore(), SimpleDocumentStore())
 
@@ -91,6 +99,12 @@ class BaselinePipeline(unittest.TestCase):
     def test_ingest_can_keep_only_a_sample(self):
         _, embedded, _ = ingest_five_pages(keep_doc_ids={"dsid_0", "dsid_4"})
         self.assertEqual(embedded, {"dsid_0", "dsid_4"})
+
+    def test_ingest_can_open_each_text_with_its_title(self):
+        folder, embed_model = Path(tempfile.mkdtemp()), RecordingEmbedding(embed_dim=8)
+        pq.write_table(pa.Table.from_pylist(ROWS[1:3]), folder / "documents.parquet")
+        ingest_corpus(folder / "documents.parquet", SimpleVectorStore(), embed_model, with_title=True)
+        self.assertEqual(embed_model.texts, ["page 1\n\nRunbook 1: roll back region 1.", "page 2\n\nRunbook 2: roll back region 2."])
 
     def test_ingest_logs_one_stage_done_per_batch(self):
         _, _, batches = ingest_five_pages(skip_doc_ids={"dsid_1"})
