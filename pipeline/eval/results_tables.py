@@ -39,6 +39,12 @@ V1_STEPS = [
     Step("4. Hybrid RRF (v1)", "exact", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact"),
     Step("4. Hybrid RRF", "HNSW", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf"),
 ]
+RERANK_STEPS = [  # RET-5: v1's top 50 re-sorted by a Voyage cross-encoder
+    Step("5. v1 + rerank-2.5", "exact", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-2.5"),
+    Step("5. v1 + rerank-3-lite", "exact", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3-lite"),
+    Step("5. v1 + rerank-3", "exact", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3"),
+]
+REPORT_STEPS = V1_STEPS + RERANK_STEPS
 
 Rows = Dict[Tuple[str, int], dict]  # (group, k) -> {"questions": n, "means": {...}}
 
@@ -77,7 +83,7 @@ def replace_generated(text: str, generated: str) -> str:
 
 
 def main() -> None:
-    RESULTS.write_text(replace_generated(RESULTS.read_text(), results_tables(V1_STEPS)))
+    RESULTS.write_text(replace_generated(RESULTS.read_text(), results_tables(REPORT_STEPS)))
 
 
 if __name__ == "__main__":

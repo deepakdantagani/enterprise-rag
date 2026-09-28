@@ -31,6 +31,7 @@ Retrieval glossary:
 | RET-3a  `saved_query_embeddings`: re-score without paying Voyage again | ✅ |
 | RET-3b  `dense_retriever`, `hybrid_retriever`: exact search; RRF chosen for v1 | ✅ |
 | RET-4  v1 recorded: hybrid RRF, exact, recall@10 0.722 | ✅ |
+| RET-5  `rerank_saved`, `replay_retriever`: v1's top 50 reranked by three Voyage cross-encoders | ✅ |
 
 ---
 
@@ -284,3 +285,68 @@ returned then; the exact row (0.626) is the fair comparison.
 
 Where v1 is still weakest: HubSpot (0.515) and Fireflies (0.540), where BM25 alone scores higher
 (0.574, 0.620); and `completeness` (0.493) and `semantic` (0.496) questions.
+
+## RET-5  Reranking v1's top 50: `rerank_saved` and `replay_retriever`  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** v1's 50 candidates re-sorted by a cross-encoder reranker, each question reranked
+once per model and the order saved
+**So that** rerankers are compared on the same candidates, and every re-score is $0
+
+**Acceptance Criteria (Gherkin)**
+- Given 2 saved questions and a reranker, Then it is called once per question and each order,
+  its scores and the tokens are saved; the call returns the tokens used
+- Given a re-run, Then no question is reranked again and 0 tokens are used
+- Given no rerank file, Then the replay returns the candidates as retrieved (v1's own order)
+- Given a rerank file, Then the replay returns them in the reranked order, best score first
+- Given a question with no saved candidates, Then `KeyError` naming it
+- Given Voyage's answer (results with index and relevance_score, total_tokens), Then
+  `voyage_rerank` returns order, scores and tokens
+- Given the real files, Then rerank-3-lite puts qst_0001's third v1 candidate first
+
+**Example with real data**
+v1 finds a relevant document in its top 20 for recall 0.791 but in its top 10 for 0.722. The
+top 50 of all 470 questions was saved once (`data/_index/rerank/v1_candidates.jsonl`, 48.6 MB, 28 s,
+$0); replaying it without a reranker reproduces v1 exactly (recall@5/10/20 0.676/0.722/0.791,
+MRR@10 0.622). Each question is one Voyage request: query tokens × 50 + the 50 chunks, 23,366
+tokens for qst_0001; 11,524,826 tokens per model for the 470, inside the 200M free tokens of each.
+
+| v1 top 50, reranked by | time | recall@5 | recall@10 | recall@20 | hit@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| none (v1) | | 0.676 | 0.722 | 0.791 | 0.777 | 0.622 | 0.619 |
+| `rerank-2.5` (generally available) | 583 s | 0.762 | 0.791 | 0.811 | 0.847 | 0.769 | 0.742 |
+| `rerank-3-lite` (preview) | 182 s | 0.777 | **0.800** | 0.820 | 0.851 | 0.785 | **0.762** |
+| `rerank-3` (preview) | 633 s | **0.778** | 0.798 | 0.817 | **0.853** | **0.786** | 0.760 |
+
+Recall@10 by source, v1 → rerank-3-lite: HubSpot 0.515 → **0.765**, Fireflies 0.540 → 0.645
+(0.665 with rerank-3 and rerank-2.5), Gmail 0.696 → 0.791, Google Drive 0.666 → 0.748, Linear
+0.756 → 0.826, Confluence 0.680 → 0.717, Slack 0.721 → 0.777, GitHub 0.717 → 0.781, Jira 0.782 →
+0.823. By type: semantic 0.496 → **0.688**, basic 0.800 → 0.851, completeness 0.493 → 0.576.
+
+What it says: a reranker adds ~+0.08 recall@10 and ~+0.16 MRR@10 over v1, the biggest step since
+hybrid search. It fixes exactly where fusion hurt: HubSpot and Fireflies, where BM25 alone had
+beaten v1, now beat BM25 alone (0.765 vs 0.574, 0.645 vs 0.620). The three models are within
+0.009 of each other; recall@20 moves little (0.791 → 0.820) because reranking only re-sorts the
+50 v1 found.
+
+**Decisions**
+- Rerank once per question and replay: the scorer asks each question at k = 5, 10 and 20, and a
+  live reranker would triple the tokens; the replay also makes every re-score reproducible.
+- Measured with Voyage's client (`voyageai.Client.rerank`), the library LlamaIndex's
+  `VoyageAIRerank` postprocessor wraps; a serving pipeline would use the postprocessor.
+- Which reranker becomes v2 is left open: rerank-3-lite and rerank-3 are tied (0.800 vs 0.798)
+  and both in preview; rerank-3-lite is 3.5× faster and 2.5× cheaper; rerank-2.5 is the generally
+  available one, 0.009 behind.
+
+**Non-functional Requirements**
+- Shared NFRs. Reuse: `score_retriever`, `metrics_report` and `write_run` unchanged; the replay is
+  a LlamaIndex `BaseRetriever`.
+- Resumable, and $0 after the first pass per model.
+
+**Dependencies**
+- APIs: `rerank_saved(candidates_path, out_path, rerank)`, `voyage_rerank(client, model)`,
+  `ReplayRetriever`, `replay_retriever(candidates_path, rerank_path=None)` in
+  `pipeline/eval/rerank.py`; `RERANK_STEPS`, `REPORT_STEPS` in `pipeline/eval/results_tables.py`
+- Service Bus: N/A · Database: `data/_index/rerank/` (gitignored); runs in `docs/eval/runs/*-rrf-rerank-*` · UI: `docs/eval/report.html`
