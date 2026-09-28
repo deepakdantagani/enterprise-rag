@@ -22,6 +22,12 @@ RUNS = ROOT / "docs/eval/runs"
 REPORT = ROOT / "docs/eval/report.html"
 METRICS = ("hit_rate", "recall", "precision", "mrr", "ndcg")
 KS = (10, 5, 20)
+TITLE = "EnterpriseRAG Retrieval Scoreboard"
+VERSIONS = (  # each version is one change on the one before, scored exactly on the 470 questions
+    ("v0", "2026-09-27-hybrid__voyage_4__bm25-dense-exact", "Dense search: voyage-4 vectors"),
+    ("v1", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact", "+ BM25, fused by RRF"),
+    ("v2", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3-lite", "+ rerank-3-lite on the top 50"),
+)
 
 
 def load_rows(runs_dir: Path, run_name: str) -> List[dict]:
@@ -54,79 +60,145 @@ def tables_for(runs: Sequence[List[dict]], steps: Sequence[Tuple[str, str]], gro
     return tables
 
 
-def html_report(steps: Sequence[Tuple[str, str, str]], runs_dir: Path, title: str) -> str:
+def version_summary(runs_dir: Path, versions: Sequence[Tuple[str, str, str]]) -> List[dict]:
+    """Each version's overall recall@10 and MRR@10, and its recall gain over the version before."""
+    summary, previous = [], None
+    for name, run_name, about in versions:
+        at_10 = next(row["means"] for row in load_rows(runs_dir, run_name) if (row["group"], row["k"]) == ("overall", 10))
+        recall = round(at_10["recall"], 3)
+        summary.append({"name": name, "about": about, "recall": recall, "mrr": round(at_10["mrr"], 3),
+                        "gain": None if previous is None else round(recall - previous, 3)})
+        previous = recall
+    return summary
+
+
+def html_report(steps: Sequence[Tuple[str, str, str]], runs_dir: Path, title: str,
+                versions: Sequence[Tuple[str, str, str]] = ()) -> str:
     runs = [load_rows(runs_dir, run_name) for _, _, run_name in steps]
     groups = groups_of(runs[0])
     step_names = [(label, search) for label, search, _ in steps]
-    data = {"groups": groups, "tables": {g["id"]: tables_for(runs, step_names, g["id"]) for g in groups}}
+    data = {"groups": groups, "tables": {g["id"]: tables_for(runs, step_names, g["id"]) for g in groups},
+            "versions": version_summary(runs_dir, versions)}
     embedded = json.dumps(data).replace("</", "<\\/")
     return PAGE.replace("{title}", title).replace("{data}", embedded)
 
 
 def main() -> None:
-    REPORT.write_text(html_report(REPORT_STEPS, RUNS, "Retrieval evaluation: v0 → v1 → reranking"))
+    REPORT.write_text(html_report(REPORT_STEPS, RUNS, TITLE, versions=VERSIONS))
 
 
-PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+PAGE = """<meta charset="utf-8">
 <title>{title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-:root { --bg: #fbfbf9; --fg: #1d1d1b; --muted: #6b6b66; --line: #e2e2dc; --accent: #2f6f4f; --best-bg: #e3f1e8; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #161615; --fg: #ececea; --muted: #a0a09a; --line: #34342f; --accent: #7cc49c; --best-bg: #1f3a2a; }
+:root {
+  --ground: #f5f7f5; --surface: #ffffff; --ink: #17211e; --muted: #5c6a65; --line: #dce3df;
+  --accent: #17705a; --accent-soft: #ddefe8; --gain: #17705a;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
-* { box-sizing: border-box; }
-body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
-       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 860px; margin: 0 auto; }
-h1 { font-size: 1.4rem; margin: 0 0 16px; }
-h2 { font-size: 1rem; margin: 24px 0 8px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #111715; --surface: #18201d; --ink: #e4ebe8; --muted: #93a29c; --line: #2a3632;
+    --accent: #67c6a6; --accent-soft: #173a2f; --gain: #67c6a6;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #111715; --surface: #18201d; --ink: #e4ebe8; --muted: #93a29c; --line: #2a3632;
+  --accent: #67c6a6; --accent-soft: #173a2f; --gain: #67c6a6;
+}
+body { background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); padding: 28px 16px 40px; }
+main { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+section { min-width: 0; display: grid; gap: 10px; }
+h1 { font-size: 1.55rem; font-weight: 600; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); margin: 6px 0 0; max-width: 65ch; }
+.label { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.versions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.version { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+           display: grid; gap: 4px; }
+.version.current { border-color: var(--accent); }
+.version .figure { font: 500 2rem/1.1 var(--mono); font-variant-numeric: tabular-nums; }
+.version .figure small { font-size: 0.8rem; color: var(--muted); font-weight: 400; }
+.version .about { color: var(--muted); font-size: 0.9rem; }
+.version .gain { font: 0.85rem var(--mono); color: var(--gain); }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--accent); }
 nav { display: flex; flex-wrap: wrap; gap: 8px; }
-button { font: inherit; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px;
-         background: transparent; color: var(--fg); cursor: pointer; }
-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-.count { color: var(--muted); margin: 16px 0 0; }
-.scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
-th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
-th { color: var(--muted); font-weight: 600; }
-td.best { background: var(--best-bg); color: var(--accent); font-weight: 700; }
-</style></head>
-<body><main>
-<h1>{title}</h1>
-<nav id="groups"></nav>
-<p class="count" id="count"></p>
-<div id="tables"></div>
+button { font: 500 0.9rem var(--sans); padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px;
+         background: var(--surface); color: var(--ink); cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--ground); }
+.count { color: var(--muted); margin: 0; }
+h2 { font-size: 1rem; font-weight: 600; margin: 18px 0 8px; }
+.scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font: 0.88rem var(--mono); font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; font-family: var(--sans); }
+th { color: var(--muted); font: 500 0.72rem var(--sans); letter-spacing: 0.06em; text-transform: uppercase; }
+tr.current td:first-child { color: var(--accent); font-weight: 600; }
+td.best { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+footer { color: var(--muted); font-size: 0.85rem; max-width: 65ch; }
+code { font-family: var(--mono); font-size: 0.85em; }
+</style>
+<main>
+  <header>
+    <div class="label">EnterpriseRAG-Bench · 470 questions · exact search</div>
+    <h1>{title}</h1>
+    <p class="lede">Document recall and ranking for every retrieval step, overall and per source. Each version adds one change to the one before; highlighted cells are the best in their column.</p>
+  </header>
+  <section aria-labelledby="versions-title">
+    <div class="label" id="versions-title">Recall@10 by version</div>
+    <div class="versions" id="versions"></div>
+  </section>
+  <section aria-labelledby="steps-title">
+    <div class="label" id="steps-title">Every step, by source</div>
+    <nav id="groups" aria-label="Source"></nav>
+    <p class="count" id="count"></p>
+    <div id="tables"></div>
+  </section>
+  <footer>Generated from the run files in <code>docs/eval/runs</code> by <code>python -m pipeline.eval.html_report</code>. "HNSW" rows use Qdrant's approximate graph index; every other row searches every vector. A question counts under each source of its expected documents.</footer>
 </main>
 <script id="data" type="application/json">{data}</script>
 <script>
 const data = JSON.parse(document.getElementById("data").textContent);
 const columns = [["hit_rate", "Hit rate"], ["recall", "Recall"], ["precision", "Precision"], ["mrr", "MRR"], ["ndcg", "NDCG"]];
-const cell = (tag, text, cls) => { const el = document.createElement(tag); el.textContent = text; if (cls) el.className = cls; return el; };
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+const current = data.versions.length ? data.versions[data.versions.length - 1] : null;
+data.versions.forEach(v => {
+  const card = el("div", undefined, "version" + (v === current ? " current" : ""));
+  const figure = el("div", v.recall.toFixed(3), "figure"); figure.append(el("small", "  MRR " + v.mrr.toFixed(3)));
+  const bar = el("div", undefined, "bar"); const fill = el("span"); fill.style.width = (v.recall * 100) + "%"; bar.append(fill);
+  card.append(el("div", v.name + (v === current ? " · current" : ""), "label"), figure, bar, el("div", v.about, "about"),
+              el("div", v.gain === null ? "baseline" : "+" + v.gain.toFixed(3) + " over " + data.versions[data.versions.indexOf(v) - 1].name, "gain"));
+  document.getElementById("versions").append(card);
+});
 function show(group) {
   document.querySelectorAll("#groups button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === group.id));
-  document.getElementById("count").textContent = group.questions + " questions";
+  document.getElementById("count").textContent = (group.id === "overall" ? "All sources" : group.name) + " · " + group.questions + " questions";
   const out = document.getElementById("tables"); out.replaceChildren();
-  for (const [k, rows] of Object.entries(data.tables[group.id]).sort((a, b) => [10, 5, 20].indexOf(+a[0]) - [10, 5, 20].indexOf(+b[0]))) {
-    out.append(cell("h2", "k = " + k));
+  for (const k of ["10", "5", "20"]) {
+    const rows = data.tables[group.id][k]; if (!rows) continue;
+    out.append(el("h2", "k = " + k));
     const table = document.createElement("table"), head = table.insertRow();
-    ["Step", "Search"].concat(columns.map(c => c[1])).forEach(h => head.append(cell("th", h)));
+    ["Step", "Search"].concat(columns.map(c => c[1])).forEach(h => head.append(el("th", h)));
     for (const row of rows) {
-      const tr = table.insertRow(); tr.append(cell("td", row.step), cell("td", row.search));
-      columns.forEach(([m]) => tr.append(cell("td", row.values[m].toFixed(3), row.best.includes(m) ? "best" : "")));
+      const tr = table.insertRow(); if (row.step.includes("(v2)")) tr.className = "current";
+      tr.append(el("td", row.step), el("td", row.search));
+      columns.forEach(([m]) => tr.append(el("td", row.values[m].toFixed(3), row.best.includes(m) ? "best" : "")));
     }
-    const wrap = cell("div", "", "scroll"); wrap.append(table); out.append(wrap);
+    const wrap = el("div", undefined, "scroll"); wrap.append(table); out.append(wrap);
   }
 }
 for (const group of data.groups) {
-  const b = cell("button", group.name); b.dataset.id = group.id; b.onclick = () => show(group);
+  const b = el("button", group.name); b.dataset.id = group.id; b.onclick = () => show(group);
   document.getElementById("groups").append(b);
 }
 show(data.groups[0]);
 </script>
-</body></html>
 """
 
 if __name__ == "__main__":

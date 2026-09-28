@@ -32,6 +32,7 @@ Retrieval glossary:
 | RET-3b  `dense_retriever`, `hybrid_retriever`: exact search; RRF chosen for v1 | ✅ |
 | RET-4  v1 recorded: hybrid RRF, exact, recall@10 0.722 | ✅ |
 | RET-5  `rerank_saved`, `replay_retriever`: v1's top 50 reranked by three Voyage cross-encoders | ✅ |
+| RET-6  v2 recorded: v1 + rerank-3-lite, recall@10 0.800; the scoreboard page published | ✅ |
 
 ---
 
@@ -336,9 +337,8 @@ beaten v1, now beat BM25 alone (0.765 vs 0.574, 0.645 vs 0.620). The three model
   live reranker would triple the tokens; the replay also makes every re-score reproducible.
 - Measured with Voyage's client (`voyageai.Client.rerank`), the library LlamaIndex's
   `VoyageAIRerank` postprocessor wraps; a serving pipeline would use the postprocessor.
-- Which reranker becomes v2 is left open: rerank-3-lite and rerank-3 are tied (0.800 vs 0.798)
-  and both in preview; rerank-3-lite is 3.5× faster and 2.5× cheaper; rerank-2.5 is the generally
-  available one, 0.009 behind.
+- rerank-3-lite chosen for v2 (RET-6): tied with rerank-3 (0.800 vs 0.798), 3.5× faster and 2.5×
+  cheaper; rerank-2.5, the generally available one, is 0.009 behind.
 
 **Non-functional Requirements**
 - Shared NFRs. Reuse: `score_retriever`, `metrics_report` and `write_run` unchanged; the replay is
@@ -350,3 +350,28 @@ beaten v1, now beat BM25 alone (0.765 vs 0.574, 0.645 vs 0.620). The three model
   `ReplayRetriever`, `replay_retriever(candidates_path, rerank_path=None)` in
   `pipeline/eval/rerank.py`; `RERANK_STEPS`, `REPORT_STEPS` in `pipeline/eval/results_tables.py`
 - Service Bus: N/A · Database: `data/_index/rerank/` (gitignored); runs in `docs/eval/runs/*-rrf-rerank-*` · UI: `docs/eval/report.html`
+
+## RET-6  v2 recorded: v1 + `rerank-3-lite`  ✅
+
+**Status:** Done
+
+v2 is v1 (hybrid RRF, exact, top 50 chunks) with the 50 re-sorted by Voyage's `rerank-3-lite`
+cross-encoder (preview on 2026-09-27). Chosen over `rerank-3` (tied: 0.798) for being 3.5× faster
+(182 s vs 633 s for 470 questions) and 2.5× cheaper ($0.02 vs $0.05 per 1M tokens).
+
+| version | change | recall@10 | gain | mrr@10 |
+|---|---|---|---|---|
+| v0 | dense search, voyage-4 vectors (exact) | 0.626 | | 0.508 |
+| v1 | + BM25, fused by RRF | 0.722 | +0.096 | 0.622 |
+| **v2** | + rerank-3-lite on the top 50 | **0.800** | +0.078 | 0.785 |
+
+The report now names versions: `VERSIONS` in `pipeline/eval/html_report.py` puts v0 → v1 → v2 at
+the top of `docs/eval/report.html` ("EnterpriseRAG Retrieval Scoreboard"), with recall@10, MRR@10
+and each version's gain, above every step by source. The page follows the artifact page contract
+(light and dark themes that follow the viewer and the toggle, IBM Plex from Google Fonts as its
+only outside resource, tables that scroll inside their own box at phone width) and is published as
+a private artifact. The v2 row in the step tables is labelled "5. v1 + rerank-3-lite (v2)".
+
+Risk: `rerank-3-lite` is a preview model and can change; the saved reranking
+(`data/_index/rerank/rerank-3-lite.jsonl`) keeps these numbers reproducible, and `rerank-2.5`
+(0.791) is the generally available fallback.
