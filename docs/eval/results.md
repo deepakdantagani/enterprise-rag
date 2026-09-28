@@ -13,7 +13,7 @@ Each run's full table (per question type, per source, k = 5, 10, 20) is in
 | 2026-09-27 | RET-2 | BM25 alone, `hybrid__voyage_4__bm25` sparse | 511,957 | 470 | 0.709 | 0.587 | 0.650 | 0.721 | 0.094 | 0.560 | 0.554 | diagnostic, not a version: keyword search only (FastEmbed `Qdrant/bm25`), same chunks as v0; see [RET-2](../stories/9-retrieval.md) |
 | 2026-09-27 | RET-3b | v0 dense, exact search | 511,957 | 470 | 0.687 | 0.548 | 0.626 | 0.698 | 0.088 | 0.508 | 0.508 | v0 re-scored without HNSW approximation: the true v0; every later version is compared to this |
 | 2026-09-27 | RET-4 | **v1** hybrid RRF, `hybrid__voyage_4__bm25`, exact | 511,957 | 470 | 0.777 | 0.676 | **0.722** | 0.791 | 0.102 | 0.622 | 0.619 | dense + BM25 fused by RRF (k 60), top 50 chunks; +0.096 recall@10 over v0 exact; every step in "v0 → v1, every step" below |
-| 2026-09-27 | RET-6 | **v2** v1 + `rerank-3-lite` (preview) | 511,957 | 470 | 0.851 | 0.777 | 0.800 | 0.820 | 0.112 | 0.785 | 0.762 | **current version**: v1's top 50 re-sorted by Voyage's cross-encoder; +0.078 recall@10 over v1 (rerank-3 0.798, rerank-2.5 0.791); interactive report `docs/eval/report.html` |
+| 2026-09-27 | RET-6 | **v2** v1 + `rerank-3-lite` (preview) | 511,957 | 470 | 0.851 | 0.777 | 0.800 | 0.820 | 0.112 | 0.785 | 0.762 | **current version**: v1's top 50 re-sorted by Voyage's cross-encoder; +0.078 recall@10 over v1; interactive report `docs/eval/report.html` |
 
 ## v0: the naive baseline
 
@@ -103,9 +103,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.772 | 0.716 | 0.100 | 0.620 | 0.614 |
 | 4. Hybrid RRF (v1) | exact | 0.777 | 0.722 | 0.102 | 0.622 | 0.619 |
 | 4. Hybrid RRF | HNSW | 0.762 | 0.706 | 0.099 | 0.598 | 0.596 |
-| 5. v1 + rerank-2.5 | exact | 0.847 | 0.791 | 0.111 | 0.769 | 0.742 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.851 | **0.800** | **0.112** | 0.785 | **0.762** |
-| 5. v1 + rerank-3 | exact | **0.853** | 0.798 | 0.111 | **0.786** | 0.760 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.851** | **0.800** | **0.112** | **0.785** | **0.762** |
 
 #### k = 5
 
@@ -118,9 +116,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.726 | 0.651 | 0.176 | 0.614 | 0.589 |
 | 4. Hybrid RRF (v1) | exact | 0.740 | 0.676 | 0.185 | 0.617 | 0.601 |
 | 4. Hybrid RRF | HNSW | 0.726 | 0.658 | 0.180 | 0.593 | 0.578 |
-| 5. v1 + rerank-2.5 | exact | 0.832 | 0.762 | 0.203 | 0.767 | 0.729 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.843 | 0.777 | **0.210** | 0.784 | **0.751** |
-| 5. v1 + rerank-3 | exact | **0.847** | **0.778** | 0.209 | **0.785** | **0.751** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.843** | **0.777** | **0.210** | **0.784** | **0.751** |
 
 #### k = 20
 
@@ -133,9 +129,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.819 | 0.774 | 0.056 | 0.623 | 0.631 |
 | 4. Hybrid RRF (v1) | exact | 0.836 | 0.791 | 0.057 | 0.626 | 0.638 |
 | 4. Hybrid RRF | HNSW | 0.828 | 0.782 | 0.057 | 0.604 | 0.619 |
-| 5. v1 + rerank-2.5 | exact | 0.855 | 0.811 | 0.058 | 0.770 | 0.749 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.860** | **0.820** | **0.059** | 0.786 | **0.769** |
-| 5. v1 + rerank-3 | exact | **0.860** | 0.817 | **0.059** | **0.787** | 0.767 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.860** | **0.820** | **0.059** | **0.786** | **0.769** |
 
 ### confluence (114 questions)
 
@@ -150,9 +144,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.851 | 0.658 | 0.165 | 0.699 | 0.586 |
 | 4. Hybrid RRF (v1) | exact | 0.851 | 0.680 | 0.171 | 0.728 | 0.622 |
 | 4. Hybrid RRF | HNSW | 0.842 | 0.665 | 0.166 | 0.699 | 0.596 |
-| 5. v1 + rerank-2.5 | exact | 0.877 | 0.695 | 0.175 | 0.778 | 0.653 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.886 | **0.717** | **0.177** | 0.798 | **0.690** |
-| 5. v1 + rerank-3 | exact | **0.895** | 0.714 | **0.177** | **0.804** | 0.689 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.886** | **0.717** | **0.177** | **0.798** | **0.690** |
 
 #### k = 5
 
@@ -165,9 +157,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.807 | 0.556 | 0.268 | 0.693 | 0.540 |
 | 4. Hybrid RRF (v1) | exact | 0.825 | 0.610 | 0.295 | 0.724 | 0.589 |
 | 4. Hybrid RRF | HNSW | 0.816 | 0.595 | 0.286 | 0.695 | 0.564 |
-| 5. v1 + rerank-2.5 | exact | 0.860 | 0.621 | 0.286 | 0.775 | 0.616 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.886 | **0.678** | **0.316** | 0.798 | **0.668** |
-| 5. v1 + rerank-3 | exact | **0.895** | 0.669 | 0.309 | **0.804** | 0.664 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.886** | **0.678** | **0.316** | **0.798** | **0.668** |
 
 #### k = 20
 
@@ -180,9 +170,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.877 | 0.735 | 0.096 | 0.701 | 0.614 |
 | 4. Hybrid RRF (v1) | exact | 0.886 | 0.746 | 0.098 | 0.731 | 0.646 |
 | 4. Hybrid RRF | HNSW | 0.886 | 0.747 | 0.098 | 0.707 | 0.627 |
-| 5. v1 + rerank-2.5 | exact | 0.895 | 0.752 | 0.096 | 0.779 | 0.673 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.895 | **0.770** | **0.100** | 0.799 | **0.710** |
-| 5. v1 + rerank-3 | exact | **0.904** | 0.768 | 0.098 | **0.805** | 0.708 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.895** | **0.770** | **0.100** | **0.799** | **0.710** |
 
 ### jira (100 questions)
 
@@ -197,9 +185,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.930 | 0.781 | 0.146 | 0.823 | 0.738 |
 | 4. Hybrid RRF (v1) | exact | 0.930 | 0.782 | 0.147 | 0.812 | 0.729 |
 | 4. Hybrid RRF | HNSW | 0.930 | 0.784 | 0.148 | 0.807 | 0.727 |
-| 5. v1 + rerank-2.5 | exact | **0.960** | **0.826** | **0.163** | **0.906** | 0.806 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.960** | 0.823 | 0.162 | 0.898 | **0.808** |
-| 5. v1 + rerank-3 | exact | **0.960** | 0.825 | 0.162 | 0.894 | 0.805 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.960** | **0.823** | **0.162** | **0.898** | **0.808** |
 
 #### k = 5
 
@@ -212,9 +198,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.920 | 0.733 | 0.254 | 0.822 | 0.714 |
 | 4. Hybrid RRF (v1) | exact | 0.920 | 0.754 | 0.266 | 0.811 | 0.714 |
 | 4. Hybrid RRF | HNSW | 0.920 | 0.752 | 0.264 | 0.806 | 0.710 |
-| 5. v1 + rerank-2.5 | exact | 0.940 | 0.770 | 0.282 | **0.902** | 0.779 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.960** | 0.784 | **0.290** | 0.898 | **0.787** |
-| 5. v1 + rerank-3 | exact | **0.960** | **0.786** | **0.290** | 0.894 | 0.785 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.960** | **0.784** | **0.290** | **0.898** | **0.787** |
 
 #### k = 20
 
@@ -227,9 +211,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.960 | 0.837 | 0.084 | 0.826 | 0.759 |
 | 4. Hybrid RRF (v1) | exact | 0.960 | 0.846 | 0.087 | 0.814 | 0.753 |
 | 4. Hybrid RRF | HNSW | 0.960 | 0.848 | 0.087 | 0.809 | 0.751 |
-| 5. v1 + rerank-2.5 | exact | 0.960 | 0.845 | 0.087 | **0.906** | 0.814 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.970** | **0.865** | **0.088** | 0.899 | **0.823** |
-| 5. v1 + rerank-3 | exact | 0.960 | 0.848 | 0.087 | 0.894 | 0.815 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.970** | **0.865** | **0.088** | **0.899** | **0.823** |
 
 ### slack (79 questions)
 
@@ -244,9 +226,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.810 | 0.704 | 0.120 | 0.656 | 0.609 |
 | 4. Hybrid RRF (v1) | exact | 0.823 | 0.721 | 0.124 | 0.652 | 0.615 |
 | 4. Hybrid RRF | HNSW | 0.797 | 0.697 | 0.122 | 0.633 | 0.596 |
-| 5. v1 + rerank-2.5 | exact | **0.873** | 0.769 | **0.137** | **0.805** | 0.739 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.873** | **0.777** | **0.137** | 0.791 | 0.741 |
-| 5. v1 + rerank-3 | exact | **0.873** | 0.766 | 0.134 | 0.804 | **0.743** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.873** | **0.777** | **0.137** | **0.791** | **0.741** |
 
 #### k = 5
 
@@ -259,9 +239,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.772 | 0.647 | 0.213 | 0.651 | 0.586 |
 | 4. Hybrid RRF (v1) | exact | 0.810 | 0.699 | 0.233 | 0.651 | 0.605 |
 | 4. Hybrid RRF | HNSW | 0.785 | 0.676 | 0.230 | 0.632 | 0.587 |
-| 5. v1 + rerank-2.5 | exact | **0.873** | **0.749** | 0.251 | **0.805** | 0.727 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.861 | 0.744 | **0.253** | 0.789 | 0.726 |
-| 5. v1 + rerank-3 | exact | 0.861 | 0.741 | 0.251 | 0.802 | **0.731** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.861** | **0.744** | **0.253** | **0.789** | **0.726** |
 
 #### k = 20
 
@@ -274,9 +252,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.848 | 0.753 | 0.068 | 0.658 | 0.625 |
 | 4. Hybrid RRF (v1) | exact | **0.886** | 0.792 | 0.071 | 0.657 | 0.638 |
 | 4. Hybrid RRF | HNSW | 0.861 | 0.769 | 0.070 | 0.638 | 0.618 |
-| 5. v1 + rerank-2.5 | exact | **0.886** | 0.802 | **0.074** | **0.806** | 0.751 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.886** | **0.806** | **0.074** | 0.792 | 0.752 |
-| 5. v1 + rerank-3 | exact | **0.886** | 0.802 | 0.073 | 0.805 | **0.756** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.886** | **0.806** | **0.074** | **0.792** | **0.752** |
 
 ### github (60 questions)
 
@@ -291,9 +267,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.833 | 0.716 | 0.140 | 0.684 | 0.638 |
 | 4. Hybrid RRF (v1) | exact | 0.833 | 0.717 | 0.137 | 0.688 | 0.641 |
 | 4. Hybrid RRF | HNSW | 0.817 | 0.698 | 0.133 | 0.671 | 0.624 |
-| 5. v1 + rerank-2.5 | exact | **0.900** | 0.782 | **0.145** | **0.863** | **0.771** |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.900** | 0.781 | 0.143 | 0.856 | 0.768 |
-| 5. v1 + rerank-3 | exact | **0.900** | **0.783** | **0.145** | 0.852 | 0.769 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.900** | **0.781** | **0.143** | **0.856** | **0.768** |
 
 #### k = 5
 
@@ -306,9 +280,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.783 | 0.622 | 0.230 | 0.678 | 0.599 |
 | 4. Hybrid RRF (v1) | exact | 0.817 | 0.683 | 0.240 | 0.686 | 0.622 |
 | 4. Hybrid RRF | HNSW | 0.800 | 0.666 | 0.237 | 0.669 | 0.605 |
-| 5. v1 + rerank-2.5 | exact | 0.867 | 0.720 | **0.247** | **0.858** | **0.742** |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.883** | 0.719 | **0.247** | 0.853 | 0.740 |
-| 5. v1 + rerank-3 | exact | **0.883** | **0.723** | **0.247** | 0.851 | 0.741 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.883** | **0.719** | **0.247** | **0.853** | **0.740** |
 
 #### k = 20
 
@@ -321,9 +293,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.850 | 0.751 | 0.077 | 0.685 | 0.652 |
 | 4. Hybrid RRF (v1) | exact | 0.867 | 0.770 | **0.079** | 0.691 | 0.662 |
 | 4. Hybrid RRF | HNSW | 0.850 | 0.754 | 0.078 | 0.674 | 0.645 |
-| 5. v1 + rerank-2.5 | exact | **0.900** | 0.797 | 0.078 | **0.863** | **0.779** |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.900** | **0.801** | 0.078 | 0.856 | 0.778 |
-| 5. v1 + rerank-3 | exact | **0.900** | 0.796 | 0.077 | 0.852 | 0.775 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.900** | **0.801** | 0.078 | **0.856** | **0.778** |
 
 ### google_drive (60 questions)
 
@@ -338,9 +308,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.767 | 0.681 | 0.117 | 0.615 | 0.584 |
 | 4. Hybrid RRF (v1) | exact | 0.767 | 0.666 | 0.117 | 0.602 | 0.566 |
 | 4. Hybrid RRF | HNSW | 0.767 | 0.653 | 0.108 | 0.583 | 0.541 |
-| 5. v1 + rerank-2.5 | exact | **0.817** | 0.742 | **0.132** | 0.770 | 0.714 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.817** | **0.748** | **0.132** | 0.744 | **0.716** |
-| 5. v1 + rerank-3 | exact | **0.817** | 0.739 | 0.130 | **0.771** | 0.714 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.817** | **0.748** | **0.132** | **0.744** | **0.716** |
 
 #### k = 5
 
@@ -353,9 +321,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.733 | 0.615 | 0.197 | 0.612 | 0.556 |
 | 4. Hybrid RRF (v1) | exact | 0.700 | 0.578 | 0.193 | 0.593 | 0.530 |
 | 4. Hybrid RRF | HNSW | 0.717 | 0.572 | 0.187 | 0.577 | 0.510 |
-| 5. v1 + rerank-2.5 | exact | **0.817** | 0.715 | 0.237 | 0.770 | 0.700 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.817** | **0.728** | **0.243** | 0.744 | **0.705** |
-| 5. v1 + rerank-3 | exact | **0.817** | 0.709 | 0.233 | **0.771** | 0.699 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.817** | **0.728** | **0.243** | **0.744** | **0.705** |
 
 #### k = 20
 
@@ -364,13 +330,11 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 1. Dense only | exact | 0.733 | 0.634 | 0.057 | 0.522 | 0.505 |
 | 1. Dense only | HNSW | 0.700 | 0.587 | 0.050 | 0.485 | 0.464 |
 | 2. Sparse only (BM25) | exact | 0.700 | 0.648 | 0.062 | 0.580 | 0.554 |
-| 3. Hybrid A (relative) | exact | **0.833** | 0.763 | 0.069 | 0.634 | 0.623 |
+| 3. Hybrid A (relative) | exact | **0.833** | **0.763** | 0.069 | 0.634 | 0.623 |
 | 3. Hybrid A (relative) | HNSW | **0.833** | 0.760 | 0.068 | 0.620 | 0.609 |
 | 4. Hybrid RRF (v1) | exact | **0.833** | 0.760 | 0.068 | 0.607 | 0.594 |
 | 4. Hybrid RRF | HNSW | **0.833** | 0.760 | 0.068 | 0.588 | 0.575 |
-| 5. v1 + rerank-2.5 | exact | 0.817 | **0.766** | **0.071** | 0.770 | 0.723 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.817 | 0.763 | 0.070 | 0.744 | 0.722 |
-| 5. v1 + rerank-3 | exact | 0.817 | 0.763 | 0.070 | **0.771** | **0.724** |
+| 5. v1 + rerank-3-lite (v2) | exact | 0.817 | **0.763** | **0.070** | **0.744** | **0.722** |
 
 ### linear (58 questions)
 
@@ -385,9 +349,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.828 | 0.754 | 0.117 | 0.650 | 0.631 |
 | 4. Hybrid RRF (v1) | exact | 0.828 | 0.756 | 0.119 | 0.657 | 0.642 |
 | 4. Hybrid RRF | HNSW | 0.828 | 0.755 | 0.117 | 0.655 | 0.638 |
-| 5. v1 + rerank-2.5 | exact | **0.897** | 0.818 | **0.126** | 0.829 | 0.791 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.897** | **0.826** | 0.122 | 0.828 | **0.800** |
-| 5. v1 + rerank-3 | exact | **0.897** | 0.813 | 0.122 | **0.838** | 0.796 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.897** | **0.826** | **0.122** | **0.828** | **0.800** |
 
 #### k = 5
 
@@ -400,9 +362,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.793 | 0.683 | 0.197 | 0.647 | 0.602 |
 | 4. Hybrid RRF (v1) | exact | 0.776 | 0.674 | 0.200 | 0.649 | 0.608 |
 | 4. Hybrid RRF | HNSW | 0.759 | 0.665 | 0.200 | 0.645 | 0.604 |
-| 5. v1 + rerank-2.5 | exact | **0.897** | 0.790 | 0.221 | 0.829 | 0.775 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.879 | 0.782 | 0.221 | 0.825 | 0.781 |
-| 5. v1 + rerank-3 | exact | **0.897** | **0.799** | **0.224** | **0.838** | **0.787** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.879** | **0.782** | **0.221** | **0.825** | **0.781** |
 
 #### k = 20
 
@@ -415,9 +375,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.862 | 0.812 | 0.067 | 0.653 | 0.650 |
 | 4. Hybrid RRF (v1) | exact | 0.879 | 0.829 | 0.068 | 0.661 | 0.664 |
 | 4. Hybrid RRF | HNSW | 0.879 | 0.829 | 0.068 | 0.658 | 0.662 |
-| 5. v1 + rerank-2.5 | exact | 0.897 | 0.851 | **0.071** | 0.829 | 0.804 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.914** | **0.863** | 0.070 | 0.830 | **0.815** |
-| 5. v1 + rerank-3 | exact | **0.914** | **0.863** | 0.070 | **0.839** | 0.814 |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.914** | **0.863** | **0.070** | **0.830** | **0.815** |
 
 ### gmail (55 questions)
 
@@ -432,9 +390,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.764 | 0.672 | 0.104 | 0.642 | 0.611 |
 | 4. Hybrid RRF (v1) | exact | 0.782 | 0.696 | 0.107 | 0.656 | 0.632 |
 | 4. Hybrid RRF | HNSW | 0.745 | 0.660 | 0.104 | 0.616 | 0.592 |
-| 5. v1 + rerank-2.5 | exact | 0.855 | 0.769 | 0.125 | 0.771 | 0.720 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.873** | **0.791** | **0.129** | 0.774 | **0.737** |
-| 5. v1 + rerank-3 | exact | **0.873** | 0.787 | 0.127 | **0.777** | **0.737** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.873** | **0.791** | **0.129** | **0.774** | **0.737** |
 
 #### k = 5
 
@@ -447,9 +403,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.745 | 0.638 | 0.189 | 0.638 | 0.596 |
 | 4. Hybrid RRF (v1) | exact | 0.764 | 0.683 | 0.204 | 0.653 | 0.625 |
 | 4. Hybrid RRF | HNSW | 0.727 | 0.642 | 0.193 | 0.614 | 0.583 |
-| 5. v1 + rerank-2.5 | exact | 0.800 | 0.697 | 0.215 | 0.764 | 0.690 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.855** | **0.750** | **0.233** | 0.771 | 0.718 |
-| 5. v1 + rerank-3 | exact | **0.855** | 0.747 | **0.233** | **0.775** | **0.719** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.855** | **0.750** | **0.233** | **0.771** | **0.718** |
 
 #### k = 20
 
@@ -462,9 +416,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.818 | 0.731 | 0.059 | 0.645 | 0.630 |
 | 4. Hybrid RRF (v1) | exact | 0.836 | 0.751 | 0.061 | 0.659 | 0.649 |
 | 4. Hybrid RRF | HNSW | 0.818 | 0.732 | 0.060 | 0.622 | 0.614 |
-| 5. v1 + rerank-2.5 | exact | **0.873** | 0.796 | 0.065 | 0.773 | 0.728 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.873** | **0.802** | **0.066** | 0.774 | **0.741** |
-| 5. v1 + rerank-3 | exact | **0.873** | 0.796 | 0.065 | **0.777** | **0.741** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.873** | **0.802** | **0.066** | **0.774** | **0.741** |
 
 ### hubspot (34 questions)
 
@@ -479,9 +431,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.559 | 0.544 | 0.056 | 0.370 | 0.409 |
 | 4. Hybrid RRF (v1) | exact | 0.529 | 0.515 | 0.053 | 0.288 | 0.341 |
 | 4. Hybrid RRF | HNSW | 0.529 | 0.515 | 0.053 | 0.293 | 0.345 |
-| 5. v1 + rerank-2.5 | exact | **0.765** | **0.765** | **0.079** | 0.674 | 0.691 |
 | 5. v1 + rerank-3-lite (v2) | exact | **0.765** | **0.765** | **0.079** | **0.743** | **0.744** |
-| 5. v1 + rerank-3 | exact | **0.765** | **0.765** | **0.079** | 0.711 | 0.719 |
 
 #### k = 5
 
@@ -494,9 +444,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.471 | 0.456 | 0.094 | 0.358 | 0.380 |
 | 4. Hybrid RRF (v1) | exact | 0.412 | 0.412 | 0.082 | 0.271 | 0.305 |
 | 4. Hybrid RRF | HNSW | 0.441 | 0.426 | 0.088 | 0.281 | 0.316 |
-| 5. v1 + rerank-2.5 | exact | **0.765** | 0.750 | 0.153 | 0.674 | 0.685 |
 | 5. v1 + rerank-3-lite (v2) | exact | **0.765** | **0.765** | **0.159** | **0.743** | **0.744** |
-| 5. v1 + rerank-3 | exact | **0.765** | 0.750 | 0.153 | 0.711 | 0.713 |
 
 #### k = 20
 
@@ -509,9 +457,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.676 | 0.662 | 0.034 | 0.380 | 0.441 |
 | 4. Hybrid RRF (v1) | exact | 0.676 | 0.662 | 0.034 | 0.298 | 0.378 |
 | 4. Hybrid RRF | HNSW | 0.676 | 0.662 | 0.034 | 0.304 | 0.382 |
-| 5. v1 + rerank-2.5 | exact | **0.765** | **0.765** | **0.040** | 0.674 | 0.691 |
 | 5. v1 + rerank-3-lite (v2) | exact | **0.765** | **0.765** | **0.040** | **0.743** | **0.744** |
-| 5. v1 + rerank-3 | exact | **0.765** | **0.765** | **0.040** | 0.711 | 0.719 |
 
 ### fireflies (25 questions)
 
@@ -526,9 +472,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.560 | 0.540 | 0.088 | 0.322 | 0.371 |
 | 4. Hybrid RRF (v1) | exact | 0.560 | 0.540 | 0.088 | 0.373 | 0.407 |
 | 4. Hybrid RRF | HNSW | 0.520 | 0.500 | 0.084 | 0.287 | 0.331 |
-| 5. v1 + rerank-2.5 | exact | **0.720** | **0.665** | **0.104** | 0.488 | 0.508 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.680 | 0.645 | 0.100 | 0.520 | 0.542 |
-| 5. v1 + rerank-3 | exact | **0.720** | **0.665** | **0.104** | **0.527** | **0.554** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.680** | **0.645** | **0.100** | **0.520** | **0.542** |
 
 #### k = 5
 
@@ -541,9 +485,7 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.440 | 0.424 | 0.136 | 0.307 | 0.328 |
 | 4. Hybrid RRF (v1) | exact | 0.480 | 0.444 | 0.144 | 0.363 | 0.373 |
 | 4. Hybrid RRF | HNSW | 0.440 | 0.404 | 0.136 | 0.277 | 0.297 |
-| 5. v1 + rerank-2.5 | exact | 0.680 | 0.637 | 0.192 | 0.481 | 0.496 |
-| 5. v1 + rerank-3-lite (v2) | exact | 0.680 | 0.637 | 0.192 | 0.520 | 0.537 |
-| 5. v1 + rerank-3 | exact | **0.720** | **0.665** | **0.208** | **0.527** | **0.554** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.680** | **0.637** | **0.192** | **0.520** | **0.537** |
 
 #### k = 20
 
@@ -556,7 +498,5 @@ do not edit between the markers. Steps add one thing each; "exact" searches ever
 | 3. Hybrid A (relative) | HNSW | 0.640 | 0.620 | 0.048 | 0.328 | 0.392 |
 | 4. Hybrid RRF (v1) | exact | 0.680 | 0.625 | 0.050 | 0.380 | 0.428 |
 | 4. Hybrid RRF | HNSW | 0.680 | 0.625 | 0.050 | 0.296 | 0.362 |
-| 5. v1 + rerank-2.5 | exact | **0.720** | **0.665** | **0.052** | 0.488 | 0.508 |
-| 5. v1 + rerank-3-lite (v2) | exact | **0.720** | **0.665** | **0.052** | 0.523 | 0.548 |
-| 5. v1 + rerank-3 | exact | **0.720** | **0.665** | **0.052** | **0.527** | **0.554** |
+| 5. v1 + rerank-3-lite (v2) | exact | **0.720** | **0.665** | **0.052** | **0.523** | **0.548** |
 <!-- end generated -->

@@ -375,3 +375,7 @@ a private artifact. The v2 row in the step tables is labelled "5. v1 + rerank-3-
 Risk: `rerank-3-lite` is a preview model and can change; the saved reranking
 (`data/_index/rerank/rerank-3-lite.jsonl`) keeps these numbers reproducible, and `rerank-2.5`
 (0.791) is the generally available fallback.
+
+**Update:** the reports (`results.md` tables and `report.html`) show only the chosen reranker,
+"5. v1 + rerank-3-lite (v2)". The rerank-2.5 and rerank-3 runs stay in `docs/eval/runs` and in
+the RET-5 table above as the evidence for the choice.
