@@ -33,6 +33,7 @@ Retrieval glossary:
 | RET-4  v1 recorded: hybrid RRF, exact, recall@10 0.722 | ✅ |
 | RET-5  `rerank_saved`, `replay_retriever`: v1's top 50 reranked by three Voyage cross-encoders | ✅ |
 | RET-6  v2 recorded: v1 + rerank-3-lite, recall@10 0.800; the scoreboard page published | ✅ |
+| RET-7  `multi_query_retriever`: the question + 3 local-LLM queries, fused by RRF (measured: worse than v1) | ✅ |
 
 ---
 
@@ -379,3 +380,71 @@ Risk: `rerank-3-lite` is a preview model and can change; the saved reranking
 **Update:** the reports (`results.md` tables and `report.html`) show only the chosen reranker,
 "5. v1 + rerank-3-lite (v2)". The rerank-2.5 and rerank-3 runs stay in `docs/eval/runs` and in
 the RET-5 table above as the evidence for the choice.
+
+## RET-7  `multi_query_retriever`: the question + 3 LLM-written queries  ✅
+
+**Status:** Done (measured; not adopted)
+
+**As a** RAG developer
+**I want to** v1's hybrid search run for the question and for 3 queries an LLM writes from it,
+all result lists fused by RRF
+**So that** relevant documents v1 never retrieves reach the top 50 the reranker sees
+
+**Why:** v2 finds 526 of the 741 relevant documents in its top 10; 54 more are in v1's top 50 and
+**161 are not in it at all**, so no reranker can lift them. qst_0436 ("Across Redwood's Go,
+Python, and TypeScript SDKs, which SDK has the most customer-reported auth-related bug
+reports …") needs 10 documents; v1 retrieves 1.
+
+**Acceptance Criteria (Gherkin)**
+- Given 2 questions and a planner LLM, Then each is planned once and its prompt and answer saved;
+  a re-run plans nothing; the saved answers replay without the LLM; an unsaved prompt → `KeyError`
+- Given the retriever, Then it is LlamaIndex's `QueryFusionRetriever` with its default prompt,
+  `num_queries=4` (the question + 3) and RRF, and `generated_queries` returns the 3 parsed queries
+- Given a chunk only the generated queries find, Then it is returned
+- Given the real planner file, Then all 470 questions have a saved plan
+
+**Example with real data**
+Nothing is custom but the save-and-replay: `QueryFusionRetriever` (the class v1 already runs with
+`num_queries=1`) with its default prompt ("You are a helpful assistant that generates multiple
+search queries based on a single input query …"). The planner is `gemma4:26b` on Ollama, local:
+470 questions in 297 s, $0. (`qwen3:30b` was tried first: it ignored `thinking=False` and wrote
+its reasoning into the answer, 12–31 s a question.) The 1,410 new queries were embedded once by
+voyage-4 (16,899 tokens, $0.001) into `data/_index/question_embeddings/voyage-4-generated.jsonl`;
+the top 50 of each question was saved (`data/_index/rerank/multi_query_candidates.jsonl`).
+
+qst_0436's 3 queries: "Redwood SDK auth bug reports by language Go Python TypeScript",
+"Redwood SDK authentication support ticket IDs for bug reports", "Comparison of auth-related bug
+reports in Redwood Go Python and TypeScript SDKs": rephrasings, not one query per SDK. It still
+finds 1 of its 10 documents.
+
+| before reranking (exact) | recall@50 | recall@20 | recall@10 | hit@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|---|
+| v1: the question alone | **0.838** | **0.791** | **0.722** | **0.777** | **0.622** | **0.619** |
+| + 3 generated queries | 0.818 | 0.746 | 0.701 | 0.755 | 0.577 | 0.579 |
+
+Against v1's top 50 it gains 21 relevant documents and loses 42. Recall@50 drops for every
+large question type: completeness 0.651 → 0.603, project_related 0.801 → 0.768, semantic 0.696 →
+0.648, basic 0.897 → 0.891.
+
+What it says: RRF gives the question 2 of the 8 result lists; the 3 paraphrases get 6, and when
+they drift ("best practices for defining design tokens …" for qst_0003) their documents push the
+question's own out of the top 50. Default multi-query is a net loss here, so the reranking step
+was not run (it can only re-sort a top 50 that now holds fewer relevant documents). v2 stays.
+
+**Decisions**
+- LlamaIndex's `QueryFusionRetriever` and its default prompt, unchanged: one change at a time,
+  so the result is attributable to multi-query itself.
+- Plan once and replay (`SavedCompletions`, a LlamaIndex `CustomLLM`): the scorer asks each
+  question at k = 5, 10 and 20, and a replay makes every re-score identical and $0.
+
+**Follow-ups (not started)**
+- Keep v1's top 50 and add only what the generated queries find beyond it, then rerank: the
+  reranker decides, so the 21 gains can count without the 42 losses.
+- A decomposition prompt (one query per part or item) for completeness questions like qst_0436.
+
+**Dependencies**
+- APIs: `planner_llm`, `query_prompt`, `SavedCompletions`, `save_completions`, `saved_completions`,
+  `multi_query_retriever`, `generated_queries` in `pipeline/eval/multi_query.py`;
+  `llama-index-llms-ollama` added
+- Database: `data/_index/planner/gemma4-26b.jsonl` (gitignored); run in
+  `docs/eval/runs/*-multi-query-rrf-exact`

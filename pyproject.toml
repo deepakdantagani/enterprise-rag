@@ -7,6 +7,7 @@ dependencies = [
   "fastembed==0.8.1",
   "llama-index-core==0.14.24",
   "llama-index-embeddings-voyageai==0.7.0",
+  "llama-index-llms-ollama>=0.11.0",
   "llama-index-vector-stores-qdrant==0.10.3",
   "markdown-it-py==4.2.0",
   "openinference-instrumentation-llama-index==4.5.2",
