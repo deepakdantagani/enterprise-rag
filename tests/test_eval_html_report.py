@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import html_report as html_report_module  # noqa: E402
-from pipeline.eval.html_report import V1_STEPS, html_report  # noqa: E402
+from pipeline.eval.html_report import VERSIONS, V1_STEPS, html_report  # noqa: E402
 
 RUNS = ROOT / "docs/eval/runs"
 RRF_EXACT = RUNS / "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact"
@@ -41,7 +41,8 @@ class HtmlReport(unittest.TestCase):
         write_metrics(self.runs_dir, "run-dense", 0.5)
         write_metrics(self.runs_dir, "run-rrf", 0.7)
         self.page = html_report([("1. Dense", "exact", "run-dense"), ("2. RRF", "exact", "run-rrf")],
-                                self.runs_dir, "Retrieval")
+                                self.runs_dir, "Retrieval",
+                                versions=[("v0", "run-dense", "dense"), ("v1", "run-rrf", "hybrid")])
         self.data = embedded(self.page)
 
     def test_buttons_are_all_then_sources_by_question_count(self):
@@ -60,11 +61,20 @@ class HtmlReport(unittest.TestCase):
         self.assertEqual((rows[0]["best"], rows[1]["best"]), ([], ["hit_rate", "recall", "precision", "mrr", "ndcg"]))
         self.assertIn(".best", self.page)
 
-    def test_the_page_is_self_contained_with_a_dark_mode(self):
+    def test_the_page_is_self_contained_apart_from_its_fonts(self):
         self.assertNotIn("<script src", self.page)
-        self.assertNotIn("<link", self.page)
-        self.assertIn("prefers-color-scheme: dark", self.page)
+        self.assertEqual(set(re.findall(r'href="(https?://[^/"]+)', self.page)), {"https://fonts.googleapis.com"})
         self.assertIn("<title>Retrieval</title>", self.page)
+
+    def test_both_themes_follow_the_viewer_and_the_explicit_toggle(self):
+        self.assertIn(':root:not([data-theme="light"])', self.page)
+        self.assertIn(':root[data-theme="dark"]', self.page)
+        self.assertIn("color-scheme: dark", self.page)
+
+    def test_versions_carry_recall_and_mrr_at_10_and_the_gain_over_the_previous(self):
+        self.assertEqual(self.data["versions"], [
+            {"name": "v0", "about": "dense", "recall": 0.51, "mrr": 0.51, "gain": None},
+            {"name": "v1", "about": "hybrid", "recall": 0.71, "mrr": 0.71, "gain": 0.2}])
 
     def test_a_missing_run_names_it(self):
         with self.assertRaisesRegex(FileNotFoundError, "run-absent"):
@@ -81,6 +91,11 @@ class RealV1Report(unittest.TestCase):
         rrf = [row for row in rows if (row["step"], row["search"]) == ("4. Hybrid RRF (v1)", "exact")]
         self.assertEqual(rrf[0]["values"]["recall"], 0.722)
         self.assertEqual(len(rows), 7)
+
+    def test_v2_is_rerank_3_lite_at_recall_0_800(self):
+        [v0, v1, v2] = embedded(html_report(V1_STEPS, RUNS, "v2", versions=VERSIONS))["versions"]
+        self.assertEqual([(v["name"], v["recall"], v["gain"]) for v in (v0, v1, v2)],
+                         [("v0", 0.626, None), ("v1", 0.722, 0.096), ("v2", 0.8, 0.078)])
 
 
 if __name__ == "__main__":

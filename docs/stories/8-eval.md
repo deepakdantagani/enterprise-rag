@@ -627,3 +627,8 @@ On hubspot, BM25 alone is best in every column (recall 0.574) and RRF (v1) exact
 **Dependencies**
 - APIs: `html_report(steps, runs_dir, title)`, `V1_STEPS`, `main()` in `pipeline/eval/html_report.py`
 - Service Bus: N/A · Database: N/A · UI: `docs/eval/report.html`
+
+**Update (RET-6):** the page gained a version strip (`VERSIONS`: v0 → v1 → v2 with recall@10,
+MRR@10 and each gain), the three reranker steps, and the artifact page contract (theme tokens
+guarded for the viewer's light/dark/system setting, IBM Plex via Google Fonts, a one-column grid
+that keeps wide tables inside their own scroll box). Title: "EnterpriseRAG Retrieval Scoreboard".
