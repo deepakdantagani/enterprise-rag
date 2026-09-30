@@ -243,9 +243,9 @@ class RealTopTen(unittest.TestCase):
         doc_ids = first_documents(self.retriever.retrieve(self.questions[0]))
         self.assertEqual((len(doc_ids), doc_ids[0]), (10, "dsid_ae068ee4aa9640159427cd941bef0238"))
 
-    def test_every_saved_question_reaches_ten_documents(self):
+    def test_every_question_reaches_ten_documents(self):
         counts = [len(first_documents(self.retriever.retrieve(question))) for question in self.questions]
-        self.assertEqual((len(counts), set(counts)), (470, {10}))
+        self.assertEqual((len(counts), set(counts)), (500, {10}))  # GEN-4: 470 + the 30 with no expected documents
 
 
 class Doctests(unittest.TestCase):

@@ -325,9 +325,9 @@ two cannot drift.
 
 **Dependencies:** `pipeline/eval/questions.py`.
 
-## GEN-4  Retrieve the 30 missing questions  ⬜
+## GEN-4  Retrieve the 30 missing questions  ✅
 
-**Status:** To do (paid: ask first)
+**Status:** Done (spend approved 2026-09-30)
 
 **As a** developer,
 **I want to** run v4 retrieval once for the 30 questions without saved candidates and append
@@ -346,6 +346,21 @@ Scenario: complete coverage
 **Non-functional Requirements:** cost before running: 30 question embeddings with `voyage-4`
 (~$0.001, the saved vectors cover only 470) and 30 × 100 chunks reranked by `rerank-3-lite`
 (~1.5M tokens from the free pool).
+
+**Measured** (2026-09-30, `uv run python -m pipeline.eval.missing`, 30 s, run log
+`data/_index/rerank/gen-4-events.jsonl`): 30 `voyage-4` query vectors (7 s), 30 live top 100s
+(`live_retriever`, 6.6 s), 30 reranks by `rerank-3-lite` (1,464,289 tokens from the free pool,
+15 s). All three files (candidates, reranks, `question_embeddings/voyage-4.jsonl`) now hold 500
+rows; the sha256 of their first 470 rows equals the sha256 of each file before the run
+(`545ae799…`, `ef5fd306…`, `46d13fc6…`). The new rows are `qst_0471` … `qst_0500`, each with 100
+candidates, and every one of the 500 reaches 10 distinct documents. No script had saved the
+original candidates; `candidates_row` reproduces the saved `qst_0001` line byte for byte
+(`node.text`, `json.dumps` defaults).
+
+**What changed:** `pipeline/eval/missing.py`: `append_missing` (the resumable pattern of
+`rerank_saved`), `save_query_vectors`, `save_candidates`, `candidates_row`, and `main`, which
+reads the vectors back with no fallback, so a question without a saved vector fails instead of
+paying. Two real-data tests now expect 500 (vectors, questions reaching 10 documents).
 
 **Dependencies:** GEN-3; Qdrant `titles__voyage_4_lite__bm25`.
 
