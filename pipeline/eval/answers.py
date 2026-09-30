@@ -11,6 +11,7 @@ All 470 saved questions reach 10 documents, within 11 chunks at the median and 2
     >>> document_block(1, "dsid_a", "Q3 budget", "Priya approved it.")
     '--- Document 1 (ID: dsid_a) ---\\nTitle: Q3 budget\\n\\nPriya approved it.'
 """
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -129,6 +130,25 @@ def answer_row(engine: RetrieverQueryEngine, question_id: str, question: str) ->
     response = engine.query(question)
     return {"question_id": question_id, "answer": str(response).strip(),
             "document_ids": [found.node.metadata["doc_id"] for found in response.source_nodes]}
+
+
+def save_answers(engine: RetrieverQueryEngine, questions: Sequence, out_path: Union[str, Path]) -> int:
+    """GEN-2e: answer every question not yet in `out_path`, one flushed line each; returns how many this call.
+
+    500 local answers take ~1.5 h, so a crash or a re-run never asks the LLM again for a finished
+    question (the pattern of rerank_saved and save_completions).
+    """
+    out_path = Path(out_path)
+    done = {json.loads(line)["question_id"] for line in out_path.read_text().splitlines()} if out_path.exists() else set()
+    answered = 0
+    with out_path.open("a") as out:
+        for question in questions:
+            if question.question_id in done:
+                continue
+            out.write(json.dumps(answer_row(engine, question.question_id, question.text)) + "\n")
+            out.flush()
+            answered += 1
+    return answered
 
 
 V4_COLLECTION = "titles__voyage_4_lite__bm25"  # GEN-8a: dense voyage-4-lite + BM25 over the same titled chunks

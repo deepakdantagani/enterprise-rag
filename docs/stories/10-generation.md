@@ -264,9 +264,9 @@ baseline); letting the LLM choose them is a later story, as they are not in the 
 
 **Dependencies:** GEN-2c; `RetrieverQueryEngine`, `PromptTemplate`, `llama_index.llms.ollama`.
 
-## GEN-2e  `save_answers` (resumable)  ⬜
+## GEN-2e  `save_answers` (resumable)  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer running 500 local answers (~1.5 h),
 **I want to** write each answer to `answers.jsonl` as soon as it is made and skip questions
@@ -289,6 +289,10 @@ Scenario: nothing new
 questions across restarts.
 
 **Non-functional Requirements:** shared ones; one flushed line per answer.
+
+**Measured:** both scenarios green with a recording LLM: resuming from a file holding q1 sends
+exactly one prompt (q2); a second run sends none and returns 0. `save_answers` in
+`pipeline/eval/answers.py` (18 lines), each line is `answer_row`'s dict.
 
 **Dependencies:** GEN-2d. Output `data/_index/answers/<run>.jsonl` (gitignored).
 

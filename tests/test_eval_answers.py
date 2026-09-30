@@ -13,7 +13,8 @@ from llama_index.core.schema import MetadataMode, NodeRelationship, NodeWithScor
 
 from pipeline.eval import answers  # noqa: E402
 from pipeline.eval.answers import (FullDocuments, answer_engine, answer_row, answerer_llm, document_block,  # noqa: E402
-                                   documents_by_id, first_documents, live_reranker, live_retriever)
+                                   documents_by_id, first_documents, live_reranker, live_retriever, save_answers)
+from pipeline.eval.questions import Question  # noqa: E402
 from pipeline.eval.rerank import ReplayRetriever  # noqa: E402
 
 CORPUS = ROOT / "data/_full/documents.parquet"
@@ -143,6 +144,30 @@ class AnswerRow(unittest.TestCase):
         llm = answerer_llm()
         self.assertEqual((llm.model, llm.temperature, llm.thinking, llm.context_window),
                          ("gemma4:26b", 0.0, False, 40_960))
+
+
+class SaveAnswers(unittest.TestCase):
+    def setUp(self):
+        saved = {"question_id": "q", "question": "Q?", "candidates": [{"node_id": "c1", "ref_doc_id": "dsid_5", "text": "chunk"}]}
+        self.llm = RecordingLLM(prompts=[])
+        self.engine = answer_engine(ReplayRetriever({"Who?": dict(saved, question="Who?"), "When?": dict(saved, question="When?")}),
+                                    self.llm, DOCUMENTS)
+        self.questions = [Question("q1", "simple", (), "Who?", ()), Question("q2", "simple", (), "When?", ())]
+        self.out = Path(tempfile.mkdtemp()) / "answers.jsonl"
+        self.out.write_text(json.dumps({"question_id": "q1", "answer": "old", "document_ids": []}) + "\n")
+
+    def test_resume_answers_only_the_questions_not_saved(self):
+        self.assertEqual(save_answers(self.engine, self.questions, self.out), 1)
+        self.assertEqual(len(self.llm.prompts), 1)
+        self.assertEqual([json.loads(line) for line in self.out.read_text().splitlines()],
+                         [{"question_id": "q1", "answer": "old", "document_ids": []},
+                          {"question_id": "q2", "answer": "Priya approved the Q3 budget.", "document_ids": ["dsid_5"]}])
+
+    def test_nothing_new_calls_no_llm(self):
+        save_answers(self.engine, self.questions, self.out)
+        self.llm.prompts.clear()
+        self.assertEqual(save_answers(self.engine, self.questions, self.out), 0)
+        self.assertEqual(self.llm.prompts, [])
 
 
 class LiveParts(unittest.TestCase):
