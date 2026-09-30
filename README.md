@@ -75,7 +75,7 @@ through OpenInference.
 - **Observability.** LlamaIndex instrumentation events go to a JSON-lines run log for each stage,
   and Phoenix records traces for retrieval and answering.
 - **Per-source pipelines.** Slack, Gmail, and Confluence each have their own cleaning pipeline
-  (unescaping, quote stripping, speaker parsing, and heading detection with markdown-it). They
+  (unescaping, quote stripping, speaker parsing, and heading detection with markdown-it).
   Confluence headings and Slack message starts are checked against hand-labelled truth sets.
 
 ## Layout
