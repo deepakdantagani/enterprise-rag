@@ -13,13 +13,14 @@ from llama_index.core.schema import MetadataMode, NodeRelationship, NodeWithScor
 
 from pipeline.eval import answers  # noqa: E402
 from pipeline.eval.answers import (FullDocuments, answer_engine, answer_row, answerer_llm, document_block,  # noqa: E402
-                                   documents_by_id, first_documents)
+                                   documents_by_id, first_documents, live_reranker, live_retriever)
 from pipeline.eval.rerank import ReplayRetriever  # noqa: E402
 
 CORPUS = ROOT / "data/_full/documents.parquet"
 RERANK = ROOT / "data/_index/rerank"
 CANDIDATES = RERANK / "lite_titles_top100_candidates.jsonl"
 V4_ORDER = RERANK / "lite-titles-top100-rerank-3-lite.jsonl"
+QUESTION_VECTORS = ROOT / "data/_index/question_embeddings/voyage-4.jsonl"
 
 
 def chunk_of(doc_id):
@@ -142,6 +143,40 @@ class AnswerRow(unittest.TestCase):
         llm = answerer_llm()
         self.assertEqual((llm.model, llm.temperature, llm.thinking, llm.context_window),
                          ("gemma4:26b", 0.0, False, 40_960))
+
+
+class LiveParts(unittest.TestCase):
+    def test_full_documents_reads_a_document_it_was_not_given_from_the_corpus(self):
+        corpus = parquet_of([("dsid_new", "New", "fresh text")])
+        kept = FullDocuments(dict(DOCUMENTS), corpus=corpus).postprocess_nodes([chunk_of("dsid_new"), chunk_of("dsid_2")])
+        self.assertEqual([found.node.text for found in kept],
+                         ["--- Document 1 (ID: dsid_new) ---\nTitle: New\n\nfresh text",
+                          "--- Document 2 (ID: dsid_2) ---\nTitle: Title 2\n\nContent 2"])
+
+    def test_the_live_reranker_is_rerank_3_lite_over_all_100_candidates(self):
+        reranker = live_reranker(api_key="not-a-real-key")
+        self.assertEqual((reranker.model, reranker.top_n), ("rerank-3-lite", 100))
+
+    def test_the_reranker_runs_before_full_documents(self):
+        engine = answer_engine(ReplayRetriever({}), RecordingLLM(prompts=[]), DOCUMENTS,
+                               reranker=live_reranker(api_key="not-a-real-key"))
+        self.assertEqual([type(step).__name__ for step in engine._node_postprocessors],
+                         ["VoyageAIRerank", "FullDocuments"])
+
+
+@unittest.skipUnless(QUESTION_VECTORS.is_file() and CANDIDATES.is_file(), "saved question vectors or candidates absent")
+class RealLiveRetriever(unittest.TestCase):
+    def test_live_top_100_for_qst_0001_is_the_saved_top_100(self):
+        from qdrant_client import QdrantClient
+        from pipeline.eval.embedders import saved_query_embeddings
+        client = QdrantClient(url="http://localhost:6333", timeout=600)
+        try:
+            client.get_collections()
+        except Exception:
+            self.skipTest("Qdrant not running")
+        saved = json.loads(CANDIDATES.read_text().splitlines()[0])
+        found = live_retriever(client, saved_query_embeddings(QUESTION_VECTORS)).retrieve(saved["question"])
+        self.assertEqual([chunk.node.node_id for chunk in found], [c["node_id"] for c in saved["candidates"]])
 
 
 @unittest.skipUnless(CORPUS.is_file() and CANDIDATES.is_file() and V4_ORDER.is_file(), "corpus or saved v4 reranks absent")

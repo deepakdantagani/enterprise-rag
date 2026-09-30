@@ -458,6 +458,7 @@ dependencies = [
     { name = "llama-index-core" },
     { name = "llama-index-embeddings-voyageai" },
     { name = "llama-index-llms-ollama" },
+    { name = "llama-index-postprocessor-voyageai-rerank" },
     { name = "llama-index-vector-stores-qdrant" },
     { name = "markdown-it-py" },
     { name = "openinference-instrumentation-llama-index" },
@@ -474,6 +475,7 @@ requires-dist = [
     { name = "llama-index-core", specifier = "==0.14.24" },
     { name = "llama-index-embeddings-voyageai", specifier = "==0.7.0" },
     { name = "llama-index-llms-ollama", specifier = ">=0.11.0" },
+    { name = "llama-index-postprocessor-voyageai-rerank", specifier = ">=0.6.0" },
     { name = "llama-index-vector-stores-qdrant", specifier = "==0.10.3" },
     { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "openinference-instrumentation-llama-index", specifier = "==4.5.2" },
@@ -1209,6 +1211,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/11/99/b82667831e75aca2f49488b2904520180c19cba3c24fc55ee4b177d77888/llama_index_llms_ollama-0.11.0.tar.gz", hash = "sha256:e6b8cac200a9ff67caea531fece0a6272a89e3506b2b9648ec709acffe4a7980", size = 9131, upload-time = "2026-08-31T15:57:16.454Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/9c/bf68e265e52ce76df8511b8052f97975d320ec4703ae0f4e2c19c0e99a25/llama_index_llms_ollama-0.11.0-py3-none-any.whl", hash = "sha256:835d552625082a79a4dc17e4a2c5e9bf70de26c7f679db7b3bf427dd593e5247", size = 8801, upload-time = "2026-08-31T15:57:15.664Z" },
+]
+
+[[package]]
+name = "llama-index-postprocessor-voyageai-rerank"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "llama-index-core" },
+    { name = "voyageai", version = "0.3.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/fa/c04aa2bb748d18930c86a8cc7d9adaaa7b0a7843f068fa21c8ea1392f337/llama_index_postprocessor_voyageai_rerank-0.6.0.tar.gz", hash = "sha256:611c4504fe7de045ffc689fedb6e6204605b4f054ec88804e2c0adacce1792dd", size = 6638, upload-time = "2026-08-31T15:59:56.963Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/1d/96f1db8e6f981dd2ee10c13a8cfc01e9d88566cd21de1d79cbbb823203dd/llama_index_postprocessor_voyageai_rerank-0.6.0-py3-none-any.whl", hash = "sha256:9785a3b49de80e702fa44abda5e7bb6f6846d35c596d8978831fb375e789d8e8", size = 6276, upload-time = "2026-08-31T15:59:56.085Z" },
 ]
 
 [[package]]

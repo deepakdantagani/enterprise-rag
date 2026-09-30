@@ -406,3 +406,91 @@ estimated from the 500 questions' fact counts before running. Run with `--no-cor
 so the gold set stays fixed while we compare our own versions.
 
 **Dependencies:** GEN-5, GEN-6.
+
+## GEN-8a  `live_retriever`: v4 for a new question  ✅
+
+**Status:** Done
+
+**As a** developer trying the answerer by hand,
+**I want to** run v4's retrieval live for any question, not only the 470 saved ones,
+**so that** the ask page (GEN-8b) can answer whatever is typed.
+
+The saved v4 results were made by `hybrid_retriever(store, voyage-4, "rrf", top_k=200)[:100]`,
+then `rerank-3-lite` over those 100 (EVAL-3k). Live, the same thing is LlamaIndex parts only:
+
+```
+engine.query(question)                         ← LlamaIndex RetrieverQueryEngine (answer_engine, already built)
+  1. live_retriever  → 100 chunks              ← LlamaIndex QueryFusionRetriever: dense (voyage-4 question
+                                                  vector) 200 + BM25 200, RRF, top 100, on titles__voyage_4_lite__bm25
+  2. VoyageAIRerank  → the 100 reordered       ← LlamaIndex postprocessor, rerank-3-lite
+  3. FullDocuments   → 10 whole documents      (already built)
+  4. synthesizer     → ANSWER_PROMPT + gemma4  (already built)
+```
+
+**Acceptance Criteria**
+```gherkin
+Scenario: the live top 100 is the saved top 100
+  Given qst_0001 and its saved voyage-4 question vector
+  When live_retriever retrieves it
+  Then it returns the same 100 chunk ids, in the same order, as lite_titles_top100_candidates.jsonl
+
+Scenario: a document that was not preloaded
+  Given FullDocuments with a corpus path and a top 10 holding a document not loaded yet
+  Then it reads the missing documents from the corpus in one pass and keeps them
+
+Scenario: a benchmark question costs no embedding
+  Given a question in the saved voyage-4 question vectors
+  Then Voyage's embedding API is not called
+```
+
+**Measured** (2026-09-30): live on `qst_0001` with its saved question vector, the top 100 is
+the saved top 100, same chunks in the same order (2.5 s). `VoyageAIRerank` sends each chunk as
+`get_content(MetadataMode.EMBED)`, which here equals the plain chunk text the saved rerank sent
+(the chunks' `source_type` and `title` metadata are excluded from embedding). A live question can
+land on any of the 511,962 documents, so `FullDocuments` takes an optional corpus path and reads
+the documents it was not given, all missing ids in one pass (1.2 s), keeping them.
+
+**Non-functional Requirements:** a new question costs one `voyage-4` query embedding (~30 tokens,
+~$0.000002) and one `rerank-3-lite` call over 100 chunks (~50K tokens, from the free pool while it
+lasts, then ~$0.001). Exact search, as in evaluation (53 ms a question).
+
+**Dependencies:** `llama-index-postprocessor-voyageai-rerank` (new); Qdrant
+`titles__voyage_4_lite__bm25`; `data/_index/question_embeddings/voyage-4.jsonl`; `VOYAGE_API_KEY`
+from `.env`.
+
+## GEN-8b  Ask page (Gradio) with Phoenix traces  ⬜
+
+**Status:** To do
+
+**As a** developer,
+**I want to** a local page where I type a question and read the answer, the 10 documents it used,
+and, for a benchmark question, the gold answer and its facts,
+**so that** I can check answers by hand before paying for the official judge.
+
+```
+Gradio page: type a question
+  └─ ask(question)
+       └─ engine.query(question)               ← LlamaIndex RetrieverQueryEngine: GEN-8a live retriever + rerank,
+                                                  FullDocuments, ANSWER_PROMPT, gemma4
+  └─ shows: answer · 10 documents (id, source, title) · gold answer + answer_facts when the question is a benchmark one
+  └─ every step traced to Phoenix (trace_to_phoenix, EVAL-4) → http://localhost:6006
+```
+
+**Acceptance Criteria**
+```gherkin
+Scenario: a benchmark question shows its gold answer
+  Given the question of qst_0009
+  Then the page shows our answer, 10 documents with dsid_85deb10a… first, the gold answer and 5 facts
+
+Scenario: a new question
+  Given "What is Redwood Optimize?"
+  Then the page shows our answer and 10 documents, and no gold answer
+```
+
+**Non-functional Requirements:** demo quality: a polished, product-grade interface a VC would sign
+off as the final user experience (Deepak, 2026-09-30), not a developer form: clear hierarchy, the
+answer first, sources as readable cards with their source system, a visible progress state during
+the ~25 s answer, example questions to start from, light and dark themes. ~25 s an answer on
+gemma4; runs on localhost only.
+
+**Dependencies:** GEN-8a; `gradio` (new); Phoenix (`uv run --with arize-phoenix phoenix serve`).

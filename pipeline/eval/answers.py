@@ -87,17 +87,23 @@ class FullDocuments(BaseNodePostprocessor):
     """
     count: int = TOP_DOCUMENTS
     _documents: Dict[str, Tuple[str, str]] = PrivateAttr()
+    _corpus: Optional[Path] = PrivateAttr()
 
-    def __init__(self, documents: Dict[str, Tuple[str, str]], count: int = TOP_DOCUMENTS) -> None:
+    def __init__(self, documents: Dict[str, Tuple[str, str]], count: int = TOP_DOCUMENTS,
+                 corpus: Optional[Union[str, Path]] = None) -> None:
         super().__init__(count=count)
-        self._documents = documents
+        self._documents, self._corpus = documents, Path(corpus) if corpus else None
 
     def _postprocess_nodes(self, nodes: List[NodeWithScore],
                            query_bundle: Optional[QueryBundle] = None) -> List[NodeWithScore]:
+        doc_ids = first_documents(nodes, self.count)
+        missing = [doc_id for doc_id in doc_ids if doc_id not in self._documents]
+        if missing and self._corpus:  # GEN-8a: a live question can land anywhere in the corpus
+            self._documents.update(documents_by_id(self._corpus, missing))
         return [NodeWithScore(node=TextNode(id_=doc_id, text=document_block(number, doc_id, *self._documents[doc_id]),
                                             metadata={"doc_id": doc_id}, excluded_llm_metadata_keys=["doc_id"]),
                               score=1.0)
-                for number, doc_id in enumerate(first_documents(nodes, self.count), 1)]
+                for number, doc_id in enumerate(doc_ids, 1)]
 
 
 def answerer_llm(model: str = ANSWERER) -> LLM:
@@ -105,10 +111,12 @@ def answerer_llm(model: str = ANSWERER) -> LLM:
     return Ollama(model=model, temperature=0, thinking=False, context_window=CONTEXT_WINDOW, request_timeout=600)
 
 
-def answer_engine(retriever: BaseRetriever, llm: LLM, documents: Dict[str, Tuple[str, str]]) -> RetrieverQueryEngine:
-    """GEN-2d: retriever → FullDocuments → compact synthesizer with ANSWER_PROMPT."""
-    return RetrieverQueryEngine.from_args(retriever, llm=llm, text_qa_template=ANSWER_PROMPT,
-                                          node_postprocessors=[FullDocuments(documents)])
+def answer_engine(retriever: BaseRetriever, llm: LLM, documents: Dict[str, Tuple[str, str]],
+                  reranker: Optional[BaseNodePostprocessor] = None,
+                  corpus: Optional[Union[str, Path]] = None) -> RetrieverQueryEngine:
+    """GEN-2d: retriever → (GEN-8a: reranker) → FullDocuments → compact synthesizer with ANSWER_PROMPT."""
+    steps = ([reranker] if reranker else []) + [FullDocuments(documents, corpus=corpus)]
+    return RetrieverQueryEngine.from_args(retriever, llm=llm, text_qa_template=ANSWER_PROMPT, node_postprocessors=steps)
 
 
 def answer_row(engine: RetrieverQueryEngine, question_id: str, question: str) -> dict:
@@ -116,3 +124,25 @@ def answer_row(engine: RetrieverQueryEngine, question_id: str, question: str) ->
     response = engine.query(question)
     return {"question_id": question_id, "answer": str(response).strip(),
             "document_ids": [found.node.metadata["doc_id"] for found in response.source_nodes]}
+
+
+V4_COLLECTION = "titles__voyage_4_lite__bm25"  # GEN-8a: dense voyage-4-lite + BM25 over the same titled chunks
+LIVE_LISTS, LIVE_CANDIDATES = 200, 100  # as the saved v4 run: RRF over 200-deep lists, the top 100 reranked
+RERANKER = "rerank-3-lite"
+
+
+def live_retriever(client, embed_model) -> BaseRetriever:
+    """GEN-8a: v4's search for any question; on qst_0001 it returns the saved top 100, in order."""
+    from llama_index.core.llms import MockLLM
+    from llama_index.core.retrievers import QueryFusionRetriever
+    from pipeline.eval.hybrid import dense_retriever, hybrid_store, sparse_retriever
+    store = hybrid_store(client, V4_COLLECTION)
+    return QueryFusionRetriever([dense_retriever(store, embed_model, LIVE_LISTS), sparse_retriever(store, LIVE_LISTS)],
+                                mode="reciprocal_rerank", similarity_top_k=LIVE_CANDIDATES, num_queries=1,
+                                llm=MockLLM(), use_async=False)  # MockLLM: no LLM rewrites the question
+
+
+def live_reranker(api_key: Optional[str] = None) -> BaseNodePostprocessor:
+    """GEN-8a: rerank-3-lite over all 100 candidates (LlamaIndex's VoyageAIRerank)."""
+    from llama_index.postprocessor.voyageai_rerank import VoyageAIRerank
+    return VoyageAIRerank(model=RERANKER, api_key=api_key, top_n=LIVE_CANDIDATES)
