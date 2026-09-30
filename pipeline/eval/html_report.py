@@ -28,6 +28,8 @@ VERSIONS = (  # each version is one change on the one before, scored exactly on 
     ("v1", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact", "+ BM25, fused by RRF"),
     ("v2", "2026-09-27-hybrid__voyage_4__bm25-rrf-rerank-3-lite", "+ rerank-3-lite on the top 50"),
     ("v3", "2026-09-27-titles-rrf-top100-rerank-3-lite", "+ titles in BM25, the top 100 reranked"),
+    ("v4", "2026-09-28-titles__voyage_4_lite__bm25-rrf-top100-rerank-3-lite",
+     "dense on voyage-4-lite with titles: a third of the cost, within noise"),
 )
 
 

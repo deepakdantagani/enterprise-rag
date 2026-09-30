@@ -694,7 +694,7 @@ lack titles: re-embedding them is the next paid step.
 
 ## EVAL-3k  voyage-4-lite dense vectors with titles  ✅
 
-**Status:** Done (measured; not adopted, v3 stays)
+**Status:** Done (measured; adopted as the base in EVAL-3l)
 
 **Why:** in EVAL-3j the hybrid fused dense chunks without titles with BM25 chunks with titles, so
 RRF never saw the same chunk twice (MRR@10 0.498). Re-embedding the corpus with titles gives both
@@ -729,3 +729,23 @@ if any, is voyage-4 with titles (~$35 at $0.06 per 1M tokens).
 **Dependencies**
 - APIs: `EMBEDDERS["voyage-4-lite"]`, `ingest_corpus(..., with_title=)`
 - Database: Qdrant `titles__voyage_4_lite__bm25`; runs in `docs/eval/runs/2026-09-28-titles__voyage_4_lite__bm25-*`
+
+## EVAL-3l  voyage-4-lite is the base (v4)  ✅
+
+**Status:** Done
+
+**Why:** EVAL-3k measured voyage-4-lite with titles 0.011 below v3 on recall@10 after reranking
+(0.834 against 0.845, 95% CI −0.024..+0.001: within noise). The whole corpus costs ~$12 to
+re-embed on lite against ~$35 on voyage-4 (583M tokens), and dense and BM25 index the same titled
+chunks. Deepak chose lite as the base (2026-09-29): later stories re-embed often, and the
+reranker makes up most of the gap. Where lite loses (per-question paired bootstrap, @10):
+semantic dense MRR 0.251 → 0.210, completeness reranked recall 0.620 → 0.592.
+
+**What changed:** `EMBEDDERS` lists `voyage-4-lite` first, so `--embed` defaults to it. The
+report chain (`REPORT_STEPS = LITE_STEPS`) and the scoreboard's versions gain **v4**: dense
+0.606 → BM25 with titles 0.688 → hybrid RRF 0.732 → top 100 + rerank-3-lite **0.834**. v3 stays
+in `results.md` and its runs; later stories compare against v4.
+
+**Dependencies**
+- APIs: `EMBEDDERS`, `LITE_STEPS`, `VERSIONS`
+- Database: Qdrant `titles__voyage_4_lite__bm25`

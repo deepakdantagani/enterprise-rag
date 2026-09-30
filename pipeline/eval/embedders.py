@@ -31,10 +31,11 @@ from llama_index.core.base.embeddings.base import BaseEmbedding
 from pydantic import PrivateAttr
 
 EMBEDDERS = {  # name -> where it runs; the first is the default
-    "voyage-4": "voyage",  # Voyage API, $0.06 per 1M tokens (Sep 2026), 1,024 dimensions
     # EVAL-3k: $0.02 per 1M; the Voyage 4 models share one embedding space, so the saved voyage-4
-    # question vectors search voyage-4-lite chunks (same text: cosine 0.969 between the two models)
+    # question vectors search voyage-4-lite chunks (same text: cosine 0.969 between the two models).
+    # EVAL-3l: the default, reranked 0.834 against voyage-4's 0.845 (within noise) at a third of the cost
     "voyage-4-lite": "voyage",
+    "voyage-4": "voyage",  # Voyage API, $0.06 per 1M tokens (Sep 2026), 1,024 dimensions
 }
 DIMENSIONS = 1024
 VOYAGE_BATCH = 128  # texts per request: 128 chunks x ~512 tokens is ~65K tokens

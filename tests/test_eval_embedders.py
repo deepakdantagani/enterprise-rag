@@ -26,12 +26,13 @@ class EmbedModelNamed(unittest.TestCase):
         self.assertEqual((model.model_name, model.output_dimension), ("voyage-4", 1024))
 
     def test_an_unknown_name_lists_the_known_ones(self):
-        with self.assertRaisesRegex(ValueError, "known: voyage-4, voyage-4-lite"):
+        with self.assertRaisesRegex(ValueError, "known: voyage-4-lite, voyage-4"):
             embed_model_named("qwen3-embedding:0.6b")
 
-    def test_voyage_4_is_the_default_and_voyage_4_lite_the_other_embedder(self):
+    def test_voyage_4_lite_is_the_default_and_voyage_4_the_other_embedder(self):
+        # EVAL-3l: lite is the base (0.834 vs 0.845, within noise, a third of the cost);
         # the local qwen3-embedding:0.6b path was removed: ~20 h for the full corpus on this Mac
-        self.assertEqual(list(EMBEDDERS), ["voyage-4", "voyage-4-lite"])
+        self.assertEqual(list(EMBEDDERS), ["voyage-4-lite", "voyage-4"])
 
     def test_voyage_4_lite_also_gives_1024_dimensions_in_the_shared_space(self):
         model = embed_model_named("voyage-4-lite", voyage_api_key="not-a-real-key")

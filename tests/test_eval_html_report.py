@@ -92,16 +92,17 @@ class RealV1Report(unittest.TestCase):
         self.assertEqual(rrf[0]["values"]["recall"], 0.722)
         self.assertEqual(len(rows), 7)
 
-    def test_v3_is_titled_bm25_and_the_top_100_reranked_at_recall_0_845(self):
-        versions = embedded(html_report(V1_STEPS, RUNS, "v3", versions=VERSIONS))["versions"]
+    def test_v4_is_v3_on_voyage_4_lite_at_recall_0_834(self):
+        versions = embedded(html_report(V1_STEPS, RUNS, "v4", versions=VERSIONS))["versions"]
         self.assertEqual([(v["name"], v["recall"], v["gain"]) for v in versions],
-                         [("v0", 0.626, None), ("v1", 0.722, 0.096), ("v2", 0.8, 0.078), ("v3", 0.845, 0.045)])
+                         [("v0", 0.626, None), ("v1", 0.722, 0.096), ("v2", 0.8, 0.078), ("v3", 0.845, 0.045),
+                          ("v4", 0.834, -0.011)])
 
-    def test_the_report_is_the_titled_chain_with_v3_last(self):
-        rows = embedded(html_report(REPORT_STEPS, RUNS, "v3"))["tables"]["overall"]["10"]
+    def test_the_report_is_the_voyage_4_lite_chain_with_v4_last(self):
+        rows = embedded(html_report(REPORT_STEPS, RUNS, "v4"))["tables"]["overall"]["10"]
         self.assertEqual([(row["step"], row["values"]["recall"]) for row in rows],
-                         [("1. Dense only", 0.626), ("2. BM25 with titles", 0.688),
-                          ("3. Hybrid RRF, BM25 with titles", 0.722), ("4. Top 100 + rerank-3-lite (v3)", 0.845)])
+                         [("1. Dense only (voyage-4-lite, titles)", 0.606), ("2. BM25 with titles", 0.688),
+                          ("3. Hybrid RRF, both with titles", 0.732), ("4. Top 100 + rerank-3-lite (v4)", 0.834)])
 
 
 if __name__ == "__main__":
