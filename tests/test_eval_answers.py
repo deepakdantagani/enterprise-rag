@@ -8,10 +8,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 from llama_index.core.schema import MetadataMode, NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode  # noqa: E402
 
 from pipeline.eval import answers  # noqa: E402
-from pipeline.eval.answers import FullDocuments, document_block, documents_by_id, first_documents  # noqa: E402
+from pipeline.eval.answers import (FullDocuments, answer_engine, answer_row, answerer_llm, document_block,  # noqa: E402
+                                   documents_by_id, first_documents)
+from pipeline.eval.rerank import ReplayRetriever  # noqa: E402
 
 CORPUS = ROOT / "data/_full/documents.parquet"
 RERANK = ROOT / "data/_index/rerank"
@@ -95,6 +98,50 @@ class FullDocumentsPostprocessor(unittest.TestCase):
     def test_a_document_that_was_not_loaded_fails_loudly(self):
         with self.assertRaises(KeyError):
             FullDocuments(DOCUMENTS).postprocess_nodes([chunk_of("dsid_missing")])
+
+
+class RecordingLLM(CustomLLM):
+    """Answers with a fixed text and keeps every prompt it was sent."""
+    prompts: list = []
+
+    @property
+    def metadata(self) -> LLMMetadata:
+        return LLMMetadata(model_name="recording", context_window=40_960)
+
+    def complete(self, prompt, formatted=False, **kwargs):
+        self.prompts.append(prompt)
+        return CompletionResponse(text=" Priya approved the Q3 budget. ")
+
+    def stream_complete(self, prompt, formatted=False, **kwargs):
+        raise NotImplementedError
+
+
+class AnswerRow(unittest.TestCase):
+    def setUp(self):
+        saved = {"question_id": "q1", "question": "Who approved the Q3 budget?",
+                 "candidates": [{"node_id": "c1", "ref_doc_id": "dsid_5", "text": "chunk"},
+                                {"node_id": "c2", "ref_doc_id": "dsid_2", "text": "chunk"}]}
+        self.llm = RecordingLLM(prompts=[])
+        self.engine = answer_engine(ReplayRetriever({"Who approved the Q3 budget?": saved}), self.llm, DOCUMENTS)
+
+    def test_the_row_is_the_leaderboard_answer_format(self):
+        self.assertEqual(answer_row(self.engine, "q1", "Who approved the Q3 budget?"),
+                         {"question_id": "q1", "answer": "Priya approved the Q3 budget.",
+                          "document_ids": ["dsid_5", "dsid_2"]})
+
+    def test_the_llm_gets_the_rules_the_whole_documents_and_the_question_in_one_call(self):
+        answer_row(self.engine, "q1", "Who approved the Q3 budget?")
+        prompt, = self.llm.prompts
+        self.assertIn("1. Use only the documents.", prompt)
+        self.assertIn("7. Include every detail the documents give that answers the question.", prompt)
+        self.assertIn("--- Document 1 (ID: dsid_5) ---\nTitle: Title 5\n\nContent 5", prompt)
+        self.assertNotIn("doc_id:", prompt)
+        self.assertIn("## Question\nWho approved the Q3 budget?\n\n## Answer", prompt)
+
+    def test_the_answerer_is_local_deterministic_and_has_room_for_the_largest_top_ten(self):
+        llm = answerer_llm()
+        self.assertEqual((llm.model, llm.temperature, llm.thinking, llm.context_window),
+                         ("gemma4:26b", 0.0, False, 40_960))
 
 
 @unittest.skipUnless(CORPUS.is_file() and CANDIDATES.is_file() and V4_ORDER.is_file(), "corpus or saved v4 reranks absent")

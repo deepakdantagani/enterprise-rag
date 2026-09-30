@@ -183,9 +183,9 @@ twice; a document missing from `documents` raises `KeyError` (the run loads all 
 
 **Dependencies:** GEN-2a, GEN-2b; `BaseNodePostprocessor`.
 
-## GEN-2d  `ANSWER_PROMPT` and `answer_row`  ⬜
+## GEN-2d  `ANSWER_PROMPT` and `answer_row`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** a `RetrieverQueryEngine` (replay retriever → `FullDocuments` → compact response
@@ -212,8 +212,8 @@ Rules:
    newer or more authoritative.
 6. If the documents do not contain the answer, say so plainly in the first sentence
    ("The documents do not say ..."). You may then add closely related facts you did find.
-7. Be concise: usually 1-3 sentences, longer only when the question needs a list or several
-   parts. No preamble, no citations, no markdown.
+7. Include every detail the documents give that answers the question. No preamble,
+   no citations, no markdown.
 
 ## Documents
 {context_str}
@@ -232,7 +232,7 @@ Rules:
 | 4 | 20 `completeness` and 40 `project_related` questions need every item |
 | 5 | 20 `conflicting_info` questions: "requires … a complete and correct answer" |
 | 6 | 20 `info_not_found` questions; the benchmark's agent prompt: "say so explicitly" |
-| 7 | Citations are stripped before judging; extra detail is allowed but not needed |
+| 7 | Completeness scores every missing fact and the judge allows extra detail; a 1-3 sentence limit dropped `qst_0009`'s 99.9% SLO fact |
 
 **Acceptance Criteria**
 ```gherkin
@@ -249,8 +249,16 @@ Scenario: what the LLM is sent
 limits for multipart/form-data on the OpenAI-compatibility endpoints are 10MiB per file and 50MiB
 for the total request size." Gold: 10 MiB per file, 50 MiB per request.
 
+**Measured** (`qst_0009`, Gmail, real code): with rule 7 as "1-3 sentences" the answer held 3-4 of
+the 5 answer facts (it dropped "99.9% latency SLO for hosted US instances"); with "include every
+detail" (25.7 s) it holds 4 clearly, the fifth ("did not match the 50% + $60k") implied.
+
+**Retrieval inside the engine:** the replay retriever returns v4's saved top 100 in its saved
+`rerank-3-lite` order, so answers use v4's exact ranking for $0; a live system would put the hybrid
+retriever and `VoyageAIRerank` in its place.
+
 **Non-functional Requirements:** shared ones, except it calls a model (local, $0). Ollama
-`gemma4:26b`, `temperature=0`, `thinking=False`, `context_window=40_960`: Ollama's default window
+`gemma4:26b`, `temperature=0` (same prompt, same answer, so score changes come from our changes), `thinking=False` (base case; a later story compares thinking on), `context_window=40_960`: Ollama's default window
 would cut the 35K-token prompts silently. `document_ids` are the 10 documents shown (as the
 baseline); letting the LLM choose them is a later story, as they are not in the score.
 

@@ -14,11 +14,37 @@ All 470 saved questions reach 10 documents, within 11 chunks at the median and 2
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+from llama_index.core import PromptTemplate
+from llama_index.core.base.base_retriever import BaseRetriever
+from llama_index.core.llms import LLM
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
+from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
 from pydantic import PrivateAttr
 
 TOP_DOCUMENTS = 10  # as the benchmark's baseline answerer
+ANSWERER = "gemma4:26b"  # GEN-2d: local on Ollama, $0; thinking off for the base case (a later story compares)
+CONTEXT_WINDOW = 40_960  # the largest top 10 is ~35K tokens; Ollama's default window would cut it silently
+
+ANSWER_PROMPT = PromptTemplate(  # GEN-2d: each rule comes from the judge prompts or a question type (story table)
+    "You are a precise assistant answering questions about Redwood Inference, using documents\n"
+    "from the company's internal systems (Slack, Gmail, Linear, Jira, Confluence, GitHub,\n"
+    "Google Drive, HubSpot, meeting transcripts). The documents come from an imperfect search:\n"
+    "many will be irrelevant, and some may be outdated or duplicated.\n\n"
+    "Rules:\n"
+    "1. Use only the documents. Never add facts from outside them or guess.\n"
+    "2. Answer every part of the question. Copy exact values as written: names, numbers,\n"
+    "   units, dates, versions, IDs, flags and config keys.\n"
+    "3. Respect every qualifier in the question (team, customer, date, version, environment).\n"
+    "   Ignore documents that match the topic but fail a qualifier.\n"
+    "4. If the question asks for a list or \"all\", include every matching item from all documents.\n"
+    "5. If documents disagree, give each value, say where each comes from, and say which is\n"
+    "   newer or more authoritative.\n"
+    "6. If the documents do not contain the answer, say so plainly in the first sentence\n"
+    "   (\"The documents do not say ...\"). You may then add closely related facts you did find.\n"
+    "7. Include every detail the documents give that answers the question. No preamble,\n"
+    "   no citations, no markdown.\n\n"
+    "## Documents\n{context_str}\n\n## Question\n{query_str}\n\n## Answer\n")
 
 
 def first_documents(ranked: Sequence[NodeWithScore], count: int = TOP_DOCUMENTS) -> List[str]:
@@ -72,3 +98,21 @@ class FullDocuments(BaseNodePostprocessor):
                                             metadata={"doc_id": doc_id}, excluded_llm_metadata_keys=["doc_id"]),
                               score=1.0)
                 for number, doc_id in enumerate(first_documents(nodes, self.count), 1)]
+
+
+def answerer_llm(model: str = ANSWERER) -> LLM:
+    from llama_index.llms.ollama import Ollama
+    return Ollama(model=model, temperature=0, thinking=False, context_window=CONTEXT_WINDOW, request_timeout=600)
+
+
+def answer_engine(retriever: BaseRetriever, llm: LLM, documents: Dict[str, Tuple[str, str]]) -> RetrieverQueryEngine:
+    """GEN-2d: retriever → FullDocuments → compact synthesizer with ANSWER_PROMPT."""
+    return RetrieverQueryEngine.from_args(retriever, llm=llm, text_qa_template=ANSWER_PROMPT,
+                                          node_postprocessors=[FullDocuments(documents)])
+
+
+def answer_row(engine: RetrieverQueryEngine, question_id: str, question: str) -> dict:
+    """GEN-2d: one line of the leaderboard's answer file."""
+    response = engine.query(question)
+    return {"question_id": question_id, "answer": str(response).strip(),
+            "document_ids": [found.node.metadata["doc_id"] for found in response.source_nodes]}
