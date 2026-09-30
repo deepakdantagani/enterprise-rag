@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 290" width="760" height="290" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="760" height="290" rx="10" fill="#ffffff"/>
+<text x="24" y="32" font-size="17" font-weight="600" fill="#1f2328">Document recall@10 on 470 EnterpriseRAG-Bench questions</text>
+<text x="24" y="78" font-size="14" font-weight="600" fill="#1f2328">v0</text>
+<text x="58" y="78" font-size="13" fill="#57606a">dense only (naive baseline)</text>
+<rect x="300" y="62" width="231" height="24" rx="4" fill="#8cb4e8"/>
+<text x="539" y="79" font-size="14" font-weight="600" fill="#1f2328">0.609</text>
+<text x="24" y="118" font-size="14" font-weight="600" fill="#1f2328">v1</text>
+<text x="58" y="118" font-size="13" fill="#57606a">+ BM25, reciprocal rank fusion</text>
+<rect x="300" y="102" width="274" height="24" rx="4" fill="#8cb4e8"/>
+<text x="582" y="119" font-size="14" font-weight="600" fill="#1f2328">0.722</text>
+<text x="24" y="158" font-size="14" font-weight="600" fill="#1f2328">v2</text>
+<text x="58" y="158" font-size="13" fill="#57606a">+ rerank-3-lite cross-encoder</text>
+<rect x="300" y="142" width="304" height="24" rx="4" fill="#8cb4e8"/>
+<text x="612" y="159" font-size="14" font-weight="600" fill="#1f2328">0.800</text>
+<text x="24" y="198" font-size="14" font-weight="600" fill="#1f2328">v3</text>
+<text x="58" y="198" font-size="13" fill="#57606a">+ titles, 200-deep pool, top 100</text>
+<rect x="300" y="182" width="321" height="24" rx="4" fill="#8cb4e8"/>
+<text x="629" y="199" font-size="14" font-weight="600" fill="#1f2328">0.845</text>
+<text x="24" y="238" font-size="14" font-weight="600" fill="#1f2328">v4</text>
+<text x="58" y="238" font-size="13" fill="#57606a">voyage-4-lite: 1/3 the cost (base)</text>
+<rect x="300" y="222" width="317" height="24" rx="4" fill="#0969da"/>
+<text x="625" y="239" font-size="14" font-weight="600" fill="#1f2328">0.834</text>
+<text x="24" y="276" font-size="12" fill="#57606a">LlamaIndex RetrieverEvaluator · first 10 distinct documents · 511,962-document corpus</text>
+</svg>
