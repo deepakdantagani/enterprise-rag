@@ -382,9 +382,9 @@ Scenario: a complete answer file
 
 **Dependencies:** GEN-2e, GEN-4.
 
-## GEN-6  `overall_score`  ⬜
+## GEN-6  `overall_score`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** the leaderboard's formula as a pure function over the official scorer's
@@ -405,6 +405,13 @@ Scenario: published results
   Given the leaderboard's results_bm25.json and results_mixedbread.json
   Then overall_score is 50.6 and 86.58
 ```
+
+**Measured** (2026-09-30): `overall_score` in `pipeline/eval/leaderboard.py` reads a parsed
+`results.json` (`{"questions": [{"answer_correct", "completeness_pct", …}, …]}`, the format
+`metrics_based_eval.py` writes) and rounds to 2 places, as `transform_raw_data.py` does. On the
+published files (kept from GEN-1 outside `data/`) it gives BM25 + GPT-5.4 **50.6** and
+Mixedbread **86.58**, both equal to the leaderboard; the repo test for them is skipped until the
+files are copied to `data/_leaderboard/`.
 
 **Dependencies:** published results in `data/_leaderboard/` (gitignored), skipped when absent.
 
