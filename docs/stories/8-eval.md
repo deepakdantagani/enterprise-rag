@@ -742,8 +742,8 @@ reranker makes up most of the gap. Where lite loses (per-question paired bootstr
 semantic dense MRR 0.251 → 0.210, completeness reranked recall 0.620 → 0.592.
 
 **What changed:** `EMBEDDERS` lists `voyage-4-lite` first, so `--embed` defaults to it. The
-report chain (`REPORT_STEPS = LITE_STEPS`) and the scoreboard's versions gain **v4**: dense
-0.606 → BM25 with titles 0.688 → hybrid RRF 0.732 → top 100 + rerank-3-lite **0.834**. v3 stays
+report chain (`REPORT_STEPS = LITE_STEPS`) and the scoreboard's versions gain **v4**: dense only
+0.606 → sparse only 0.688 → hybrid RRF 0.732 → top 100 + rerank-3-lite **0.834**. v3 stays
 in `results.md` and its runs; later stories compare against v4.
 
 **Dependencies**

@@ -101,8 +101,8 @@ class RealV1Report(unittest.TestCase):
     def test_the_report_is_the_voyage_4_lite_chain_with_v4_last(self):
         rows = embedded(html_report(REPORT_STEPS, RUNS, "v4"))["tables"]["overall"]["10"]
         self.assertEqual([(row["step"], row["values"]["recall"]) for row in rows],
-                         [("1. Dense only (voyage-4-lite, titles)", 0.606), ("2. BM25 with titles", 0.688),
-                          ("3. Hybrid RRF, both with titles", 0.732), ("4. Top 100 + rerank-3-lite (v4)", 0.834)])
+                         [("1. Dense only", 0.606), ("2. Sparse only (BM25)", 0.688),
+                          ("3. Hybrid RRF", 0.732), ("4. Top 100 + rerank-3-lite (v4)", 0.834)])
 
 
 if __name__ == "__main__":
