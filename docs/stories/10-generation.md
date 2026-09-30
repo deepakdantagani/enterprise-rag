@@ -296,9 +296,9 @@ exactly one prompt (q2); a second run sends none and returns 0. `save_answers` i
 
 **Dependencies:** GEN-2d. Output `data/_index/answers/<run>.jsonl` (gitignored).
 
-## GEN-3  `all_questions`  ⬜
+## GEN-3  `all_questions`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** load all 500 questions, including the 30 that expect no document,
@@ -318,6 +318,10 @@ Scenario: every question
 **Example with real data:** `qst_0481` (info_not_found) asks for allowlisted accounts and budget
 values that no document holds; its one fact requires the answer to say it is not fully
 answerable.
+
+**Measured:** `all_questions(data/_full/questions.jsonl)` returns 500: 470 with expected
+documents, 20 `info_not_found`, 10 `high_level`. `load_questions` now filters its output, so the
+two cannot drift.
 
 **Dependencies:** `pipeline/eval/questions.py`.
 

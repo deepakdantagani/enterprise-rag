@@ -8,12 +8,13 @@ import json
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import questions as questions_module  # noqa: E402
-from pipeline.eval.questions import Question, load_questions  # noqa: E402
+from pipeline.eval.questions import Question, all_questions, load_questions  # noqa: E402
 
 QUESTIONS = ROOT / "data/_full/questions.jsonl"
 QUESTIONS_SHA256 = "f9524b9157cd43aae36b99333a124738804306ea6d07f332d49faa6d3d147905"
@@ -41,6 +42,13 @@ class LoadQuestions(unittest.TestCase):
         self.assertEqual([q.question_id for q in loaded.questions], ["qst_0431"])
         self.assertEqual(loaded.skipped, 1)
 
+    def test_all_questions_keeps_the_ones_with_no_expected_docs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "questions.jsonl"
+            path.write_text(json.dumps(ROW) + "\n" + json.dumps(NO_DOCS) + "\n")
+            self.assertEqual([(q.question_id, q.expected_doc_ids) for q in all_questions(path)],
+                             [("qst_0431", ("dsid_f6e3", "dsid_8407")), ("qst_0471", ())])
+
     def test_doctests(self):
         self.assertEqual(doctest.testmod(questions_module).failed, 0)
 
@@ -53,6 +61,12 @@ class RealQuestions(unittest.TestCase):
     def test_470_questions_are_scored_and_30_skipped(self):
         loaded = load_questions(QUESTIONS)
         self.assertEqual((len(loaded.questions), loaded.skipped), (470, 30))
+
+    def test_all_500_questions_470_with_docs_20_info_not_found_10_high_level(self):
+        every = all_questions(QUESTIONS)
+        no_docs = Counter(q.question_type for q in every if not q.expected_doc_ids)
+        self.assertEqual((len(every), sum(1 for q in every if q.expected_doc_ids), dict(no_docs)),
+                         (500, 470, {"info_not_found": 20, "high_level": 10}))
 
 
 if __name__ == "__main__":

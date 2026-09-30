@@ -34,7 +34,15 @@ def question_from_row(line: str) -> Question:
                     row["question"], tuple(row["expected_doc_ids"]))
 
 
+def all_questions(path: Path) -> List[Question]:
+    """GEN-3: all 500, including the 30 with no expected docs: the leaderboard averages over every one.
+
+    An info_not_found question (e.g. qst_0481) scores 100 when the answer says it is not answerable.
+    """
+    return [question_from_row(line) for line in Path(path).read_text().splitlines() if line.strip()]
+
+
 def load_questions(path: Path) -> LoadedQuestions:
-    every_question = [question_from_row(line) for line in Path(path).read_text().splitlines() if line.strip()]
+    every_question = all_questions(path)
     scored = [question for question in every_question if question.expected_doc_ids]
     return LoadedQuestions(scored, len(every_question) - len(scored))
