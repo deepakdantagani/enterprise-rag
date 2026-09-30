@@ -1,6 +1,7 @@
 import doctest
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,8 +11,9 @@ sys.path.insert(0, str(ROOT))
 from llama_index.core.schema import NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode  # noqa: E402
 
 from pipeline.eval import answers  # noqa: E402
-from pipeline.eval.answers import document_block, first_documents  # noqa: E402
+from pipeline.eval.answers import document_block, documents_by_id, first_documents  # noqa: E402
 
+CORPUS = ROOT / "data/_full/documents.parquet"
 RERANK = ROOT / "data/_index/rerank"
 CANDIDATES = RERANK / "lite_titles_top100_candidates.jsonl"
 V4_ORDER = RERANK / "lite-titles-top100-rerank-3-lite.jsonl"
@@ -43,6 +45,46 @@ class DocumentBlock(unittest.TestCase):
     def test_the_benchmark_baseline_layout(self):
         self.assertEqual(document_block(2, "dsid_a", "Q3 budget", "Priya approved it."),
                          "--- Document 2 (ID: dsid_a) ---\nTitle: Q3 budget\n\nPriya approved it.")
+
+
+def parquet_of(rows):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    folder = tempfile.mkdtemp()
+    path = Path(folder) / "documents.parquet"
+    pq.write_table(pa.Table.from_pylist([{"doc_id": d, "title": t, "content": c} for d, t, c in rows]), path)
+    return path
+
+
+class DocumentsById(unittest.TestCase):
+    def test_returns_only_the_asked_documents(self):
+        path = parquet_of([("a", "A", "about a"), ("b", "B", "about b"), ("c", "C", "about c")])
+        self.assertEqual(documents_by_id(path, ["a", "c"]), {"a": ("A", "about a"), "c": ("C", "about c")})
+
+    def test_titles_lose_surrounding_spaces(self):
+        self.assertEqual(documents_by_id(parquet_of([("a", "  A  ", "about a")]), ["a"]), {"a": ("A", "about a")})
+
+    def test_an_id_used_by_two_documents_shows_both_texts(self):
+        path = parquet_of([("a", "First", "one"), ("a", "Second", "two")])
+        self.assertEqual(documents_by_id(path, ["a"]), {"a": ("First", "one\n\nSecond\n\ntwo")})
+
+    def test_an_unknown_id_is_left_out(self):
+        self.assertEqual(documents_by_id(parquet_of([("a", "A", "about a")]), ["zzz"]), {})
+
+
+@unittest.skipUnless(CORPUS.is_file(), "corpus absent")
+class RealDocuments(unittest.TestCase):
+    def test_the_gold_document_of_qst_0001_is_read_whole(self):
+        title, content = documents_by_id(CORPUS, ["dsid_ae068ee4aa9640159427cd941bef0238"])[
+            "dsid_ae068ee4aa9640159427cd941bef0238"]
+        self.assertTrue(title.startswith("add multipart/form-data handling"))
+        self.assertEqual(len(content), 5120)
+
+    def test_the_signal_peak_id_shows_both_of_its_documents(self):
+        title, content = documents_by_id(CORPUS, ["dsid_8a0c5430bac64f8da21c2cee5a7f4df5"])[
+            "dsid_8a0c5430bac64f8da21c2cee5a7f4df5"]
+        self.assertEqual(title, "Signal Peak Logistics — Account Brief (Renewal + Expansion) — 2026-03-18")
+        self.assertEqual(len(content), 1534 + len("\n\nSignal Peak Logistics\n\n") + 3645)
 
 
 @unittest.skipUnless(CANDIDATES.is_file() and V4_ORDER.is_file(), "saved v4 reranks absent")

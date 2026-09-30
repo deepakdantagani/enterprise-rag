@@ -106,9 +106,9 @@ reads whole documents (GEN-2b).
 
 **Dependencies:** `NodeWithScore.node.ref_doc_id` (LlamaIndex); input from `replay_retriever`.
 
-## GEN-2b  `documents_by_id`  ⬜
+## GEN-2b  `documents_by_id`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer building the answerer,
 **I want to** read the title and content of a few documents by id from the corpus parquet,
@@ -134,8 +134,20 @@ Scenario: real data
 top 10 is 14K tokens at the median and 35K at most over the 470 questions (chunks alone:
 5K / 13K), measured 2026-09-29.
 
+**Measured** (2026-09-30): the parquet has 511,962 rows but 511,958 distinct ids; 4 ids each
+name two different documents (a benchmark data slip), e.g. `dsid_8a0c5430…` is both "Signal Peak
+Logistics — Account Brief (Renewal + Expansion) — 2026-03-18" (1,534 chars) and "Signal Peak
+Logistics" (3,645 chars); 1 of the 4 is among the 4,532 documents of the 470 top 10s. The file
+is one 1.4 GB row group, so any read scans it all (1.2 s). 161 titles have surrounding spaces;
+6 of the 4,532 documents open with their own title (2 titles over 500 characters).
+
+**Decisions:** an id with two documents returns both texts, the second after the first (the
+judge knows only the id, and the chunk may have matched either). Read once for every question's
+ids, not per question (~10 min saved over 500). Titles stay as the baseline shows them, even when
+the content repeats them (6 documents, ≤1K tokens).
+
 **Non-functional Requirements:** shared ones; reads only the needed rows (pyarrow `filters`).
-15 documents have blank titles (EVAL-3i).
+15 documents have blank titles (EVAL-3i), none in the 470 top 10s.
 
 **Dependencies:** `data/_full/documents.parquet` (`doc_id`, `title`, `content`).
 
