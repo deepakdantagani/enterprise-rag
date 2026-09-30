@@ -8,10 +8,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from llama_index.core.schema import NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode  # noqa: E402
+from llama_index.core.schema import MetadataMode, NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode  # noqa: E402
 
 from pipeline.eval import answers  # noqa: E402
-from pipeline.eval.answers import document_block, documents_by_id, first_documents  # noqa: E402
+from pipeline.eval.answers import FullDocuments, document_block, documents_by_id, first_documents  # noqa: E402
 
 CORPUS = ROOT / "data/_full/documents.parquet"
 RERANK = ROOT / "data/_index/rerank"
@@ -70,6 +70,43 @@ class DocumentsById(unittest.TestCase):
 
     def test_an_unknown_id_is_left_out(self):
         self.assertEqual(documents_by_id(parquet_of([("a", "A", "about a")]), ["zzz"]), {})
+
+
+DOCUMENTS = {"dsid_2": ("Title 2", "Content 2"), "dsid_5": ("Title 5", "Content 5")}
+
+
+class FullDocumentsPostprocessor(unittest.TestCase):
+    def setUp(self):
+        self.kept = FullDocuments(DOCUMENTS).postprocess_nodes([chunk_of("dsid_5"), chunk_of("dsid_5"), chunk_of("dsid_2")])
+
+    def test_each_document_becomes_one_numbered_node_with_its_whole_text(self):
+        self.assertEqual([found.node.text for found in self.kept],
+                         ["--- Document 1 (ID: dsid_5) ---\nTitle: Title 5\n\nContent 5",
+                          "--- Document 2 (ID: dsid_2) ---\nTitle: Title 2\n\nContent 2"])
+
+    def test_each_node_is_its_document_id_and_keeps_it_in_metadata(self):
+        self.assertEqual([(found.node.node_id, found.node.metadata["doc_id"]) for found in self.kept],
+                         [("dsid_5", "dsid_5"), ("dsid_2", "dsid_2")])
+
+    def test_the_llm_sees_the_block_without_a_doc_id_line(self):
+        self.assertEqual(self.kept[0].node.get_content(metadata_mode=MetadataMode.LLM),
+                         "--- Document 1 (ID: dsid_5) ---\nTitle: Title 5\n\nContent 5")
+
+    def test_a_document_that_was_not_loaded_fails_loudly(self):
+        with self.assertRaises(KeyError):
+            FullDocuments(DOCUMENTS).postprocess_nodes([chunk_of("dsid_missing")])
+
+
+@unittest.skipUnless(CORPUS.is_file() and CANDIDATES.is_file() and V4_ORDER.is_file(), "corpus or saved v4 reranks absent")
+class RealFullDocuments(unittest.TestCase):
+    def test_qst_0009_gets_the_whole_edgepath_thread_first(self):
+        from pipeline.eval.rerank import replay_retriever
+        chunks = replay_retriever(CANDIDATES, V4_ORDER).retrieve(
+            "In the EdgePath evaluation email thread, what alternative Year 1 pricing package did Redwood propose "
+            "instead of matching the competitor's 50 percent first-year discount and migration credit?")
+        kept = FullDocuments(documents_by_id(CORPUS, first_documents(chunks))).postprocess_nodes(chunks)
+        self.assertEqual((len(kept), kept[0].node.node_id), (10, "dsid_85deb10a652742baaf28af6149600001"))
+        self.assertIn("CloudOrbit (the incumbent) is offering a 50% discount", kept[0].node.text)
 
 
 @unittest.skipUnless(CORPUS.is_file(), "corpus absent")

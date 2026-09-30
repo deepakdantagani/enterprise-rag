@@ -12,9 +12,11 @@ All 470 saved questions reach 10 documents, within 11 chunks at the median and 2
     '--- Document 1 (ID: dsid_a) ---\\nTitle: Q3 budget\\n\\nPriya approved it.'
 """
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
-from llama_index.core.schema import NodeWithScore
+from llama_index.core.postprocessor.types import BaseNodePostprocessor
+from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
+from pydantic import PrivateAttr
 
 TOP_DOCUMENTS = 10  # as the benchmark's baseline answerer
 
@@ -48,3 +50,25 @@ def documents_by_id(parquet_path: Union[str, Path], doc_ids: Sequence[str]) -> D
 def document_block(number: int, doc_id: str, title: str, content: str) -> str:
     """One document as the benchmark's baseline shows it to its LLM (src/utils/retrieval.py)."""
     return f"--- Document {number} (ID: {doc_id}) ---\nTitle: {title}\n\n{content}"
+
+
+class FullDocuments(BaseNodePostprocessor):
+    """GEN-2c: ranked chunks in, one node per document out (the first 10), holding the whole document.
+
+    The chunks only choose the documents and their order; the text comes from `documents`
+    (documents_by_id, loaded once for every question). The doc_id stays in metadata for the
+    answer file's document_ids but is hidden from the LLM, which already reads it in the block.
+    """
+    count: int = TOP_DOCUMENTS
+    _documents: Dict[str, Tuple[str, str]] = PrivateAttr()
+
+    def __init__(self, documents: Dict[str, Tuple[str, str]], count: int = TOP_DOCUMENTS) -> None:
+        super().__init__(count=count)
+        self._documents = documents
+
+    def _postprocess_nodes(self, nodes: List[NodeWithScore],
+                           query_bundle: Optional[QueryBundle] = None) -> List[NodeWithScore]:
+        return [NodeWithScore(node=TextNode(id_=doc_id, text=document_block(number, doc_id, *self._documents[doc_id]),
+                                            metadata={"doc_id": doc_id}, excluded_llm_metadata_keys=["doc_id"]),
+                              score=1.0)
+                for number, doc_id in enumerate(first_documents(nodes, self.count), 1)]

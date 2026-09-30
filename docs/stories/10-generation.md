@@ -151,9 +151,9 @@ the content repeats them (6 documents, ≤1K tokens).
 
 **Dependencies:** `data/_full/documents.parquet` (`doc_id`, `title`, `content`).
 
-## GEN-2c  `FullDocuments` node postprocessor  ⬜
+## GEN-2c  `FullDocuments` node postprocessor  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer building the answerer,
 **I want to** a LlamaIndex `BaseNodePostprocessor` that replaces ranked chunks with one node per
@@ -169,7 +169,15 @@ Scenario: chunks become numbered full documents
   And each node's metadata doc_id is its document id
 ```
 
-**Example with real data:** `qst_0001`'s 14 chunks become 10 document nodes, the gold first.
+**Example with real data:** `qst_0009` (Gmail, "In the EdgePath evaluation email thread, what
+alternative Year 1 pricing package did Redwood propose …?"): 14 chunks become 10 document nodes.
+Node 1 is `dsid_85deb10a…`, "Licensing offsets & packaging for potential migration", the whole
+5-email thread (8,350 characters). The top chunk held only Avery's reply; the node also holds
+Sarah's email with the competitor's offer ("CloudOrbit … 50% discount … $60k migration credit").
+
+**Decisions:** `TextNode` (the synthesizer reads `.text`); node id = document id; `doc_id` kept in
+metadata for the answer file but in `excluded_llm_metadata_keys`, so the LLM does not read it
+twice; a document missing from `documents` raises `KeyError` (the run loads all of them first).
 
 **Non-functional Requirements:** shared ones; custom logic only as a LlamaIndex postprocessor.
 
