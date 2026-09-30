@@ -6,6 +6,6 @@ Data source: [EnterpriseRAG-Bench on Hugging Face](https://huggingface.co/datase
 
 ## Project Success
 
-Achieve a top-10 ranking on the EnterpriseRAG-Bench leaderboard.
+Achieve a top-5 ranking on the EnterpriseRAG-Bench leaderboard.
 
 More requirements will be added later.

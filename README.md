@@ -5,7 +5,7 @@ A retrieval-augmented question-answering system over a **512K-document enterpris
 built on **LlamaIndex + Qdrant + Voyage AI**, and measured against the public
 [EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench) leaderboard.
 
-**Goal:** a top-10 place on the leaderboard ([PROJECT_GOAL.md](PROJECT_GOAL.md)).
+**Goal:** a top-5 place on the leaderboard ([PROJECT_GOAL.md](PROJECT_GOAL.md)).
 
 ## Results so far
 
