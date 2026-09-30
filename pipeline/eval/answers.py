@@ -100,8 +100,12 @@ class FullDocuments(BaseNodePostprocessor):
         missing = [doc_id for doc_id in doc_ids if doc_id not in self._documents]
         if missing and self._corpus:  # GEN-8a: a live question can land anywhere in the corpus
             self._documents.update(documents_by_id(self._corpus, missing))
+        sources = {}  # GEN-8b: each document's source system, from its best chunk, for the ask page
+        for chunk in nodes:
+            sources.setdefault(chunk.node.ref_doc_id, chunk.node.metadata.get("source_type"))
         return [NodeWithScore(node=TextNode(id_=doc_id, text=document_block(number, doc_id, *self._documents[doc_id]),
-                                            metadata={"doc_id": doc_id}, excluded_llm_metadata_keys=["doc_id"]),
+                                            metadata={"doc_id": doc_id, "source_type": sources.get(doc_id)},
+                                            excluded_llm_metadata_keys=["doc_id", "source_type"]),
                               score=1.0)
                 for number, doc_id in enumerate(doc_ids, 1)]
 
@@ -113,10 +117,11 @@ def answerer_llm(model: str = ANSWERER) -> LLM:
 
 def answer_engine(retriever: BaseRetriever, llm: LLM, documents: Dict[str, Tuple[str, str]],
                   reranker: Optional[BaseNodePostprocessor] = None,
-                  corpus: Optional[Union[str, Path]] = None) -> RetrieverQueryEngine:
+                  corpus: Optional[Union[str, Path]] = None, streaming: bool = False) -> RetrieverQueryEngine:
     """GEN-2d: retriever → (GEN-8a: reranker) → FullDocuments → compact synthesizer with ANSWER_PROMPT."""
     steps = ([reranker] if reranker else []) + [FullDocuments(documents, corpus=corpus)]
-    return RetrieverQueryEngine.from_args(retriever, llm=llm, text_qa_template=ANSWER_PROMPT, node_postprocessors=steps)
+    return RetrieverQueryEngine.from_args(retriever, llm=llm, text_qa_template=ANSWER_PROMPT, node_postprocessors=steps,
+                                          streaming=streaming)  # GEN-8b: the ask page shows the answer as it is written
 
 
 def answer_row(engine: RetrieverQueryEngine, question_id: str, question: str) -> dict:

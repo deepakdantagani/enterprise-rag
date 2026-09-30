@@ -458,9 +458,9 @@ lasts, then ~$0.001). Exact search, as in evaluation (53 ms a question).
 `titles__voyage_4_lite__bm25`; `data/_index/question_embeddings/voyage-4.jsonl`; `VOYAGE_API_KEY`
 from `.env`.
 
-## GEN-8b  Ask page (Gradio) with Phoenix traces  ⬜
+## GEN-8b  Ask page (Gradio) with Phoenix traces  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** a local page where I type a question and read the answer, the 10 documents it used,
@@ -493,4 +493,21 @@ answer first, sources as readable cards with their source system, a visible prog
 the ~25 s answer, example questions to start from, light and dark themes. ~25 s an answer on
 gemma4; runs on localhost only.
 
-**Dependencies:** GEN-8a; `gradio` (new); Phoenix (`uv run --with arize-phoenix phoenix serve`).
+**Measured** (2026-09-30, real page, `uv run python -m pipeline.eval.ask_page`):
+- `qst_0009`: search + rerank 2.5 s, answer 31.9 s cold / 7.7 s warm; the answer holds all five
+  parts of the gold package; source 1 is the EdgePath thread (Gmail).
+- "What is Redwood Optimize?" (not a benchmark question, the only kind that calls Voyage for its
+  vector): 10 sources from Fireflies, Slack and Google Drive; 32.0 s, most of it gemma4 reading
+  ~14K tokens before its first word.
+
+**Decisions made while building:**
+- The page streams: status line, then the 10 source cards (~3 s), then the answer as it is
+  written. The LLM is read on a thread so the clock keeps moving before the first word; Gradio's
+  own progress bars are hidden.
+- Gmail documents are stored as a Python list string (`['From: …\\nTo: …', …]`, some with the
+  line break escaped twice): the cards show their opening as plain text; the LLM still gets the
+  document as stored, as the benchmark's baseline did.
+- gemma4 writes markdown bullets and bold despite rule 7; the page renders `- `, `* ` and `**…**`.
+- `FullDocuments` keeps each document's source system (from its best chunk) for the cards.
+
+**Dependencies:** GEN-8a; `gradio` 6.29 (new); Phoenix (`uv run --with arize-phoenix phoenix serve`).

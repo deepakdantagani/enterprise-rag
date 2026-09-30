@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ask-page",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "-m", "pipeline.eval.ask_page"],
+      "port": 7860
+    }
+  ]
+}
