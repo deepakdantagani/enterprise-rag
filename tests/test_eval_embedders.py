@@ -98,12 +98,12 @@ class SavedQueryEmbeddings(unittest.TestCase):
             model.get_query_embedding("A question nobody saved?")
 
     @unittest.skipUnless(SAVED.is_file(), "needs data/_index/question_embeddings/voyage-4.jsonl")
-    def test_the_real_file_holds_470_voyage_4_vectors_of_1024(self):
+    def test_the_real_file_holds_500_voyage_4_vectors_of_1024(self):
         model = saved_query_embeddings(SAVED)
         vector = model.get_query_embedding("What service credit percentages were proposed in the tiered uptime SLA "
                                            "counteroffer for the maritime logistics SaaS customer using dedicated "
                                            "GPU capacity?")
-        self.assertEqual((model.saved_count, len(vector)), (470, 1024))
+        self.assertEqual((model.saved_count, len(vector)), (500, 1024))  # GEN-4 added the 30 with no expected documents
 
 
 if __name__ == "__main__":
