@@ -296,9 +296,9 @@ exactly one prompt (q2); a second run sends none and returns 0. `save_answers` i
 
 **Dependencies:** GEN-2d. Output `data/_index/answers/<run>.jsonl` (gitignored).
 
-## GEN-3  `all_questions`  ⬜
+## GEN-3  `all_questions`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** load all 500 questions, including the 30 that expect no document,
@@ -319,11 +319,15 @@ Scenario: every question
 values that no document holds; its one fact requires the answer to say it is not fully
 answerable.
 
+**Measured:** `all_questions(data/_full/questions.jsonl)` returns 500: 470 with expected
+documents, 20 `info_not_found`, 10 `high_level`. `load_questions` now filters its output, so the
+two cannot drift.
+
 **Dependencies:** `pipeline/eval/questions.py`.
 
-## GEN-4  Retrieve the 30 missing questions  ⬜
+## GEN-4  Retrieve the 30 missing questions  ✅
 
-**Status:** To do (paid: ask first)
+**Status:** Done (spend approved 2026-09-30)
 
 **As a** developer,
 **I want to** run v4 retrieval once for the 30 questions without saved candidates and append
@@ -343,11 +347,26 @@ Scenario: complete coverage
 (~$0.001, the saved vectors cover only 470) and 30 × 100 chunks reranked by `rerank-3-lite`
 (~1.5M tokens from the free pool).
 
+**Measured** (2026-09-30, `uv run python -m pipeline.eval.missing`, 30 s, run log
+`data/_index/rerank/gen-4-events.jsonl`): 30 `voyage-4` query vectors (7 s), 30 live top 100s
+(`live_retriever`, 6.6 s), 30 reranks by `rerank-3-lite` (1,464,289 tokens from the free pool,
+15 s). All three files (candidates, reranks, `question_embeddings/voyage-4.jsonl`) now hold 500
+rows; the sha256 of their first 470 rows equals the sha256 of each file before the run
+(`545ae799…`, `ef5fd306…`, `46d13fc6…`). The new rows are `qst_0471` … `qst_0500`, each with 100
+candidates, and every one of the 500 reaches 10 distinct documents. No script had saved the
+original candidates; `candidates_row` reproduces the saved `qst_0001` line byte for byte
+(`node.text`, `json.dumps` defaults).
+
+**What changed:** `pipeline/eval/missing.py`: `append_missing` (the resumable pattern of
+`rerank_saved`), `save_query_vectors`, `save_candidates`, `candidates_row`, and `main`, which
+reads the vectors back with no fallback, so a question without a saved vector fails instead of
+paying. Two real-data tests now expect 500 (vectors, questions reaching 10 documents).
+
 **Dependencies:** GEN-3; Qdrant `titles__voyage_4_lite__bm25`.
 
-## GEN-5  First answer run (`gemma4:26b`)  ⬜
+## GEN-5  First answer run (`gemma4:26b`)  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** answer all 500 questions with the local answerer,
@@ -360,6 +379,22 @@ Scenario: a complete answer file
 ```
 
 **Non-functional Requirements:** ~10 s a question on this Mac, ~1.5 h, $0; logs to the run log.
+
+**Measured** (2026-09-30, `uv run python -m pipeline.eval.answer_run`, run log
+`data/_index/answers/v4-gemma4-base.events.jsonl`): `data/_index/answers/v4-gemma4-base.jsonl`
+holds 500 rows, 500 distinct question ids, 0 empty answers, every row with 10 document ids. The
+4,812 documents of all 500 top 10s were read in one pass (1.5 s). Wall time 20,071 s (5.6 h,
+~40 s a question, 4× the estimate: answers average 1,212 characters under rule 7).
+- 156 answers (31%) open with "The documents do not say": 56 `basic`, 52 `semantic`, 14
+  `intra_document_reasoning`, 14 of the 20 `info_not_found`, 20 across other types. Many then
+  give the related facts (rule 6), e.g. `qst_0481` names the redacted allowlist of 6 tenants.
+- 286 answers use markdown bullets or bold despite rule 7, and 168 cite "Document n"; the judge
+  strips citations first (GEN-1), so neither is expected to cost correctness. Both are inputs for
+  a prompt story after GEN-7.
+
+**What changed:** `pipeline/eval/answer_run.py`: `top_ten_ids` (every document any question
+will read, so the corpus is scanned once), `batches`, and `main`, which runs `save_answers` in
+batches of 10 with one `StageDone` each.
 
 **Dependencies:** GEN-2e, GEN-4.
 
