@@ -176,7 +176,7 @@ data.versions.forEach(v => {
   const figure = el("div", v.recall.toFixed(3), "figure"); figure.append(el("small", "  MRR " + v.mrr.toFixed(3)));
   const bar = el("div", undefined, "bar"); const fill = el("span"); fill.style.width = (v.recall * 100) + "%"; bar.append(fill);
   card.append(el("div", v.name + (v === current ? " · current" : ""), "label"), figure, bar, el("div", v.about, "about"),
-              el("div", v.gain === null ? "baseline" : "+" + v.gain.toFixed(3) + " over " + data.versions[data.versions.indexOf(v) - 1].name, "gain"));
+              el("div", v.gain === null ? "baseline" : (v.gain < 0 ? "\u2212" + (-v.gain).toFixed(3) : "+" + v.gain.toFixed(3)) + " over " + data.versions[data.versions.indexOf(v) - 1].name, "gain"));
   document.getElementById("versions").append(card);
 });
 function show(group) {
