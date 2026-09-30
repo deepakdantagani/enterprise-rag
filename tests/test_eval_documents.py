@@ -15,7 +15,7 @@ from llama_index.core.schema import MetadataMode
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import documents as documents_module  # noqa: E402
-from pipeline.eval.documents import parquet_documents  # noqa: E402
+from pipeline.eval.documents import document_text, parquet_documents  # noqa: E402
 
 DOCUMENTS = ROOT / "data/_full/documents.parquet"
 ROWS = [{"doc_id": f"dsid_{n}", "source_type": "slack", "title": f"title {n}", "content": f"content {n}"} for n in range(5)]
@@ -49,8 +49,37 @@ class ParquetDocuments(unittest.TestCase):
         self.assertEqual([[doc.id_ for doc in batch] for batch in batches_of(rows, batch_size=2)],
                          [["dsid_0"], ["dsid_3"]])
 
+    def test_with_title_the_title_opens_the_text_and_stays_metadata(self):
+        document = next(iter(parquet_documents_of(ROWS[:1], with_title=True)))
+        self.assertEqual((document.text, document.metadata["title"]), ("title 0\n\ncontent 0", "title 0"))
+
     def test_doctests(self):
         self.assertEqual(doctest.testmod(documents_module).failed, 0)
+
+
+def parquet_documents_of(rows, **options):
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "documents.parquet"
+        pq.write_table(pa.Table.from_pylist(rows), path)
+        return [doc for batch in parquet_documents(path, **options) for doc in batch]
+
+
+class DocumentText(unittest.TestCase):
+    def test_the_title_opens_the_body(self):
+        self.assertEqual(document_text("NorthPoint Signalworks", "Automatic rollback triggers: ..."),
+                         "NorthPoint Signalworks\n\nAutomatic rollback triggers: ...")
+
+    def test_a_body_that_already_starts_with_the_title_is_kept_as_it_is(self):
+        # 1,697 rows, e.g. Slack dsid_92310a12..., whose "title" is the message itself
+        body = "mike: Hey team — PR #9112 is blocked by a flaky smoke test"
+        self.assertEqual(document_text("mike: Hey team — PR #9112", "  " + body), "  " + body)
+
+    def test_a_blank_title_adds_nothing(self):
+        self.assertEqual(document_text(" \n", "content"), "content")
+        self.assertEqual(document_text(None, "content"), "content")
+
+    def test_the_title_is_stripped(self):
+        self.assertEqual(document_text("  incidents \n", "PR merged."), "incidents\n\nPR merged.")
 
 
 @unittest.skipUnless(DOCUMENTS.is_file(), "needs data/_full/documents.parquet")
@@ -64,6 +93,12 @@ class RealDocuments(unittest.TestCase):
         batch = next(batch for number, batch in enumerate(parquet_documents(DOCUMENTS)) if number == 279)
         self.assertEqual(len(batch), 999)
         self.assertNotIn("dsid_33cbedf0709949fd9416c8c864a86cf2", {doc.id_ for doc in batch})
+
+    def test_the_hubspot_record_asked_for_by_name_carries_the_name_in_its_text(self):
+        # qst_0063 asks for "NorthPoint Signalworks", which only its title held
+        document = next(doc for batch in parquet_documents(DOCUMENTS, with_title=True) for doc in batch
+                        if doc.metadata["title"] == "NorthPoint Signalworks")
+        self.assertTrue(document.text.startswith("NorthPoint Signalworks\n\n"))
 
     def test_the_file_holds_511962_documents(self):
         self.assertEqual(pq.ParquetFile(DOCUMENTS).metadata.num_rows, 511_962)

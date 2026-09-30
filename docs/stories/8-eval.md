@@ -632,3 +632,120 @@ On hubspot, BM25 alone is best in every column (recall 0.574) and RRF (v1) exact
 MRR@10 and each gain), the three reranker steps, and the artifact page contract (theme tokens
 guarded for the viewer's light/dark/system setting, IBM Plex via Google Fonts, a one-column grid
 that keeps wide tables inside their own scroll box). Title: "EnterpriseRAG Retrieval Scoreboard".
+
+## EVAL-3i  `document_text`: the title merged into the text  ✅
+
+**Status:** Done (BM25 measured; dense not re-embedded)
+
+**As a** RAG developer
+**I want to** each document's title to open its text, so both searches can match it
+**So that** a question that names a record ("NorthPoint Signalworks") finds it
+
+**Why:** EVAL-3a kept `title` out of the embedded text for every document, because 497 titles
+(493 Slack) hold a whole body and overflowed SentenceSplitter's 512-token chunk as metadata. That
+hid the name of all the others: qst_0063 asks for "NorthPoint Signalworks", which appears only in
+its HubSpot record's title, so neither dense nor BM25 search could match it. At top 100, 4 misses
+had this cause (2 HubSpot, 2 Slack).
+
+**Acceptance Criteria (Gherkin)**
+- Given a title and a body, Then the text is the stripped title, a blank line, then the body
+- Given a body that already starts with the title, Then it is kept as it is (1,697 rows)
+- Given a blank or missing title, Then the body alone (15 Slack rows)
+- Given `parquet_documents(..., with_title=True)`, Then the text is `document_text` and the title
+  stays metadata; without it the baseline is unchanged
+- Given the real corpus, Then NorthPoint Signalworks' text starts with its name
+
+**Edge cases (all 511,962 rows):** median title 12 chars, p99 107, longest 10,692; 1,062 titles
+over 200 chars (1,057 Slack), prepended like any title since as text they cannot overflow.
+
+**Measured: BM25 only, $0.** A new collection `bm25_titles`: the corpus with titles, the
+baseline's SentenceSplitter(512, 50), BM25 (a 1-number placeholder dense vector, never searched),
+1,619,566 chunks in 20 min.
+
+| exact, top 50 | hit@10 | recall@10 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|
+| BM25 (RET-2) | 0.709 | 0.650 | 0.094 | 0.560 | 0.554 |
+| **BM25 with titles** | **0.740** | **0.688** | **0.099** | **0.590** | **0.586** |
+
+Question by question: recall@10 better for 27, worse for 5, +0.038 [95% bootstrap +0.021,
++0.056]; MRR +0.029 [+0.014, +0.047]. qst_0063 and qst_0120 go from 0 to 1. By source: HubSpot
+0.574 → **0.706**, Confluence 0.606 → 0.670, Google Drive 0.603 → 0.666, Gmail 0.672 → 0.695, the
+rest within ±0.02.
+
+**Not a fair hybrid yet.** Fusing v1's dense (chunks without titles) with this BM25 (chunks with
+titles) keeps recall@10 at 0.722 but drops MRR@10 from 0.622 to 0.498: the two lists no longer
+share chunks, so RRF never sees the same chunk found by both and loses its agreement boost. A
+fair hybrid needs the dense vectors of the same chunks, i.e. a Voyage re-embed of the corpus with
+titles (cost to be confirmed before running).
+
+**Dependencies**
+- APIs: `document_text(title, content)`, `parquet_documents(..., with_title=False)` in `pipeline/eval/documents.py`
+- Database: Qdrant `bm25_titles`; runs in `docs/eval/runs/*-bm25-titles`, `*-hybrid-rrf-titles-exact`
+
+**Update (EVAL-3j): v3 recorded on BM25 with titles.** The chain re-run with this BM25 in place
+of the untitled one: v1's dense + BM25 with titles, RRF over 200-deep lists (exact), the top 100
+reranked by rerank-3-lite (23,060,737 tokens, 288 s, free pool). Pool recall at top 100 0.878 →
+0.888; after reranking recall@10 **0.845** against 0.832 without titles (better on 12 questions,
+worse on 2, +0.013 [95% CI +0.002, +0.025]), MRR@10 0.818, hit@10 0.891. HubSpot 0.765 → **0.853**,
+Fireflies 0.665 → 0.725, completeness 0.570 → 0.620. This is **v3** (+0.045 over v2's 0.800).
+`TITLED_STEPS` is now the report's step list (`results.md`, `report.html`), the untitled runs
+stay in `docs/eval/runs`; the highlighted row follows the last version. The dense vectors still
+lack titles: re-embedding them is the next paid step.
+
+## EVAL-3k  voyage-4-lite dense vectors with titles  ✅
+
+**Status:** Done (measured; adopted as the base in EVAL-3l)
+
+**Why:** in EVAL-3j the hybrid fused dense chunks without titles with BM25 chunks with titles, so
+RRF never saw the same chunk twice (MRR@10 0.498). Re-embedding the corpus with titles gives both
+searches the same chunks. `voyage-4-lite` ($0.02 per 1M tokens against $0.06, estimated 583M
+tokens) shares voyage-4's embedding space, so the 470 saved voyage-4 question vectors search it
+directly (the same text embedded by both: cosine 0.969).
+
+**What changed:** `EMBEDDERS` gains `voyage-4-lite` (1,024 dimensions);
+`ingest_corpus(..., with_title=True)`. One collection, `titles__voyage_4_lite__bm25`: dense
+(voyage-4-lite) and BM25 of the same titled chunks. 1,619,571 chunks in 3 h 32 min overnight
+(bm25_titles holds 1,619,566; 2 documents differ by 5 chunks, re-ingested with the same result).
+
+| exact | hit@10 | recall@10 | precision@10 | mrr@10 | ndcg@10 |
+|---|---|---|---|---|---|
+| dense: voyage-4, no titles (v0 exact) | 0.687 | **0.626** | 0.088 | **0.508** | **0.508** |
+| dense: voyage-4-lite, titles | 0.666 | 0.606 | 0.086 | 0.483 | 0.487 |
+| hybrid RRF: v1 (no titles) | 0.777 | 0.722 | 0.102 | **0.622** | **0.619** |
+| hybrid RRF: voyage-4 dense + BM25 with titles (EVAL-3j) | 0.772 | 0.722 | 0.102 | 0.498 | 0.530 |
+| hybrid RRF: voyage-4-lite + BM25, both with titles | **0.785** | **0.732** | **0.104** | 0.612 | 0.615 |
+| **v3**: voyage-4 dense + BM25 with titles, top 100 reranked | **0.891** | **0.845** | **0.118** | **0.818** | **0.799** |
+| voyage-4-lite + BM25 with titles, top 100 reranked | 0.879 | 0.834 | 0.116 | 0.809 | 0.790 |
+
+Pool recall at top 100: 0.888 (v3) against 0.877 (lite). After reranking, against v3: recall@10
+−0.011 (better on 3 questions, worse on 11; 95% CI [−0.024, +0.001]), MRR −0.009. By source it
+loses most on Linear (0.887 → 0.852) and Google Drive (0.807 → 0.786); HubSpot stays 0.853.
+
+**What it says:** titles did not make up for the smaller model. voyage-4-lite with titles is
+0.020 below voyage-4 without them on dense alone, and the shared chunks restore RRF's agreement
+(hybrid MRR 0.498 → 0.612) without lifting the reranked result. v3 stays; the next dense step,
+if any, is voyage-4 with titles (~$35 at $0.06 per 1M tokens).
+
+**Dependencies**
+- APIs: `EMBEDDERS["voyage-4-lite"]`, `ingest_corpus(..., with_title=)`
+- Database: Qdrant `titles__voyage_4_lite__bm25`; runs in `docs/eval/runs/2026-09-28-titles__voyage_4_lite__bm25-*`
+
+## EVAL-3l  voyage-4-lite is the base (v4)  ✅
+
+**Status:** Done
+
+**Why:** EVAL-3k measured voyage-4-lite with titles 0.011 below v3 on recall@10 after reranking
+(0.834 against 0.845, 95% CI −0.024..+0.001: within noise). The whole corpus costs ~$12 to
+re-embed on lite against ~$35 on voyage-4 (583M tokens), and dense and BM25 index the same titled
+chunks. Deepak chose lite as the base (2026-09-29): later stories re-embed often, and the
+reranker makes up most of the gap. Where lite loses (per-question paired bootstrap, @10):
+semantic dense MRR 0.251 → 0.210, completeness reranked recall 0.620 → 0.592.
+
+**What changed:** `EMBEDDERS` lists `voyage-4-lite` first, so `--embed` defaults to it. The
+report chain (`REPORT_STEPS = LITE_STEPS`) and the scoreboard's versions gain **v4**: dense only
+0.606 → sparse only 0.688 → hybrid RRF 0.732 → top 100 + rerank-3-lite **0.834**. v3 stays
+in `results.md` and its runs; later stories compare against v4.
+
+**Dependencies**
+- APIs: `EMBEDDERS`, `LITE_STEPS`, `VERSIONS`
+- Database: Qdrant `titles__voyage_4_lite__bm25`
