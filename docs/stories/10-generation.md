@@ -364,9 +364,9 @@ paying. Two real-data tests now expect 500 (vectors, questions reaching 10 docum
 
 **Dependencies:** GEN-3; Qdrant `titles__voyage_4_lite__bm25`.
 
-## GEN-5  First answer run (`gemma4:26b`)  ⬜
+## GEN-5  First answer run (`gemma4:26b`)  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** answer all 500 questions with the local answerer,
@@ -379,6 +379,22 @@ Scenario: a complete answer file
 ```
 
 **Non-functional Requirements:** ~10 s a question on this Mac, ~1.5 h, $0; logs to the run log.
+
+**Measured** (2026-09-30, `uv run python -m pipeline.eval.answer_run`, run log
+`data/_index/answers/v4-gemma4-base.events.jsonl`): `data/_index/answers/v4-gemma4-base.jsonl`
+holds 500 rows, 500 distinct question ids, 0 empty answers, every row with 10 document ids. The
+4,812 documents of all 500 top 10s were read in one pass (1.5 s). Wall time 20,071 s (5.6 h,
+~40 s a question, 4× the estimate: answers average 1,212 characters under rule 7).
+- 156 answers (31%) open with "The documents do not say": 56 `basic`, 52 `semantic`, 14
+  `intra_document_reasoning`, 14 of the 20 `info_not_found`, 20 across other types. Many then
+  give the related facts (rule 6), e.g. `qst_0481` names the redacted allowlist of 6 tenants.
+- 286 answers use markdown bullets or bold despite rule 7, and 168 cite "Document n"; the judge
+  strips citations first (GEN-1), so neither is expected to cost correctness. Both are inputs for
+  a prompt story after GEN-7.
+
+**What changed:** `pipeline/eval/answer_run.py`: `top_ten_ids` (every document any question
+will read, so the corpus is scanned once), `batches`, and `main`, which runs `save_answers` in
+batches of 10 with one `StageDone` each.
 
 **Dependencies:** GEN-2e, GEN-4.
 
