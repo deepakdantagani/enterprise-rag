@@ -58,9 +58,9 @@ Glossary (enough to read any story here cold):
 
 **Dependencies:** none (N/A: Service Bus, database, UI).
 
-## GEN-2a  `first_documents` and `document_block`  ⬜
+## GEN-2a  `first_documents` and `document_block`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer building the answerer,
 **I want to** turn v4's ranked chunks into the first 10 distinct documents, each formatted the
@@ -93,6 +93,14 @@ total request size for the new multipart upload support on the OpenAI-compatible
 endpoints?"): v4's reranked chunks reach 10 distinct documents after 14 chunks. 1 is the gold
 `dsid_ae068e…` (GitHub, "add multipart/form-data handling, strict content-type valida…", 5,120
 characters); 8 of the 10 are GitHub PRs, 2 are Slack `docs` channel documents.
+
+**Measured** (all 470 saved questions): every one reaches 10 documents, within 11 chunks at the
+median and 27 at most; the fewest distinct documents in a top 100 is 39.
+
+**What changed:** `pipeline/eval/answers.py`. `first_documents` is
+`list(dict.fromkeys(ids))[:10]`: a set that keeps first-seen order, so a document ranks where its
+best chunk ranks (a plain `set` would lose the order). The chunk texts are dropped; the answerer
+reads whole documents (GEN-2b).
 
 **Non-functional Requirements:** shared ones; pure functions, no I/O.
 
