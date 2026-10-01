@@ -9,7 +9,8 @@ Until GEN-7 we have no leaderboard-comparable number, only recall.
 
 Glossary (enough to read any story here cold):
 - **Leaderboard**: huggingface.co/spaces/onyx-dot-app/EnterpriseRAG-Bench-Leaderboard, 29 systems
-  (2026-09-29). 1st: Mixedbread + Opus 5, 86.58. 10th: SovraRAG.ch, **65.61** (our target).
+  (2026-09-29). 1st: Mixedbread + Opus 5, 86.58. 10th: SovraRAG.ch, **65.61**. Our target
+  is a top-5 place (raised from top 10 on 2026-09-30).
   The benchmark's own one-shot baseline, "BM25 + GPT-5.4", scores 50.6.
 - **Answer file**: what a system submits, one JSON line per question:
   `{"question_id": "qst_0001", "answer": "...", "document_ids": ["dsid_...", ...]}`
@@ -26,6 +27,12 @@ Glossary (enough to read any story here cold):
   `correct (0 or 1) × completeness %`. A wrong answer scores 0 however complete it is.
 - **Answerer**: our LLM that writes answers (local `gemma4:26b` on Ollama first, $0). Not the
   judge.
+- **Our judge** (GEN-9): the official scorer's two prompts, run by us on a Claude model through
+  LlamaIndex, so a score costs about $2 instead of about $25. It is not the leaderboard number:
+  GEN-9f measures how often it agrees with the official `gpt-5.4` judge.
+- **Typed verdict**: a judge reply that can only be a Pydantic object (`FactVerdict(contained:
+  bool)`), from LlamaIndex `structured_predict`. A reply that does not fit is an error, never a
+  silently scored 0.
 - **Replay retriever**: `pipeline/eval/rerank.py` `replay_retriever`, v4's saved top 100 chunks
   per question in their saved rerank order, for $0 (RET-5). Saved for the 470 questions that
   have expected documents.
@@ -557,3 +564,226 @@ gemma4; runs on localhost only.
 - `FullDocuments` keeps each document's source system (from its best chunk) for the cards.
 
 **Dependencies:** GEN-8a; `gradio` 6.29 (new); Phoenix (`uv run --with arize-phoenix phoenix serve`).
+
+## GEN-9  Our judge: the benchmark's prompts on Claude, through LlamaIndex
+
+The official judge run (GEN-7) costs about $25 on `gpt-5.4` (2,927 calls: one correctness call
+per question and one call per fact, 2,427 facts). That is too much to pay after every prompt or
+retrieval change. GEN-9 runs the **same two prompts** on `claude-haiku-4-5` for about $2 to $3,
+with LlamaIndex doing the work: `CorrectnessEvaluator` (its template replaced by the
+benchmark's), `structured_predict` for typed fact verdicts, and `BatchEvalRunner` for
+concurrency. The only class we write is the per-fact evaluator, a `BaseEvaluator` subclass,
+because LlamaIndex has no evaluator that checks one statement at a time.
+
+What each call sends (qst_0009, 5 facts, so 6 calls):
+
+| sent to the judge | correctness (1 call) | completeness (1 call per fact) |
+|---|---|---|
+| the benchmark's instructions | yes | yes |
+| the question | yes | no |
+| the gold answer | yes | no |
+| our answer | yes | yes |
+| one fact | no | yes |
+| source documents, document ids | no | no |
+
+Not in scope: citation stripping (the official scorer's first call; our answers carry no
+`[n]` citations, and GEN-9f shows whether "Document n" mentions change a verdict), document
+recall and the gold-set correction vote (neither is in the overall score).
+
+Prompt caching does not apply: the repeated prefix of a fact call is the instructions plus our
+answer, about 450 tokens, under `claude-haiku-4-5`'s 4,096-token minimum. The saving comes from
+the judgments file instead: a judged question is never paid for twice (GEN-9d).
+
+## GEN-9a  `aligned` and `correctness_judge`  ⬜
+
+**Status:** To do
+
+**As a** developer scoring answers,
+**I want to** LlamaIndex's `CorrectnessEvaluator` to ask the benchmark's correctness prompt and
+read its `{"reason", "aligned"}` reply,
+**so that** correctness is judged by the official wording without a custom evaluator.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: an aligned answer passes
+  Given the reply {"reason": "Same package terms.", "aligned": "yes"}
+  Then aligned returns (5.0, "Same package terms.") and the evaluator's result is passing
+
+Scenario: a misaligned answer fails
+  Given the reply {"reason": "Different incident.", "aligned": "no"}
+  Then aligned returns (1.0, "Different incident.") and the result is not passing
+
+Scenario: the prompt is the benchmark's
+  Given CORRECTNESS_TEMPLATE with reference_answer and generated_answer renamed back to
+        gold_answer and candidate_answer
+  Then it equals ANSWER_WHOLISTIC_EVALUATION_PROMPT character for character
+
+Scenario: a reply that is not the expected JSON
+  Then aligned raises, and nothing is scored
+```
+
+**Example with real data:** qst_0009. Query "In the EdgePath evaluation email thread, what
+alternative Year 1 pricing package did Redwood propose…", gold answer "Redwood said it wouldn't
+match the competitor's 50% blanket Year-1 discount and $60k migration credit, and instead
+proposed a 12-month committed prepay package…", our answer "Redwood proposed a 12-month commit
+package with the following components: ~40% off list…". One call, one `EvaluationResult`.
+
+**Non-functional Requirements:** tests use a recording LLM, no network. The benchmark's prompt
+text is kept in the module with its source path (`src/prompts/answer_evaluation.py`, MIT).
+
+**Dependencies:** `llama-index-core` `CorrectnessEvaluator`, `PromptTemplate`. New module
+`pipeline/eval/judge.py`.
+
+## GEN-9b  `FactVerdict` and `CompletenessEvaluator`  ⬜
+
+**Status:** To do
+
+**As a** developer scoring answers,
+**I want to** a `BaseEvaluator` that asks the benchmark's fact prompt once per fact and gets a
+typed `FactVerdict(contained: bool)` each time,
+**so that** completeness is the share of facts the answer contains, judged one fact at a time
+as the official scorer does.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: four of five facts
+  Given an answer and 5 facts, and a judge that says contained for 4
+  Then the result's score is 0.8 and it is not passing
+  And the LLM was called 5 times, each with the answer and exactly one fact
+
+Scenario: every fact
+  Then the score is 1.0 and the result is passing
+
+Scenario: the prompt is the benchmark's
+  Then FACT_TEMPLATE equals INDIVIDUAL_FACT_VALIDATOR_PROMPT up to its final output line,
+       which typed output replaces
+
+Scenario: no facts
+  Then it raises: every one of the 500 questions has at least one fact (1 to 46, 2,427 in all)
+```
+
+**Example with real data:** qst_0009's 5 facts against our answer. By my reading 4 are
+contained and fact 1 ("Redwood did not match the competitors 50 percent blanket Year 1 discount
+and 60k migration credit.") is not stated, which would be 80%. qst_0481 (info_not_found) has
+one fact: "The answer must state at some point that the query is not fully answerable…".
+
+**Non-functional Requirements:** the per-fact verdicts are kept in the result (`feedback`), so
+a wrong verdict can be audited fact by fact.
+
+**Dependencies:** GEN-9a (module). `llama-index-core` `BaseEvaluator`, `EvaluationResult`,
+`LLM.astructured_predict`.
+
+## GEN-9c  `judge_llm` and `judge_runner`  ⬜
+
+**Status:** To do
+
+**As a** developer,
+**I want to** the judge model and LlamaIndex's `BatchEvalRunner` wired in two small functions,
+**so that** both evaluators run over many questions concurrently and the model is one setting.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: the judge is deterministic and its replies are short
+  Then judge_llm() is claude-haiku-4-5, temperature 0, max_tokens 256
+
+Scenario: each question's own gold answer and facts reach the evaluators
+  Given 2 questions with different gold answers and fact lists, and a recording LLM
+  When the runner evaluates both
+  Then the correctness call of each question holds its own gold answer
+  And the fact calls of each question hold only its own facts
+```
+
+**Example with real data:** qst_0009 (5 facts) and qst_0481 (1 fact) through the runner: 2
+correctness calls and 6 fact calls.
+
+**Non-functional Requirements:** `max_tokens` caps the reply only (a fact verdict is about 10
+tokens, a correctness reply about 50); a reply cut at the cap must fail, not score. New
+dependency `llama-index-llms-anthropic`; the key is `ANTHROPIC_API_KEY` in `.env`, never
+printed. The model is a parameter, so `qwen3:30b` or another judge can be compared later.
+
+**Dependencies:** GEN-9a, GEN-9b. `llama-index-core` `BatchEvalRunner`.
+
+## GEN-9d  `judged_row` and `save_judgments` (resumable)  ⬜
+
+**Status:** To do
+
+**As a** developer paying for a judge,
+**I want to** each question's verdict written as one line in the official scorer's row format
+as soon as it is made, skipping questions already judged,
+**so that** a crash or a re-run never pays twice, and `overall_score` (GEN-6) reads the file
+unchanged.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: the row is the official scorer's
+  Given a passing correctness result and a completeness score of 0.8 for qst_0009
+  Then judged_row is {"question_id": "qst_0009", "answer_correct": true,
+       "completeness_pct": 80.0, "reason": "...", "facts": [false, true, true, true, true]}
+
+Scenario: resume
+  Given the judgments file already holds q1
+  When save_judgments runs for q1 and q2
+  Then only q2 is judged, and it returns 1
+
+Scenario: nothing new
+  When it runs again
+  Then the LLM is not called and it returns 0
+```
+
+**Example with real data:** the same pattern as `save_answers` (GEN-2e), which survived the
+5.6 h answer run.
+
+**Non-functional Requirements:** shared ones; one flushed line per question.
+
+**Dependencies:** GEN-9c, GEN-3 (`all_questions`, with gold answer and facts), GEN-6. Output
+`data/_index/judgments/<answers>__<judge>.jsonl` (gitignored).
+
+## GEN-9e  First judged score (`claude-haiku-4-5`)  ⬜
+
+**Status:** To do (paid: approved up to about $3 on 2026-09-30; confirm before running)
+
+**As a** developer aiming for the top 5,
+**I want to** judge the 500 `v4-gemma4-base` answers and compute the overall score,
+**so that** we have our first score and a per-question list of what failed.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: a complete judgments file
+  Then it holds 500 rows, each with answer_correct, completeness_pct and one verdict per fact
+  And overall_score, mean correctness and mean completeness are recorded in docs/eval/results.md,
+      labelled "our judge (claude-haiku-4-5)", not as a leaderboard score
+
+Scenario: failures split
+  Then each wrong or incomplete question is marked a search miss (no gold document among the
+       10 read) or an answer miss (a gold document was read)
+```
+
+**Example with real data:** qst_0043's gold document `dsid_321eee63…` is not in v4's top 100
+chunks, so its failure is a search miss whatever the prompt says.
+
+**Non-functional Requirements:** cost before running: 2,927 calls, about 1.9M input tokens at
+$1 per 1M and under 0.2M output tokens at $5 per 1M, about $2 to $3; token usage from the run
+is reported against this estimate.
+
+**Dependencies:** GEN-9d, GEN-5 (the answers).
+
+## GEN-9f  Does our judge agree with the official one?  ⬜
+
+**Status:** To do (paid: about $5, needs `OPENAI_API_KEY`; ask first)
+
+**As a** developer who will tune against our judge,
+**I want to** run the official scorer (`gpt-5.4`) on 100 questions spread across question types
+and compare its verdicts with ours on the same answers,
+**so that** we know how far our score can be trusted before optimising against it.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: agreement measured
+  Then correctness agreement (%), per-fact agreement (%) and the two overall scores on the 100
+       questions are recorded, with the disagreements listed by question
+```
+
+**Non-functional Requirements:** the 100 questions are fixed by a seeded sample, so later
+judges (`qwen3:30b`, Jev, a larger Claude model) are compared on the same set.
+
+**Dependencies:** GEN-9e. GEN-7 (the full official run) stays for the final submission.
