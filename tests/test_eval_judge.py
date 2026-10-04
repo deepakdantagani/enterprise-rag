@@ -168,6 +168,12 @@ def jsonl(path, rows):
     return path
 
 
+class JudgedFiles(unittest.TestCase):
+    def test_the_judge_reads_the_v2_answers_and_keeps_the_v1_judgments(self):
+        self.assertEqual((judge.ANSWERS.name, judge.JUDGMENTS.name),
+                         ("v4-gemma4-v2.jsonl", "v4-gemma4-v2__claude-haiku-4-5.jsonl"))
+
+
 class Main(unittest.TestCase):
     """main() on two questions in temporary files, with a stand-in for Claude."""
 

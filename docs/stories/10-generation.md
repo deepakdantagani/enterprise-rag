@@ -932,3 +932,51 @@ are split then.
 
 **Dependencies:** GEN-9e (the judged v1 answers). Next: GEN-10b answers the 500 questions with v2
 ($0, ~1.5 h) and judges them (about $2-3, ask first).
+
+---
+
+## GEN-10b  v2 answers and their score  ✅
+
+**Status:** Done (2026-10-04). v2 scores **62.43** against v1's 62.11 on our judge: +0.33, paired
+bootstrap 95% interval −3.18 to +3.94, so **within noise**.
+
+**As a** developer aiming for the top 5,
+**I want to** answer the 500 questions with `ANSWER_PROMPT_V2` and judge them as v1 was judged,
+**so that** the prompt change is measured, not assumed.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: same everything but the prompt
+  Then data/_index/answers/v4-gemma4-v2.jsonl holds 500 answers over the same 10 documents as v1
+  And the judge writes data/_index/judgments/v4-gemma4-v2__claude-haiku-4-5.jsonl
+  And the v1 answers and judgments are unchanged
+
+Scenario: the comparison is recorded
+  Then docs/eval/results.md holds both scores, the interval, the flips and the change by question type
+```
+
+**Measured**
+
+| | v1 | v2 |
+|---|---|---|
+| overall score | 62.11 | 62.43 |
+| answers judged correct | 339 | 345 |
+| mean completeness | 76.75% | 75.51% |
+| opens with "The documents do not say" | 156 | 71 |
+| uses markdown | 288 | 113 |
+| says "Document n" | 168 | 13 |
+
+45 answers went from wrong to right and 39 from right to wrong. The habits v2 targeted dropped,
+but the score did not move: shorter, single-document answers gained on `basic` (+2.0),
+`completeness` (+6.2) and `miscellaneous` (+7.5) and lost on the types that need many documents,
+`project_related` (−9.4) and `high_level` (−17.5, 10 questions).
+
+**Run notes:** the answer run took about 2.7 h on `gemma4:26b` (two sittings; it resumed at
+question 370). The judge run was 2,927 calls on `claude-haiku-4-5`.
+
+**Decision:** v2 stays as `ANSWER_PROMPT` (cleaner answers, same score). Prompt wording alone is
+not the lever on this answerer; the remaining failures are 54 search misses and 96 answers that
+read gold documents and still failed.
+
+**Dependencies:** GEN-10a, GEN-9d.
+
