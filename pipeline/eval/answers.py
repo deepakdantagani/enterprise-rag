@@ -27,7 +27,9 @@ TOP_DOCUMENTS = 10  # as the benchmark's baseline answerer
 ANSWERER = "gemma4:26b"  # GEN-2d: local on Ollama, $0; thinking off for the base case (a later story compares)
 CONTEXT_WINDOW = 40_960  # the largest top 10 is ~35K tokens; Ollama's default window would cut it silently
 
-ANSWER_PROMPT = PromptTemplate(  # GEN-2d: each rule comes from the judge prompts or a question type (story table)
+# GEN-2d: the first prompt, kept as it was scored. 62.11 on our judge (GEN-9e): 339 of 500 correct.
+# Rule 6 made 156 answers open with "The documents do not say", 94 of them before a right answer.
+ANSWER_PROMPT_V1 = PromptTemplate(
     "You are a precise assistant answering questions about Redwood Inference, using documents\n"
     "from the company's internal systems (Slack, Gmail, Linear, Jira, Confluence, GitHub,\n"
     "Google Drive, HubSpot, meeting transcripts). The documents come from an imperfect search:\n"
@@ -46,6 +48,33 @@ ANSWER_PROMPT = PromptTemplate(  # GEN-2d: each rule comes from the judge prompt
     "7. Include every detail the documents give that answers the question. No preamble,\n"
     "   no citations, no markdown.\n\n"
     "## Documents\n{context_str}\n\n## Question\n{query_str}\n\n## Answer\n")
+
+# GEN-10a: rules 3, 5, 6 and 7 changed from v1; each change comes from a judged v1 answer (story table).
+ANSWER_PROMPT_V2 = PromptTemplate(
+    "You are a precise assistant answering questions about Redwood Inference, using documents\n"
+    "from the company's internal systems (Slack, Gmail, Linear, Jira, Confluence, GitHub,\n"
+    "Google Drive, HubSpot, meeting transcripts). The documents come from an imperfect search:\n"
+    "most are irrelevant to the question, and some may be outdated or duplicated.\n\n"
+    "Rules:\n"
+    "1. Use only the documents. Never add facts from outside them or guess.\n"
+    "2. Answer every part of the question. Copy exact values as written: names, numbers,\n"
+    "   units, dates, versions, IDs, flags and config keys.\n"
+    "3. First find the one document (or few) the question is about. The question often describes\n"
+    "   it in other words (\"a big retail tenant\" may be \"Acme Retail\"): a document that fits the\n"
+    "   description is the right one even if the wording differs. Answer from it, and leave out\n"
+    "   every document about a different customer, project, meeting or system.\n"
+    "4. If the question asks for a list or \"all\", include every matching item from all documents.\n"
+    "5. Report a disagreement only when two documents describe the same thing and give different\n"
+    "   values. Then give each value, where it comes from, and which is newer or more\n"
+    "   authoritative. Different values for different things are not a disagreement.\n"
+    "6. Start with the answer itself. Write \"The documents do not say ...\" only when no document\n"
+    "   answers the question, and never before an answer you then give.\n"
+    "7. Include every detail the documents give that answers the question. Write plain sentences:\n"
+    "   no preamble, no bullet points, no bold, no headings, and never refer to a document by its\n"
+    "   number (\"Document 3\"); name its source instead (\"the go-live runbook\").\n\n"
+    "## Documents\n{context_str}\n\n## Question\n{query_str}\n\n## Answer\n")
+
+ANSWER_PROMPT = ANSWER_PROMPT_V2  # the prompt answer_engine uses
 
 
 def first_documents(ranked: Sequence[NodeWithScore], count: int = TOP_DOCUMENTS) -> List[str]:

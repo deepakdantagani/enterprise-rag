@@ -3,7 +3,7 @@
 The leaderboard scores an answer file, one line per question (GEN-1). This run replays v4's saved
 top 100 in its rerank-3-lite order for all 500 questions (GEN-4 added the 30 with no expected
 documents, e.g. qst_0481, info_not_found), reads the 10 whole documents of every question from
-the corpus in one pass (GEN-2b: one 1.2 s scan, not 500), and answers with ANSWER_PROMPT on
+the corpus in one pass (GEN-2b: one 1.2 s scan, not 500), and answers with ANSWER_PROMPT (v2 since GEN-10a) on
 gemma4:26b ($0, ~10 s a question). save_answers makes it resumable: re-run the same command after
 a crash. Progress goes to the run log as one StageDone per batch of 10.
 
@@ -21,7 +21,7 @@ from llama_index.core.base.base_retriever import BaseRetriever
 from pipeline.eval.answers import first_documents
 
 ROOT = Path(__file__).resolve().parents[2]
-ANSWERS = ROOT / "data/_index/answers/v4-gemma4-base.jsonl"
+ANSWERS = ROOT / "data/_index/answers/v4-gemma4-v2.jsonl"  # GEN-10a: ANSWER_PROMPT_V2; v4-gemma4-base.jsonl holds the v1 answers
 BATCH = 10
 
 
