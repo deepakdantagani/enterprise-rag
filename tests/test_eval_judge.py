@@ -1,5 +1,6 @@
 import asyncio
 import doctest
+import json
 import runpy
 import sys
 import unittest
@@ -11,7 +12,8 @@ sys.path.insert(0, str(ROOT))
 from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 
 from pipeline.eval import judge  # noqa: E402
-from pipeline.eval.judge import CORRECTNESS_TEMPLATE, aligned, correctness_judge  # noqa: E402
+from pipeline.eval.judge import (CORRECTNESS_TEMPLATE, FACT_TEMPLATE, CompletenessEvaluator, FactVerdict, aligned,  # noqa: E402
+                                 correctness_judge, fact_verdict)
 
 BENCHMARK_PROMPTS = ROOT / "tests/fixtures/benchmark/answer_evaluation.py"  # the judge's prompt file, unchanged
 
@@ -20,6 +22,11 @@ QUERY = ("In the EdgePath evaluation email thread, what alternative Year 1 prici
          "instead of matching the competitor's 50 percent first-year discount and migration credit?")
 GOLD = "Redwood said it wouldn't match the competitor's 50% blanket Year-1 discount and $60k migration credit"
 OURS = "Redwood proposed a 12-month commit package with the following components:"
+FACTS = ["Redwood did not match the competitors 50 percent blanket Year 1 discount and 60k migration credit.",
+         "Redwood proposed a 12 month committed prepay package with about 40 percent off list prices on prepay buckets.",
+         "Redwood proposed a 50,000 one time onboarding or migration credit tied to milestones.",
+         "The package included an optional seat or license fee to cap variable spend.",
+         "The package included a 99.9 percent latency SLO for hosted US instances."]
 
 
 class RecordingLLM(CustomLLM):
@@ -79,12 +86,75 @@ class CorrectnessJudge(unittest.TestCase):
         self.assertIn('{\n  "reason": "reason for the classification",\n  "aligned": "yes or no"\n}', llm.prompts[0])
 
 
+class FactLLM(RecordingLLM):
+    """Answers each fact prompt with the reply given for the fact it holds."""
+    reply: str = ""
+    replies: dict = {}
+
+    def complete(self, prompt, formatted=False, **kwargs):
+        self.prompts.append(prompt)
+        return CompletionResponse(text=next(reply for fact, reply in self.replies.items() if fact in prompt))
+
+
+class FactVerdictOf(unittest.TestCase):
+    def test_yes_on_the_first_line_is_contained(self):
+        self.assertEqual(fact_verdict("a fact", "Yes\nbecause it says so"), FactVerdict(fact="a fact", contained=True))
+
+    def test_no_is_not_contained(self):
+        self.assertFalse(fact_verdict("a fact", "no").contained)
+
+    def test_a_reply_that_is_neither_raises(self):
+        with self.assertRaises(ValueError):
+            fact_verdict("a fact", "It depends.")
+
+    def test_an_empty_reply_raises(self):
+        with self.assertRaises(ValueError):
+            fact_verdict("a fact", "  ")
+
+
+class Completeness(unittest.TestCase):
+    def judged(self, replies):
+        llm = FactLLM(replies=dict(zip(FACTS, replies)), prompts=[])
+        return llm, asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=OURS, facts=FACTS))
+
+    def test_four_of_five_facts_is_eighty_percent_and_not_passing(self):
+        _, result = self.judged(["no", "yes", "yes", "yes", "yes"])
+        self.assertEqual(result.score, 0.8)
+        self.assertFalse(result.passing)
+
+    def test_every_fact_is_complete_and_passing(self):
+        _, result = self.judged(["yes"] * 5)
+        self.assertEqual(result.score, 1.0)
+        self.assertTrue(result.passing)
+
+    def test_one_call_per_fact_with_our_answer_exactly_one_fact_and_no_question(self):
+        llm, _ = self.judged(["yes"] * 5)
+        self.assertEqual(len(llm.prompts), 5)
+        for prompt in llm.prompts:
+            self.assertIn(OURS, prompt)
+            self.assertEqual(sum(fact in prompt for fact in FACTS), 1)
+            self.assertNotIn(QUERY, prompt)
+
+    def test_the_verdict_of_each_fact_is_kept_in_order_for_audit(self):
+        _, result = self.judged(["no", "yes", "yes", "yes", "yes"])
+        verdicts = json.loads(result.feedback)
+        self.assertEqual([verdict["fact"] for verdict in verdicts], FACTS)
+        self.assertEqual([verdict["contained"] for verdict in verdicts], [False, True, True, True, True])
+
+    def test_a_question_without_facts_raises(self):
+        with self.assertRaises(ValueError):
+            asyncio.run(CompletenessEvaluator(FactLLM(prompts=[])).aevaluate(query=QUERY, response=OURS, facts=[]))
+
+
 class TheBenchmarksPrompt(unittest.TestCase):
     def test_the_template_is_the_benchmarks_prompt_with_only_two_names_changed(self):
         official = runpy.run_path(str(BENCHMARK_PROMPTS))["ANSWER_WHOLISTIC_EVALUATION_PROMPT"]
         ours = (CORRECTNESS_TEMPLATE.template.replace("{reference_answer}", "{gold_answer}")
                 .replace("{generated_answer}", "{candidate_answer}"))
         self.assertEqual(ours, official)
+
+    def test_the_fact_template_is_the_benchmarks_fact_prompt_unchanged(self):
+        self.assertEqual(FACT_TEMPLATE.template, runpy.run_path(str(BENCHMARK_PROMPTS))["INDIVIDUAL_FACT_VALIDATOR_PROMPT"])
 
 
 class Doctests(unittest.TestCase):

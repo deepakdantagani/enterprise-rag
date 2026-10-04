@@ -30,9 +30,9 @@ Glossary (enough to read any story here cold):
 - **Our judge** (GEN-9): the official scorer's two prompts, run by us on a Claude model through
   LlamaIndex, so a score costs about $2 instead of about $25. It is not the leaderboard number:
   GEN-9f measures how often it agrees with the official `gpt-5.4` judge.
-- **Typed verdict**: a judge reply that can only be a Pydantic object (`FactVerdict(contained:
-  bool)`), from LlamaIndex `structured_predict`. A reply that does not fit is an error, never a
-  silently scored 0.
+- **Typed verdict**: one fact's judgment as a Pydantic object, `FactVerdict(fact, contained)`,
+  parsed from the judge's yes/no reply. A reply that is neither is an error, never a silently
+  scored 0.
 - **Replay retriever**: `pipeline/eval/rerank.py` `replay_retriever`, v4's saved top 100 chunks
   per question in their saved rerank order, for $0 (RET-5). Saved for the 470 questions that
   have expected documents.
@@ -571,7 +571,7 @@ The official judge run (GEN-7) costs about $25 on `gpt-5.4` (2,927 calls: one co
 per question and one call per fact, 2,427 facts). That is too much to pay after every prompt or
 retrieval change. GEN-9 runs the **same two prompts** on `claude-haiku-4-5` for about $2 to $3,
 with LlamaIndex doing the work: `CorrectnessEvaluator` (its template replaced by the
-benchmark's), `structured_predict` for typed fact verdicts, and `BatchEvalRunner` for
+benchmark's), `LLM.apredict` with the benchmark's fact prompt, and `BatchEvalRunner` for
 concurrency. The only class we write is the per-fact evaluator, a `BaseEvaluator` subclass,
 because LlamaIndex has no evaluator that checks one statement at a time.
 
@@ -642,13 +642,13 @@ no is 1.0; only `passing` goes on to the score. 10 tests, no network, no judge c
 **Dependencies:** `llama-index-core` `CorrectnessEvaluator`, `PromptTemplate`. New module
 `pipeline/eval/judge.py`.
 
-## GEN-9b  `FactVerdict` and `CompletenessEvaluator`  ⬜
+## GEN-9b  `FactVerdict` and `CompletenessEvaluator`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer scoring answers,
-**I want to** a `BaseEvaluator` that asks the benchmark's fact prompt once per fact and gets a
-typed `FactVerdict(contained: bool)` each time,
+**I want to** a `BaseEvaluator` that asks the benchmark's fact prompt once per fact and turns
+each yes/no reply into a typed `FactVerdict(fact, contained)`,
 **so that** completeness is the share of facts the answer contains, judged one fact at a time
 as the official scorer does.
 
@@ -663,8 +663,10 @@ Scenario: every fact
   Then the score is 1.0 and the result is passing
 
 Scenario: the prompt is the benchmark's
-  Then FACT_TEMPLATE equals INDIVIDUAL_FACT_VALIDATOR_PROMPT up to its final output line,
-       which typed output replaces
+  Then FACT_TEMPLATE equals INDIVIDUAL_FACT_VALIDATOR_PROMPT character for character
+
+Scenario: a reply that is neither yes nor no
+  Then fact_verdict raises, and nothing is scored
 
 Scenario: no facts
   Then it raises: every one of the 500 questions has at least one fact (1 to 46, 2,427 in all)
@@ -677,6 +679,19 @@ one fact: "The answer must state at some point that the query is not fully answe
 
 **Non-functional Requirements:** the per-fact verdicts are kept in the result (`feedback`), so
 a wrong verdict can be audited fact by fact.
+
+**Decision** (2026-10-03): the reply is plain yes/no, read from its first line, as the official
+scorer's `validate_single_fact` reads it (EnterpriseRAG-Bench `src/utils/eval_utils.py`), not
+`structured_predict`. A forced tool call would change the prompt's last line and add a tool
+schema to each of the 2,427 calls, moving our judge away from the leaderboard's. The verdict is
+still typed, and where the official scorer counts any reply without "yes" as a no, ours raises
+when the first line has neither word.
+
+**Measured** (2026-10-03): `fact_verdict` and `CompletenessEvaluator` in
+`pipeline/eval/judge.py`. `FACT_TEMPLATE` equals the pinned benchmark prompt character for
+character. Each fact call holds our answer and exactly one fact, and never the question (tested).
+`score` is the share of facts contained (4 of 5 is 0.8), `passing` only at 1.0, and `feedback`
+is the verdict list as JSON, in fact order. 10 new tests, no network, no judge call made yet.
 
 **Dependencies:** GEN-9a (module). `llama-index-core` `BaseEvaluator`, `EvaluationResult`,
 `LLM.astructured_predict`.
