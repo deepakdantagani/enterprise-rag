@@ -23,6 +23,7 @@ REPORT = ROOT / "docs/eval/report.html"
 METRICS = ("hit_rate", "recall", "precision", "mrr", "ndcg")
 KS = (10, 5, 20)
 TITLE = "EnterpriseRAG Retrieval Scoreboard"
+ANSWERS = "2026-10-04-answers-v4-gemma4-v2"  # GEN-11b: the base answer run (retrieval v4, ANSWER_PROMPT_V2), GEN-11a's rows
 VERSIONS = (  # each version is one change on the one before, scored exactly on the 470 questions
     ("v0", "2026-09-27-hybrid__voyage_4__bm25-dense-exact", "Dense search: voyage-4 vectors"),
     ("v1", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact", "+ BM25, fused by RRF"),
@@ -75,19 +76,32 @@ def version_summary(runs_dir: Path, versions: Sequence[Tuple[str, str, str]]) ->
     return summary
 
 
+def answer_summary(runs_dir: Path, run_name: str, retrieval: List[dict]) -> dict:
+    """GEN-11b: the judged answers per source, largest first, with the last retrieval step's recall@10 beside."""
+    saved = json.loads((runs_dir / run_name / "metrics.json").read_text())
+    recall = {row["group"]: round(row["means"]["recall"], 3) for row in retrieval if row["k"] == 10}
+    rows = sorted(saved["rows"], key=lambda row: (row["group"] != "overall", -row["questions"], row["group"]))
+    names = {"overall": "All", "source:none": "no expected document"}
+    return {"config": saved["config"], "rows": [
+        {"name": names.get(row["group"], row["group"].split(":", 1)[-1]), "questions": row["questions"],
+         "recall": recall.get(row["group"]), **{name: round(value, 3) for name, value in row["means"].items()}}
+        for row in rows]}
+
+
 def html_report(steps: Sequence[Tuple[str, str, str]], runs_dir: Path, title: str,
-                versions: Sequence[Tuple[str, str, str]] = ()) -> str:
+                versions: Sequence[Tuple[str, str, str]] = (), answers: str = "") -> str:
     runs = [load_rows(runs_dir, run_name) for _, _, run_name in steps]
     groups = groups_of(runs[0])
     step_names = [(label, search) for label, search, _ in steps]
     data = {"groups": groups, "tables": {g["id"]: tables_for(runs, step_names, g["id"]) for g in groups},
-            "versions": version_summary(runs_dir, versions)}
+            "versions": version_summary(runs_dir, versions),
+            "answers": answer_summary(runs_dir, answers, runs[-1]) if answers else None}
     embedded = json.dumps(data).replace("</", "<\\/")
     return PAGE.replace("{title}", title).replace("{data}", embedded)
 
 
 def main() -> None:
-    REPORT.write_text(html_report(REPORT_STEPS, RUNS, TITLE, versions=VERSIONS))
+    REPORT.write_text(html_report(REPORT_STEPS, RUNS, TITLE, versions=VERSIONS, answers=ANSWERS))
 
 
 PAGE = """<meta charset="utf-8">
@@ -97,7 +111,7 @@ PAGE = """<meta charset="utf-8">
 <style>
 :root {
   --ground: #f5f7f5; --surface: #ffffff; --ink: #17211e; --muted: #5c6a65; --line: #dce3df;
-  --accent: #17705a; --accent-soft: #ddefe8; --gain: #17705a;
+  --accent: #17705a; --accent-soft: #ddefe8; --gain: #17705a; --weak: #9a4a12; --weak-soft: #f6e6d8;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
@@ -105,13 +119,13 @@ PAGE = """<meta charset="utf-8">
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --ground: #111715; --surface: #18201d; --ink: #e4ebe8; --muted: #93a29c; --line: #2a3632;
-    --accent: #67c6a6; --accent-soft: #173a2f; --gain: #67c6a6;
+    --accent: #67c6a6; --accent-soft: #173a2f; --gain: #67c6a6; --weak: #e8a56c; --weak-soft: #3d2a1a;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --ground: #111715; --surface: #18201d; --ink: #e4ebe8; --muted: #93a29c; --line: #2a3632;
-  --accent: #67c6a6; --accent-soft: #173a2f; --gain: #67c6a6;
+  --accent: #67c6a6; --accent-soft: #173a2f; --gain: #67c6a6; --weak: #e8a56c; --weak-soft: #3d2a1a;
 }
 body { background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); padding: 28px 16px 40px; }
 main { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
@@ -144,6 +158,8 @@ th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; font-family: var(--sa
 th { color: var(--muted); font: 500 0.72rem var(--sans); letter-spacing: 0.06em; text-transform: uppercase; }
 tr.current td:first-child { color: var(--accent); font-weight: 600; }
 td.best { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+td.weak { background: var(--weak-soft); color: var(--weak); font-weight: 500; }
+#answers-table th:nth-child(2), #answers-table td:nth-child(2) { text-align: right; font-family: var(--mono); }
 footer { color: var(--muted); font-size: 0.85rem; max-width: 65ch; }
 code { font-family: var(--mono); font-size: 0.85em; }
 </style>
@@ -163,7 +179,13 @@ code { font-family: var(--mono); font-size: 0.85em; }
     <p class="count" id="count"></p>
     <div id="tables"></div>
   </section>
-  <footer>Generated from the run files in <code>docs/eval/runs</code> by <code>python -m pipeline.eval.html_report</code>. "HNSW" rows use Qdrant's approximate graph index; every other row searches every vector. A question counts under each source of its expected documents.</footer>
+  <section aria-labelledby="answers-title" id="answers" hidden>
+    <div class="label" id="answers-title">Answers by source · base run</div>
+    <p class="count" id="answers-about"></p>
+    <div class="scroll"><table id="answers-table"></table></div>
+    <p class="count">Recall@10 is the retrieval step the answerer reads from, on the 470 questions that have expected documents. Correct and complete are judged per answer; score is correct × completeness, the leaderboard's number, so a wrong answer scores 0 however complete it is. Shaded cells are the weakest source in each column.</p>
+  </section>
+  <footer>Generated from the run files in <code>docs/eval/runs</code> by <code>python -m pipeline.eval.html_report</code>. "HNSW" rows use Qdrant's approximate graph index; every other row searches every vector. Answer rows come from <code>python -m pipeline.eval.answer_metrics</code>. A question counts under each source of its expected documents.</footer>
 </main>
 <script id="data" type="application/json">{data}</script>
 <script>
@@ -195,6 +217,20 @@ function show(group) {
     }
     const wrap = el("div", undefined, "scroll"); wrap.append(table); out.append(wrap);
   }
+}
+if (data.answers) {
+  const c = data.answers.config, rows = data.answers.rows, table = document.getElementById("answers-table"), head = table.insertRow();
+  const shown = [["recall", "Recall@10", v => v.toFixed(3)], ["correct", "Correct", v => (v * 100).toFixed(1) + "%"],
+                 ["completeness", "Complete", v => (v * 100).toFixed(1) + "%"], ["score", "Score", v => (v * 100).toFixed(1)]];
+  document.getElementById("answers").hidden = false;
+  document.getElementById("answers-about").textContent = rows[0].questions + " questions · " + c.prompt + " · answered by " + c.answerer + " · judged by " + c.judge + " (our judge, not the leaderboard's)";
+  ["Source", "Questions"].concat(shown.map(s => s[1])).forEach(h => head.append(el("th", h)));
+  const weakest = Object.fromEntries(shown.map(([m]) => [m, Math.min(...rows.slice(1).map(r => r[m]).filter(v => v !== null))]));
+  rows.forEach((row, i) => {
+    const tr = table.insertRow(); if (i === 0) tr.className = "current";
+    tr.append(el("td", row.name), el("td", String(row.questions)));
+    shown.forEach(([m, , format]) => tr.append(el("td", row[m] === null ? "n/a" : format(row[m]), i > 0 && row[m] === weakest[m] ? "weak" : "")));
+  });
 }
 for (const group of data.groups) {
   const b = el("button", group.name); b.dataset.id = group.id; b.onclick = () => show(group);

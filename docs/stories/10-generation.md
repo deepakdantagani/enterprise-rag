@@ -980,3 +980,86 @@ read gold documents and still failed.
 
 **Dependencies:** GEN-10a, GEN-9d.
 
+---
+
+## GEN-11a  `answer_rows`: judged answers as a run's `metrics.json`  ✅
+
+**Status:** Done
+
+**As a** reader of the evaluation report,
+**I want to** the judged answers of a run saved as `docs/eval/runs/<run>/metrics.json`, a row for
+all questions and a row per source,
+**so that** answer quality sits in the same committed, generated format as retrieval.
+
+**Why:** the judgments are a jsonl under `data/` (not committed), and the report draws only from
+`metrics.json` files, with no typed numbers. The **base answer run** is retrieval v4 +
+`ANSWER_PROMPT_V2` + `gemma4:26b`, judged by `claude-haiku-4-5`
+(`2026-10-04-answers-v4-gemma4-v2`); v1's answers are not in the report.
+
+**Example with real data** (the base run; all three means are fractions of 1):
+
+```json
+{"group": "overall",           "questions": 500, "means": {"correct": 0.69,  "completeness": 0.755, "score": 0.624}}
+{"group": "source:confluence", "questions": 114, "means": {"correct": 0.526, "completeness": 0.681, "score": 0.447}}
+{"group": "source:none",       "questions": 30,  "means": {"correct": 0.833, "completeness": 0.925, "score": 0.833}}
+```
+
+**Acceptance Criteria**
+```gherkin
+Scenario: a wrong answer
+  Given q2 is judged wrong and 50% complete
+  Then its group's score counts 0 for it and its completeness counts 0.5
+
+Scenario: sources
+  Then a question counts under every source of its expected documents (as the retrieval rows)
+  And the 30 questions with no expected document are the group "source:none"
+
+Scenario: a question with no judgment
+  Then answer_rows raises KeyError
+```
+
+**Dependencies:** GEN-10b (the v2 judgments).
+
+---
+
+## GEN-11b  Answers by source in `report.html`  ✅
+
+**Status:** Done
+
+**As a** reader of the evaluation report,
+**I want to** an "Answers by source" table on the report page: questions, the retrieval recall@10
+the answerer reads from, correct, complete and score, for all questions and each source,
+**so that** a weak source shows as a search problem or an answering problem at a glance.
+
+**Example with real data** (the page's rows, largest source first):
+
+| source | questions | recall@10 | correct | complete | score |
+|---|---|---|---|---|---|
+| All | 500 | 0.834 | 69.0% | 75.5% | 62.4 |
+| confluence | 114 | 0.762 | 52.6% | 68.1% | 44.7 |
+| jira | 100 | 0.845 | 68.0% | 76.9% | 59.1 |
+| slack | 79 | 0.778 | 57.0% | 68.4% | 50.3 |
+| github | 60 | 0.764 | 66.7% | 69.1% | 57.5 |
+| google_drive | 60 | 0.786 | 58.3% | 70.1% | 53.5 |
+| linear | 58 | 0.852 | 67.2% | 77.5% | 61.3 |
+| gmail | 55 | 0.848 | 76.4% | 73.9% | 65.8 |
+| hubspot | 34 | 0.853 | 70.6% | 79.4% | 67.6 |
+| no expected document | 30 | n/a | 83.3% | 92.5% | 83.3 |
+| fireflies | 25 | 0.720 | 64.0% | 59.3% | 52.5 |
+
+Recall@10 is on the 470 questions with expected documents; the answer columns are on all 500.
+The weakest source in each column is shaded.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: the answers section
+  Given html_report(..., answers="<run>")
+  Then the page embeds the run's config and one row per group: All first, then sources by question count
+  And each row carries the last retrieval step's recall@10 for its group (none for "no expected document")
+
+Scenario: no answer run
+  Then the embedded "answers" is null and the section stays hidden
+```
+
+**Dependencies:** GEN-11a; EVAL-5c (`html_report`).
+
