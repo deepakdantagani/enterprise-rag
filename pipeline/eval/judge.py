@@ -1,4 +1,4 @@
-"""GEN-9a, GEN-9b: the judge, read top to bottom: correctness (yes or no), then completeness (share of facts).
+"""GEN-9a, GEN-9b, GEN-9c: the judge, read top to bottom: correctness, completeness, then the model and the runner.
 
 The leaderboard scores an answer as correct (0 or 1) x completeness (%). For qst_0009 the judge
 makes 6 calls:
@@ -10,7 +10,9 @@ Correctness is LlamaIndex's CorrectnessEvaluator with the benchmark's prompt; it
 is used at its two ends only (yes 5.0, no 1.0, passing at 4.0). Completeness is the one
 evaluator we write, because LlamaIndex has none that checks one statement at a time; its reply
 is Claude's structured output (astructured_predict sends FactVerdict as the output schema), so
-no parser is needed. The prompts are in judge_prompts.py.
+no parser is needed. The prompts are in judge_prompts.py. LlamaIndex's BatchEvalRunner runs both
+evaluators over many questions, 8 at a time (GEN-9c); examples/judge_one_question.py shows the
+whole thing as one flat script.
 
     >>> aligned('{"reason": "Same package terms.", "aligned": "yes"}')
     (5.0, 'Same package terms.')
@@ -21,7 +23,7 @@ import json
 import re
 from typing import Annotated, Any, List, Optional, Sequence, Tuple
 
-from llama_index.core.evaluation import BaseEvaluator, CorrectnessEvaluator, EvaluationResult
+from llama_index.core.evaluation import BaseEvaluator, BatchEvalRunner, CorrectnessEvaluator, EvaluationResult
 from llama_index.core.llms import LLM
 from pydantic import BaseModel, Field
 
@@ -87,3 +89,21 @@ class CompletenessEvaluator(BaseEvaluator):
         return EvaluationResult(query=query, response=response, score=share, passing=share == 1.0,
                                 feedback=json.dumps([{"fact": fact, "contained": found}
                                                      for fact, found in zip(check.facts, contained)]))
+
+
+# 3. The judge model and the runner
+
+JUDGE = "claude-haiku-4-5"  # about $2 to $3 for the 500 answers; the official judge is gpt-5.4 (GEN-9f compares)
+MAX_REPLY_TOKENS = 256  # caps the reply only: a correctness reply is about 50 tokens
+QUESTIONS_AT_ONCE = 8
+
+
+def judge_llm(model: str = JUDGE, api_key: Optional[str] = None) -> LLM:
+    from llama_index.llms.anthropic import Anthropic
+    return Anthropic(model=model, temperature=0, max_tokens=MAX_REPLY_TOKENS, api_key=api_key)
+
+
+def judge_runner(llm: LLM, workers: int = QUESTIONS_AT_ONCE) -> BatchEvalRunner:
+    """Both judges over many questions: pass correctness={"reference": golds} and completeness={"facts": facts}."""
+    return BatchEvalRunner({"correctness": correctness_judge(llm), "completeness": CompletenessEvaluator(llm)},
+                           workers=workers)

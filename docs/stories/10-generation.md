@@ -710,9 +710,9 @@ no judge call made yet.
 **Dependencies:** GEN-9a (module). `llama-index-core` `BaseEvaluator`, `EvaluationResult`,
 `LLM.astructured_predict`.
 
-## GEN-9c  `judge_llm` and `judge_runner`  ⬜
+## GEN-9c  `judge_llm` and `judge_runner`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer,
 **I want to** the judge model and LlamaIndex's `BatchEvalRunner` wired in two small functions,
@@ -737,6 +737,17 @@ correctness calls and 6 fact calls.
 tokens, a correctness reply about 50); a reply cut at the cap must fail, not score. New
 dependency `llama-index-llms-anthropic`; the key is `ANTHROPIC_API_KEY` in `.env`, never
 printed. The model is a parameter, so `qwen3:30b` or another judge can be compared later.
+
+**Measured** (2026-10-04): `judge_llm` and `judge_runner` in `pipeline/eval/judge.py`, which
+now reads top to bottom (correctness, completeness, model and runner) with the two prompts in
+`judge_prompts.py`. `BatchEvalRunner` gives each evaluator its own inputs through
+`correctness={"reference": [...]}, completeness={"facts": [...]}` (checked against the installed
+`llama-index-core`); with two questions, each correctness call holds only its own gold answer
+and each fact call only its own question's facts (tested). `llama-index-llms-anthropic` 0.12.2
+added (with `anthropic` 1.11.0). `examples/judge_one_question.py` is the whole judge for
+qst_0009 as one flat script, 6 calls; it has not been run yet (paid, a fraction of a cent), so
+the structured call, temperature 0 and the reply cap are still unconfirmed against Claude.
+5 new tests, no network.
 
 **Dependencies:** GEN-9a, GEN-9b. `llama-index-core` `BatchEvalRunner`.
 
