@@ -11,9 +11,9 @@ sys.path.insert(0, str(ROOT))
 
 from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 
-from pipeline.eval import judge  # noqa: E402
-from pipeline.eval.judge import (CORRECTNESS_TEMPLATE, FACT_TEMPLATE, CompletenessEvaluator, FactCheck,  # noqa: E402
-                                 FactVerdict, aligned, correctness_judge)
+from pipeline.eval import judge, judge_prompts  # noqa: E402
+from pipeline.eval.judge import CompletenessEvaluator, FactCheck, FactVerdict, aligned, correctness_judge  # noqa: E402
+from pipeline.eval.judge_prompts import CORRECTNESS_TEMPLATE, FACT_TEMPLATE  # noqa: E402
 
 BENCHMARK_PROMPTS = ROOT / "tests/fixtures/benchmark/answer_evaluation.py"  # the judge's prompt file, unchanged
 
@@ -164,7 +164,8 @@ class TheBenchmarksPrompt(unittest.TestCase):
 
 class Doctests(unittest.TestCase):
     def test_doctests(self):
-        self.assertEqual(doctest.testmod(judge).failed, 0)
+        for module in (judge, judge_prompts):
+            self.assertEqual(doctest.testmod(module).failed, 0)
 
 
 if __name__ == "__main__":
