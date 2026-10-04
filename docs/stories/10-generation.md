@@ -1201,3 +1201,240 @@ Scenario: the page
 
 **Dependencies:** GEN-12b.
 
+
+---
+
+## GEN-13  Prompt v3: documents in tags, quotes before the answer
+
+`deepseek-v4-pro` on prompt v2 scored 67.97, and 52 of its 133 wrong answers had read every gold
+document, so those 52 were lost by the prompt, not by search. Reading them showed three causes:
+a count or comparison worked out from only some of the documents, two documents that disagree
+with no rule for which one to trust, and "The documents do not say" although a document did say
+(137 answers opened that way). Prompt v3 applies Anthropic's published prompting guidance
+(platform.claude.com, "Claude prompting best practices") to the same model and the same 10
+documents. The benchmark's own answer and judge prompts were not read to shape it, and no rule is
+keyed to a benchmark question.
+
+| practice | in v3 |
+|---|---|
+| give the reason behind each rule | each of the 7 rules ends with its reason |
+| examples | 3 invented office-facilities examples (question, quotes, answer), none from the corpus |
+| XML tags | `<documents>`, `<document>`, `<examples>`, `<question>`, `<quotes>`, `<answer>` |
+| long documents first, question last | documents open the prompt, the question closes it |
+| per-document metadata | `<source>`, `<title>`, `<content>` per document, no document numbers |
+| quotes before the answer | the model copies the sentences that answer the question, then answers from them |
+| say what to do, not what to avoid | rules are worded as the wanted behaviour |
+| describe the reader | "an employee who will act on your answer and sees only the answer" |
+
+Left out: a self-check pass and prompt chaining (a second LLM call per question).
+
+---
+
+## GEN-13a  `document_tags` and `sources_by_id`  ✅
+
+**Status:** Done
+
+**As a** developer writing prompt v3,
+**I want to** each document shown to the answerer as a `<document>` with its source system, its
+title and its content,
+**so that** the answerer can tell a Jira ticket from a Slack thread and no answer says "Document 3".
+
+**Example:** v2 showed each document as `Document 3: <title>`, and 46 deepseek answers repeated
+"Document n", which means nothing to a reader. v3 shows this (the document is from the prompt's
+own invented example, not from the corpus):
+
+```
+<document>
+<source>jira</source>
+<title>FAC-12</title>
+<content>
+2025-03-03. Badge reader at the Austin office failed. Channel: email.
+</content>
+</document>
+```
+
+**What changed:** `document_tags(source, title, content)`; `sources_by_id(parquet, doc_ids)`
+reads `source_type` from the corpus, because the replayed chunks carry no source;
+`FullDocuments(..., sources=...)` uses the tags when sources are given (a live question falls
+back to the chunk's own metadata) and the numbered block otherwise, so v2 is unchanged.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: a tagged document
+  Then document_tags returns one <document> with <source>, <title> and <content>, and no number
+
+Scenario: v2 is unchanged
+  Given FullDocuments without sources
+  Then each document is the numbered block of GEN-2a
+```
+
+**Dependencies:** GEN-2c.
+
+---
+
+## GEN-13b  `answer_of` and `quotes_of`  ✅
+
+**Status:** Done
+
+**As a** developer saving v3 answers,
+**I want to** the answer and the quotes split out of the model's reply,
+**so that** the judge and the reader get the answer only, and the quotes are kept for review.
+
+**Example with real data:** the reply is `<quotes>…</quotes><answer>…</answer>`. For qst_0351 the
+quotes ran to 32,000 characters and the reply ended before `<answer>` began.
+
+| reply | `answer_of` | `quotes_of` |
+|---|---|---|
+| `<quotes>A</quotes><answer>B</answer>` | `B` | `A` |
+| `<quotes>A</quotes><answer>B` (cut off) | `B` | `A` |
+| `<quotes>A` (cut off in the quotes) | empty | `A` |
+| `B` (no tags, as v2) | `B` | empty |
+
+**What changed:** `answer_of`, `quotes_of`; `answer_row` saves `answer_of(...)` and adds a
+`quotes` field when there are quotes.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: a reply cut off inside the quotes
+  Then the answer is empty, never the quotes
+
+Scenario: a reply without tags
+  Then the whole reply is the answer
+```
+
+**Dependencies:** GEN-2d.
+
+---
+
+## GEN-13c  `ANSWER_PROMPT_V3`  ✅
+
+**Status:** Done
+
+**As a** developer aiming for the top 5,
+**I want to** an answer prompt whose rules are general and each carry their reason,
+**so that** the answers that already read every gold document stop being lost.
+
+**The 7 rules, in short** (each is followed in the prompt by its reason):
+1. Take every fact from the documents.
+2. Answer every part of the question and copy exact values (names, numbers, dates, IDs, config keys).
+3. First find the one document, or few, the question is about, even if the question describes it
+   in other words; leave out look-alike documents about a different customer, project or system.
+4. For a list or "all", include every matching item. An answer that no single document states (a
+   count, a total, a comparison, an order, an earliest or latest) is worked out, and given with
+   the items it is based on.
+5. When two documents give different values for the same thing, answer with the newer or more
+   authoritative one (the `<source>` says what each document is) and mention the other briefly.
+6. Start with the answer. "The documents do not say" only when no document answers the question.
+7. Include every detail that answers the question, as plain prose, naming a document by its title
+   or source.
+
+**What changed:** `ANSWER_PROMPT_V3` in `pipeline/eval/answers.py`; `ANSWER_PROMPT` stays v2;
+`answer_engine(..., prompt=, sources=)`.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: the layout
+  Then the documents come first and the question last
+  And the prompt asks for <quotes> then <answer>
+  And it holds three examples, none naming a benchmark document
+
+Scenario: v2 is kept
+  Then ANSWER_PROMPT is ANSWER_PROMPT_V2
+```
+
+**Dependencies:** GEN-13a, GEN-13b.
+
+---
+
+## GEN-13d  v3 answers and their score  ✅
+
+**Status:** Done (2026-10-04). **77.50** against 67.97 for prompt v2 on our judge: +9.52, paired
+bootstrap 95% interval +6.63 to +12.47, a real gain.
+
+**As a** developer aiming for the top 5,
+**I want to** the same 500 questions answered by the same model from the same 10 documents on
+prompt v3, and judged by the same judge,
+**so that** the gain of the prompt alone is known.
+
+**Trial first:** the 52 questions that were wrong on v2 with every gold document read were
+answered on v3 and judged before the full run: 38 of 52 became correct (about $1).
+
+**Measured**
+
+| | prompt v2 | prompt v3 |
+|---|---|---|
+| overall score | 67.97 | 77.50 |
+| answers judged correct | 367 | 404 |
+| mean completeness | 77.98% | 84.56% |
+| opens with "The documents do not say" | 137 | 10 |
+| says "Document n" | 46 | 0 |
+| uses markdown | 9 | 82 |
+| empty answers | 0 | 3 |
+
+49 answers went from wrong to right, 12 from right to wrong. Every question type gained or held:
+`completeness` +25.4, `miscellaneous` +15.7, `project_related` +12.2, `intra_document_reasoning`
++10.9. By source only fireflies fell (65.7 to 59.0, 25 questions).
+
+**Known problems, not fixed here**
+- **3 empty answers** (qst_0351, qst_0358, qst_0362): the quotes used the whole output and the
+  answer never began. At 4,096 output tokens there were 12; `max_tokens` was raised to 8,192 and
+  the 12 were re-run, 9 recovered. The judge rejects an empty answer, so these 3 are recorded as
+  wrong with completeness 0 and the reason "Not judged: the answer is empty". The fix is a cap on
+  the quotes in the prompt, a later story.
+- **Markdown is back** in 82 answers (9 on v2).
+- 77.50 is our judge (`claude-haiku-4-5`), not the leaderboard's `gpt-5.4`; GEN-9f is still open.
+
+**Run notes:** about 50 minutes at about 6 s per question, off-peak (a Sunday). Estimated cost
+$8.50 for answers and judge, $0.30 for the re-run of 12; the actual bills were not read.
+
+**Decision:** on the leaderboard as read on 2026-10-04, 77.50 would sit 7th, 2.76 under the 5th
+place (80.26). What is left is search: of the 125 semantic questions, 32 never read their gold
+document and none of those is correct, and `project_related` (53.4) and `completeness` (62.0)
+need several documents per question.
+
+**What changed:** `answer_run` and `judge` point at `v4-deepseek-v4-pro-v3`; `answer_metrics`
+gains the v3 run; `html_report` shows three answer runs, each named by `config.name` with what
+changed in `config.change`.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: only the prompt differs
+  Then the answerer is deepseek-v4-pro at temperature 0 with thinking disabled
+  And every question is answered from the same 10 documents as the v2 run
+  And the v2 answers and judgments are unchanged
+
+Scenario: the comparison is recorded
+  Then docs/eval/results.md holds both scores, the interval, the flips, and the change by type and source
+  And report.html shows the three answer runs with their gains
+```
+
+**Dependencies:** GEN-13c, GEN-12c.
+
+---
+
+## GEN-13e  Ask page on prompt v3  ✅
+
+**Status:** Done
+
+**As a** person asking a question on the ask page,
+**I want to** the v3 answer without the quotes and without half-written tags while it streams,
+**so that** the page shows what the benchmark run would answer.
+
+**What changed:** the ask page builds its engine with `ANSWER_PROMPT_V3`; `streamed_answer(text)`
+is `answer_of` with a trailing unfinished tag removed (`...scheduled for <` shows as
+`...scheduled for`); while the quotes are being written the stage line reads "Copying the
+sentences that answer the question".
+
+**Known problem:** on `gemma4:26b` through Ollama the reply arrives as one piece, so nothing
+streams. This was already so on v2 and is not fixed here.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: the quotes are still being written
+  Then the answer card is empty and the stage line says the sentences are being copied
+
+Scenario: a tag is half written
+  Then the half-written tag is not shown
+```
+
+**Dependencies:** GEN-13c, GEN-8b.

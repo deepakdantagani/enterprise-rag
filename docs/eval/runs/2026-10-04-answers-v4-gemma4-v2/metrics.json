@@ -1,5 +1,7 @@
 {
  "config": {
+  "name": "gemma4:26b \u00b7 prompt v2",
+  "change": "Base: 10 whole documents from v4, prompt v2",
   "retrieval": "v4 (titles, voyage-4-lite + BM25, RRF, top 100 reranked by rerank-3-lite)",
   "documents_read": 10,
   "prompt": "ANSWER_PROMPT_V2",

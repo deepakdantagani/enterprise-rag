@@ -523,3 +523,54 @@ The difference is +5.54, with a paired bootstrap 95% interval of +1.90 to +9.15:
 
 deepseek's 133 wrong answers by gold documents among the 10 read: all 52, some 23, none 55,
 question has no gold document 3.
+
+## Prompt: v3 against v2 on deepseek-v4-pro, our judge (claude-haiku-4-5)
+
+**Not a leaderboard score.** Same 500 questions, same 10 documents per question, same model
+(`deepseek-v4-pro`, temperature 0, thinking off), same judge; only the prompt changed
+(GEN-13). v3 puts each document in tags with its source and title, gives each rule its reason,
+and asks for the quotes before the answer. Run 2026-10-04.
+
+| | prompt v2 | prompt v3 |
+|---|---|---|
+| **overall score** | 67.97 | **77.50** |
+| answers judged correct | 367 | 404 |
+| mean completeness | 77.98% | 84.56% |
+| opens with "The documents do not say" | 137 | 10 |
+| says "Document n" | 46 | 0 |
+| uses markdown | 9 | 82 |
+| empty answers | 0 | 3 |
+
+The difference is +9.52, with a paired bootstrap 95% interval of +6.63 to +12.47: **a real gain**.
+49 answers went from wrong to right and 12 from right to wrong. The 3 empty answers (the quotes
+used the whole 8,192-token output) are counted as wrong.
+
+| type | questions | v2 | v3 | change |
+|---|---|---|---|---|
+| completeness | 20 | 36.6 | 62.0 | +25.4 |
+| miscellaneous | 20 | 63.3 | 79.0 | +15.7 |
+| project_related | 40 | 41.2 | 53.4 | +12.2 |
+| intra_document_reasoning | 40 | 84.7 | 95.6 | +10.9 |
+| basic | 175 | 75.4 | 84.7 | +9.3 |
+| semantic | 125 | 57.6 | 66.3 | +8.8 |
+| conflicting_info | 20 | 78.1 | 84.0 | +6.0 |
+| constrained | 30 | 77.4 | 82.2 | +4.8 |
+| high_level | 10 | 67.5 | 70.0 | +2.5 |
+| info_not_found | 20 | 100.0 | 100.0 | 0.0 |
+
+| source | questions | v2 | v3 | change |
+|---|---|---|---|---|
+| confluence | 114 | 57.6 | 65.1 | +7.5 |
+| jira | 100 | 65.6 | 79.6 | +14.0 |
+| slack | 79 | 57.2 | 69.1 | +11.9 |
+| github | 60 | 60.6 | 72.9 | +12.3 |
+| google_drive | 60 | 58.2 | 72.3 | +14.1 |
+| linear | 58 | 68.2 | 78.7 | +10.5 |
+| gmail | 55 | 70.7 | 82.0 | +11.3 |
+| hubspot | 34 | 65.2 | 77.7 | +12.5 |
+| fireflies | 25 | 65.7 | 59.0 | −6.7 |
+| no expected document | 30 | 89.2 | 90.0 | +0.8 |
+
+On the leaderboard as read on 2026-10-04 (5th place 80.26), 77.50 would sit 7th. Of the 125
+semantic questions, 93 read their gold document and 85 of those are correct; 32 did not and none
+is correct.

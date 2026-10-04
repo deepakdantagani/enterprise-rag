@@ -69,6 +69,31 @@ class BenchmarkHtml(unittest.TestCase):
         self.assertEqual(benchmark_html(None, "", []), "")
 
 
+class StreamedAnswer(unittest.TestCase):
+    """GEN-13e: v3 writes its quotes first; the page shows only the answer part as it arrives."""
+
+    def test_nothing_is_shown_while_the_quotes_are_written(self):
+        self.assertEqual(ask_page.streamed_answer('<quotes>\n"- Overall: At Risk" (Weekly'), "")
+
+    def test_the_answer_is_shown_as_it_is_written(self):
+        self.assertEqual(ask_page.streamed_answer("<quotes>none</quotes>\n<answer>\nThree upd"), "Three upd")
+
+    def test_a_half_written_closing_tag_is_not_shown(self):
+        self.assertEqual(ask_page.streamed_answer("<quotes>none</quotes><answer>Three updates.</ans"), "Three updates.")
+
+    def test_a_finished_response_shows_its_answer(self):
+        self.assertEqual(ask_page.streamed_answer("<quotes>none</quotes><answer>Three updates.</answer>"), "Three updates.")
+
+    def test_the_status_names_the_quotes_stage(self):
+        self.assertEqual(ask_page.stage_of("", 10), "Reading 10 documents before writing")
+        self.assertEqual(ask_page.stage_of("<quotes>\n", 10), "Copying the sentences that answer the question")
+        self.assertEqual(ask_page.stage_of("<quotes>none</quotes><answer>Th", 10), "Writing the answer")
+
+    def test_the_page_answers_with_v3(self):
+        from pipeline.eval import answers
+        self.assertIs(ask_page.PROMPT, answers.ANSWER_PROMPT_V3)
+
+
 class TokensWithTicks(unittest.TestCase):
     def test_ticks_while_the_llm_is_silent_then_its_tokens_in_order(self):
         import time

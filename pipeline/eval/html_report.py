@@ -24,7 +24,8 @@ METRICS = ("hit_rate", "recall", "precision", "mrr", "ndcg")
 KS = (10, 5, 20)
 TITLE = "EnterpriseRAG Retrieval Scoreboard"
 ANSWERS = ("2026-10-04-answers-v4-gemma4-v2",  # GEN-11b: the base answer run (retrieval v4, ANSWER_PROMPT_V2)
-           "2026-10-04-answers-v4-deepseek-v4-pro-v2")  # GEN-12b: the same documents and prompt on deepseek-v4-pro
+           "2026-10-04-answers-v4-deepseek-v4-pro-v2",  # GEN-12b: the same documents and prompt on deepseek-v4-pro
+           "2026-10-04-answers-v4-deepseek-v4-pro-v3")  # GEN-13d: the same model and documents on ANSWER_PROMPT_V3
 VERSIONS = (  # each version is one change on the one before, scored exactly on the 470 questions
     ("v0", "2026-09-27-hybrid__voyage_4__bm25-dense-exact", "Dense search: voyage-4 vectors"),
     ("v1", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact", "+ BM25, fused by RRF"),
@@ -195,10 +196,10 @@ code { font-family: var(--mono); font-size: 0.85em; }
     <div id="tables"></div>
   </section>
   <section aria-labelledby="answers-title" id="answers" hidden>
-    <div class="label" id="answers-title">Answer score by answering model</div>
+    <div class="label" id="answers-title">Answer score by answer run</div>
     <div class="versions" id="answer-cards"></div>
     <div class="label">Answers by source and by question type</div>
-    <nav id="answer-runs" aria-label="Answering model"></nav>
+    <nav id="answer-runs" aria-label="Answer run"></nav>
     <nav id="answer-views" aria-label="Breakdown"></nav>
     <p class="count" id="answers-about"></p>
     <div class="scroll"><table id="answers-table"></table></div>
@@ -244,7 +245,7 @@ function showAnswers(run, view) {
   answerRun = run; answerView = view;
   document.querySelectorAll("#answer-views button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === view));
   const c = run.config, rows = run[view], table = document.getElementById("answers-table"); table.replaceChildren();
-  document.querySelectorAll("#answer-runs button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === c.answerer));
+  document.querySelectorAll("#answer-runs button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === c.name));
   document.getElementById("answers-about").textContent = rows[0].questions + " questions · " + c.prompt + " · answered by " + c.answerer + " · judged by " + c.judge + " (our judge, not the leaderboard's)";
   const head = table.insertRow(); [view === "rows" ? "Source" : "Question type", "Questions"].concat(shown.map(s => s[1])).forEach(h => head.append(el("th", h)));
   const weakest = Object.fromEntries(shown.map(([m]) => [m, Math.min(...rows.slice(1).map(r => r[m]).filter(v => v !== null))]));
@@ -261,11 +262,11 @@ if (data.answers.length) {
     const card = el("div", undefined, "version" + (run === latest ? " current" : ""));
     const figure = el("div", (run.score * 100).toFixed(1), "figure"); figure.append(el("small", "  " + (run.rows[0].correct * 100).toFixed(1) + "% correct"));
     const bar = el("div", undefined, "bar"); const fill = el("span"); fill.style.width = (run.score * 100) + "%"; bar.append(fill);
-    card.append(el("div", run.config.answerer + (run === latest ? " · current" : ""), "label"), figure, bar,
-                el("div", i === 0 ? "Base: 10 whole documents from v4, prompt v2" : "Same documents and prompt, a stronger model", "about"),
-                el("div", run.gain === null ? "baseline" : (run.gain < 0 ? "\u2212" + (-run.gain * 100).toFixed(1) : "+" + (run.gain * 100).toFixed(1)) + " over " + data.answers[i - 1].config.answerer, "gain"));
+    card.append(el("div", run.config.name + (run === latest ? " · current" : ""), "label"), figure, bar,
+                el("div", run.config.change, "about"),
+                el("div", run.gain === null ? "baseline" : (run.gain < 0 ? "\u2212" + (-run.gain * 100).toFixed(1) : "+" + (run.gain * 100).toFixed(1)) + " over " + data.answers[i - 1].config.name, "gain"));
     document.getElementById("answer-cards").append(card);
-    const b = el("button", run.config.answerer); b.dataset.id = run.config.answerer; b.onclick = () => showAnswers(run, answerView);
+    const b = el("button", run.config.name); b.dataset.id = run.config.name; b.onclick = () => showAnswers(run, answerView);
     document.getElementById("answer-runs").append(b);
   });
   [["rows", "By source"], ["types", "By question type"]].forEach(([id, name]) => {

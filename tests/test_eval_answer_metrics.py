@@ -88,12 +88,29 @@ class RealDeepSeekAnswers(unittest.TestCase):
         self.assertEqual((saved["config"]["prompt"], saved["config"]["answerer"]), ("ANSWER_PROMPT_V2", "deepseek-v4-pro"))
 
 
+@unittest.skipUnless((answer_metrics.RUNS_DIR / answer_metrics.V3_RUN / "metrics.json").is_file(), "no v3 answer metrics yet")
+class RealV3Answers(unittest.TestCase):
+    def test_prompt_v3_is_77_50_over_the_same_500_questions(self):  # GEN-13d: 3 answers are empty and count as wrong
+        saved = json.loads((answer_metrics.RUNS_DIR / answer_metrics.V3_RUN / "metrics.json").read_text())
+        overall = saved["rows"][0]
+        self.assertEqual((overall["group"], overall["questions"], round(overall["means"]["score"] * 100, 2)),
+                         ("overall", 500, 77.5))
+        self.assertEqual((saved["config"]["prompt"], saved["config"]["answerer"]), ("ANSWER_PROMPT_V3", "deepseek-v4-pro"))
+
+
 class EveryRun(unittest.TestCase):
-    def test_the_runs_are_gemma_then_deepseek_on_the_same_prompt_and_judge(self):
+    def test_the_runs_are_gemma_then_deepseek_then_prompt_v3_on_the_same_judge(self):
         self.assertEqual([(name, run.config["answerer"], run.config["prompt"], run.config["judge"])
                           for name, run in answer_metrics.ANSWER_RUNS.items()],
                          [("2026-10-04-answers-v4-gemma4-v2", "gemma4:26b", "ANSWER_PROMPT_V2", "claude-haiku-4-5"),
-                          ("2026-10-04-answers-v4-deepseek-v4-pro-v2", "deepseek-v4-pro", "ANSWER_PROMPT_V2", "claude-haiku-4-5")])
+                          ("2026-10-04-answers-v4-deepseek-v4-pro-v2", "deepseek-v4-pro", "ANSWER_PROMPT_V2", "claude-haiku-4-5"),
+                          ("2026-10-04-answers-v4-deepseek-v4-pro-v3", "deepseek-v4-pro", "ANSWER_PROMPT_V3", "claude-haiku-4-5")])
+
+    def test_each_run_has_a_name_and_the_one_thing_it_changed(self):  # GEN-13d: two runs share an answerer
+        self.assertEqual([(run.config["name"], run.config["change"]) for run in answer_metrics.ANSWER_RUNS.values()],
+                         [("gemma4:26b · prompt v2", "Base: 10 whole documents from v4, prompt v2"),
+                          ("deepseek-v4-pro · prompt v2", "Same documents and prompt, a stronger model"),
+                          ("deepseek-v4-pro · prompt v3", "Same model and documents, prompt v3: quotes before the answer")])
         self.assertEqual(answer_metrics.RUN, answer_metrics.RUNS_DIR / "2026-10-04-answers-v4-gemma4-v2")
 
 

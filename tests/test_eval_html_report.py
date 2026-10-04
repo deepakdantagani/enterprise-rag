@@ -37,7 +37,8 @@ def write_answer_metrics(runs_dir, run_name, answerer="gemma4:26b", lift=0.0):
                                               ("source:slack", 1, 1.0), ("type:basic", 4, 0.5), ("type:semantic", 1, 1.0))]
     (runs_dir / run_name).mkdir(parents=True)
     (runs_dir / run_name / "metrics.json").write_text(json.dumps(
-        {"config": {"prompt": "ANSWER_PROMPT_V2", "answerer": answerer, "judge": "claude-haiku-4-5"}, "rows": rows}))
+        {"config": {"name": f"{answerer} · prompt v2", "change": "one change", "prompt": "ANSWER_PROMPT_V2",
+                    "answerer": answerer, "judge": "claude-haiku-4-5"}, "rows": rows}))
 
 
 def embedded(page):
@@ -102,7 +103,8 @@ class HtmlReport(unittest.TestCase):
         write_answer_metrics(self.runs_dir, "run-answers")
         answers = embedded(html_report([("1. Dense", "exact", "run-dense"), ("2. RRF", "exact", "run-rrf")],
                                        self.runs_dir, "Retrieval", answers=["run-answers"]))["answers"][0]
-        self.assertEqual(answers["config"], {"prompt": "ANSWER_PROMPT_V2", "answerer": "gemma4:26b", "judge": "claude-haiku-4-5"})
+        self.assertEqual(answers["config"], {"name": "gemma4:26b · prompt v2", "change": "one change", "prompt": "ANSWER_PROMPT_V2",
+                          "answerer": "gemma4:26b", "judge": "claude-haiku-4-5"})
         self.assertEqual(answers["rows"], [
             {"name": "All", "questions": 5, "recall": 0.71, "correct": 0.6, "completeness": 0.75, "score": 0.45},
             {"name": "jira", "questions": 3, "recall": 0.71, "correct": 0.333, "completeness": 0.75, "score": 0.25},
@@ -150,11 +152,20 @@ class RealV1Report(unittest.TestCase):
         from pipeline.eval.html_report import ANSWERS
         runs = embedded(html_report(REPORT_STEPS, RUNS, "v4", answers=ANSWERS))["answers"]
         self.assertEqual([(run["config"]["answerer"], run["score"], run["gain"]) for run in runs],
-                         [("gemma4:26b", 0.624, None), ("deepseek-v4-pro", 0.68, 0.056)])  # the gain of the shown scores
+                         [("gemma4:26b", 0.624, None), ("deepseek-v4-pro", 0.68, 0.056),  # the gain of the shown scores
+                          ("deepseek-v4-pro", 0.775, 0.095)])  # GEN-13d: prompt v3
+        self.assertEqual([run["config"]["name"] for run in runs],
+                         ["gemma4:26b · prompt v2", "deepseek-v4-pro · prompt v2", "deepseek-v4-pro · prompt v3"])
         rows = runs[0]["rows"]
         self.assertEqual([(row["name"], row["questions"], row["recall"], row["score"]) for row in rows[:2]],
                          [("All", 500, 0.834, 0.624), ("confluence", 114, rows[1]["recall"], 0.447)])
         self.assertEqual(min(rows, key=lambda row: row["score"])["name"], "confluence")
+
+    def test_the_page_labels_a_run_by_its_name_and_its_change(self):  # GEN-13d
+        page = html_report(REPORT_STEPS, RUNS, "v4")
+        self.assertIn("run.config.name", page)
+        self.assertIn("run.config.change", page)
+        self.assertNotIn("Same documents and prompt, a stronger model", page)  # now in each run's config
 
     def test_the_report_is_the_voyage_4_lite_chain_with_v4_last(self):
         rows = embedded(html_report(REPORT_STEPS, RUNS, "v4"))["tables"]["overall"]["10"]
