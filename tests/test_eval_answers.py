@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -147,6 +148,30 @@ class AnswerRow(unittest.TestCase):
                          ("gemma4:26b", 0.0, False, 40_960))
 
 
+class DeepSeekAnswerer(unittest.TestCase):
+    """GEN-12a: the same documents and prompt on a stronger model; only the model differs from gemma4:26b."""
+
+    def setUp(self):
+        self.llm = answers.deepseek_answerer_llm(api_key="test-key")
+
+    def test_it_is_deepseek_v4_pro_deterministic_like_the_local_answerer(self):
+        self.assertEqual((self.llm.model, self.llm.temperature), ("deepseek-v4-pro", 0.0))
+
+    def test_thinking_is_off_as_for_the_local_answerer(self):
+        self.assertEqual(self.llm.additional_kwargs, {"extra_body": {"thinking": {"type": "disabled"}}})
+
+    def test_the_largest_top_ten_fits_in_one_call_with_room_for_a_long_answer(self):
+        self.assertEqual((self.llm.context_window, self.llm.max_tokens), (128_000, 2_048))
+
+    def test_the_key_comes_from_the_environment(self):
+        with mock.patch.dict("os.environ", {"DEEPSEEK_API_KEY": "from-env"}):
+            self.assertEqual(answers.deepseek_answerer_llm().api_key, "from-env")
+
+    def test_the_answer_run_answers_with_it(self):
+        from pipeline.eval import answer_run
+        self.assertIs(answer_run.ANSWERER_LLM, answers.deepseek_answerer_llm)
+
+
 class AnswerPromptVersions(unittest.TestCase):
     """GEN-10a: v1 is kept as scored (62.11); v2 changes rules 3, 5, 6 and 7."""
     v1, v2 = answers.ANSWER_PROMPT_V1.template, answers.ANSWER_PROMPT_V2.template
@@ -181,7 +206,7 @@ class AnswerPromptVersions(unittest.TestCase):
 
     def test_v2_answers_go_to_their_own_file_so_the_v1_answers_are_kept(self):
         from pipeline.eval import answer_run
-        self.assertEqual(answer_run.ANSWERS.name, "v4-gemma4-v2.jsonl")
+        self.assertEqual(answer_run.ANSWERS.name, "v4-deepseek-v4-pro-v2.jsonl")  # GEN-12a: gemma's stay in v4-gemma4-v2.jsonl
 
 
 class SaveAnswers(unittest.TestCase):

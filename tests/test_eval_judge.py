@@ -169,9 +169,9 @@ def jsonl(path, rows):
 
 
 class JudgedFiles(unittest.TestCase):
-    def test_the_judge_reads_the_v2_answers_and_keeps_the_v1_judgments(self):
+    def test_the_judge_reads_the_deepseek_answers_and_keeps_the_gemma_judgments(self):
         self.assertEqual((judge.ANSWERS.name, judge.JUDGMENTS.name),
-                         ("v4-gemma4-v2.jsonl", "v4-gemma4-v2__claude-haiku-4-5.jsonl"))
+                         ("v4-deepseek-v4-pro-v2.jsonl", "v4-deepseek-v4-pro-v2__claude-haiku-4-5.jsonl"))
 
 
 class Main(unittest.TestCase):
