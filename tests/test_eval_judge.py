@@ -16,9 +16,9 @@ sys.path.insert(0, str(ROOT))
 from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 
 from pipeline.eval import judge, judge_prompts  # noqa: E402
-from pipeline.eval.judge import CompletenessEvaluator, FactCheck, FactVerdict, aligned  # noqa: E402
+from pipeline.eval.judge import (CompletenessEvaluator, CorrectnessCheck, CorrectnessVerdict, FactCheck, FactVerdict,  # noqa: E402
+                                 StructuredCorrectnessEvaluator)
 from pipeline.eval.judge_prompts import CORRECTNESS_TEMPLATE, FACT_TEMPLATE  # noqa: E402
-from llama_index.core.evaluation import CorrectnessEvaluator  # noqa: E402
 
 BENCHMARK_PROMPTS = ROOT / "tests/fixtures/benchmark/answer_evaluation.py"  # the judge's prompt file, unchanged
 
@@ -50,57 +50,57 @@ class RecordingLLM(CustomLLM):
         raise NotImplementedError
 
 
-class Aligned(unittest.TestCase):
-    def test_yes_is_the_top_score_with_the_judges_reason(self):
-        self.assertEqual(aligned('{"reason": "Same package terms.", "aligned": "yes"}'), (5.0, "Same package terms."))
-
-    def test_no_is_the_bottom_score(self):
-        self.assertEqual(aligned('{"reason": "Different incident.", "aligned": "no"}'), (1.0, "Different incident."))
-
-    def test_json_inside_a_code_fence_is_read(self):
-        self.assertEqual(aligned('```json\n{"reason": "ok", "aligned": "Yes"}\n```'), (5.0, "ok"))
-
-    def test_a_reply_without_the_json_raises(self):
-        with self.assertRaises(ValueError):
-            aligned("I think it is aligned.")
-
-
-class CorrectnessJudge(unittest.TestCase):
-    def judged(self, reply):
-        llm = RecordingLLM(reply=reply, prompts=[])
-        judge_of = CorrectnessEvaluator(llm=llm, eval_template=CORRECTNESS_TEMPLATE, parser_function=aligned)
-        result = asyncio.run(judge_of.aevaluate(query=QUERY, response=OURS, reference=GOLD))
-        return llm, result
-
-    def test_an_aligned_answer_passes_with_the_judges_reason(self):
-        _, result = self.judged('{"reason": "Same package terms.", "aligned": "yes"}')
-        self.assertTrue(result.passing)
-        self.assertEqual(result.feedback, "Same package terms.")
-
-    def test_a_misaligned_answer_fails(self):
-        _, result = self.judged('{"reason": "Different incident.", "aligned": "no"}')
-        self.assertFalse(result.passing)
-
-    def test_the_judge_reads_the_question_the_gold_answer_and_our_answer_in_one_call(self):
-        llm, _ = self.judged('{"reason": "ok", "aligned": "yes"}')
-        self.assertEqual(len(llm.prompts), 1)
-        for part in (QUERY, GOLD, OURS):
-            self.assertIn(part, llm.prompts[0])
-
-    def test_the_reply_format_reaches_the_judge_with_single_braces(self):
-        llm, _ = self.judged('{"reason": "ok", "aligned": "yes"}')
-        self.assertIn('{\n  "reason": "reason for the classification",\n  "aligned": "yes or no"\n}', llm.prompts[0])
-
-
 class StructuredLLM(RecordingLLM):
-    """Stands in for Claude's structured output: a FactVerdict per fact, every call recorded."""
+    """Stands in for Claude's structured output: returns the asked verdict type and records every call."""
     reply: str = ""
-    contained: dict = {}
+    contained: dict = {}    # fact -> True / False, for FactVerdict
+    aligned: bool = True    # for CorrectnessVerdict
+    reason: str = "Same terms."
     calls: list = []
 
     async def astructured_predict(self, output_cls, prompt, llm_kwargs=None, **prompt_args):
         self.calls.append({"output_cls": output_cls, "prompt": prompt, "llm_kwargs": llm_kwargs, **prompt_args})
-        return output_cls(contained=self.contained[prompt_args["statement"]])
+        if output_cls is FactVerdict:
+            return FactVerdict(contained=self.contained[prompt_args["statement"]])
+        return CorrectnessVerdict(reason=self.reason, aligned=self.aligned)
+
+    def of(self, output_cls):
+        return [call for call in self.calls if call["output_cls"] is output_cls]
+
+
+class Correctness(unittest.TestCase):
+    def judged(self, aligned, reason="Same package terms.", query=QUERY, response=OURS, reference=GOLD):
+        llm = StructuredLLM(aligned=aligned, reason=reason, calls=[], prompts=[])
+        judging = StructuredCorrectnessEvaluator(llm).aevaluate(query=query, response=response, reference=reference)
+        return llm, asyncio.run(judging)
+
+    def test_an_aligned_answer_passes_with_the_judges_reason(self):
+        _, result = self.judged(True)
+        self.assertTrue(result.passing)
+        self.assertEqual((result.score, result.feedback), (1.0, "Same package terms."))
+
+    def test_a_misaligned_answer_fails(self):
+        _, result = self.judged(False, "Different incident.")
+        self.assertFalse(result.passing)
+        self.assertEqual((result.score, result.feedback), (0.0, "Different incident."))
+
+    def test_one_structured_call_with_the_question_the_gold_answer_and_our_answer(self):
+        llm, _ = self.judged(True)
+        self.assertEqual(len(llm.calls), 1)
+        call = llm.calls[0]
+        self.assertIs(call["output_cls"], CorrectnessVerdict)
+        self.assertIs(call["prompt"], CORRECTNESS_TEMPLATE)
+        self.assertEqual((call["query"], call["reference_answer"], call["generated_answer"]), (QUERY, GOLD, OURS))
+        self.assertEqual(call["llm_kwargs"], {"temperature": 0})
+
+    def test_an_empty_question_answer_or_gold_answer_raises_before_any_call(self):
+        for blank in ({"query": ""}, {"response": None}, {"reference": ""}):
+            with self.assertRaises(ValueError):
+                self.judged(True, **blank)
+
+    def test_the_input_model_rejects_a_blank_field(self):
+        with self.assertRaises(ValueError):
+            CorrectnessCheck(question=QUERY, answer=OURS, gold_answer="")
 
 
 class Completeness(unittest.TestCase):
@@ -174,7 +174,7 @@ class Main(unittest.TestCase):
     def setUp(self):
         folder = Path(tempfile.mkdtemp())
         self.judgments = folder / "judgments" / "run.jsonl"
-        self.llm = StructuredLLM(reply='{"reason": "Same terms.", "aligned": "yes"}', calls=[], prompts=[],
+        self.llm = StructuredLLM(calls=[], prompts=[],
                                  contained={**{fact: True for fact in FACTS + NOT_FOUND_FACTS}, FACTS[0]: False})
         self.built = []  # the settings each Anthropic(...) was created with
         patches = [
@@ -213,24 +213,22 @@ class Main(unittest.TestCase):
 
     def test_the_correctness_call_of_each_question_holds_its_own_gold_answer(self):
         self.run_main()
-        by_question = {QUERY: (GOLD, NOT_FOUND_GOLD), NOT_FOUND_QUERY: (NOT_FOUND_GOLD, GOLD)}
-        self.assertEqual(len(self.llm.prompts), 2)
-        for prompt in self.llm.prompts:
-            own, other = next(golds for query, golds in by_question.items() if query in prompt)
-            self.assertIn(own, prompt)
-            self.assertNotIn(other, prompt)
+        asked = {call["query"]: (call["reference_answer"], call["generated_answer"])
+                 for call in self.llm.of(CorrectnessVerdict)}
+        self.assertEqual(asked, {QUERY: (GOLD, OURS), NOT_FOUND_QUERY: (NOT_FOUND_GOLD, NOT_FOUND_OURS)})
 
     def test_the_fact_calls_of_each_question_hold_only_its_own_facts(self):
         self.run_main()
-        asked = {answer: [call["statement"] for call in self.llm.calls if call["answer"] == answer]
+        asked = {answer: [call["statement"] for call in self.llm.of(FactVerdict) if call["answer"] == answer]
                  for answer in (OURS, NOT_FOUND_OURS)}
         self.assertEqual(asked, {OURS: FACTS, NOT_FOUND_OURS: NOT_FOUND_FACTS})
 
     def test_a_second_run_judges_nothing_and_keeps_the_rows(self):
         self.run_main()
-        calls = len(self.llm.calls) + len(self.llm.prompts)
+        calls = len(self.llm.calls)
+        self.assertEqual(calls, 2 + 6)  # 2 correctness calls, 5 + 1 fact calls
         self.run_main()
-        self.assertEqual(len(self.llm.calls) + len(self.llm.prompts), calls)
+        self.assertEqual(len(self.llm.calls), calls)
         self.assertEqual(len(self.rows()), 2)
 
     def test_a_run_resumes_after_the_questions_already_judged(self):
@@ -238,12 +236,17 @@ class Main(unittest.TestCase):
         jsonl(self.judgments, [{"question_id": "qst_0009", "answer_correct": True, "completeness_pct": 80.0}])
         self.run_main()
         self.assertEqual([row["question_id"] for row in self.rows()], ["qst_0009", "qst_0481"])
-        self.assertEqual({call["answer"] for call in self.llm.calls}, {NOT_FOUND_OURS})
+        self.assertEqual({call["query"] for call in self.llm.of(CorrectnessVerdict)}, {NOT_FOUND_QUERY})
+        self.assertEqual({call["answer"] for call in self.llm.of(FactVerdict)}, {NOT_FOUND_OURS})
 
-    def test_the_judge_is_haiku_deterministic_with_short_replies(self):
+    def test_both_judges_are_haiku_at_temperature_zero(self):
         self.run_main()
-        self.assertIn({"model": "claude-haiku-4-5", "temperature": 0, "max_tokens": 256}, self.built)
-        self.assertTrue(all(settings["model"] == "claude-haiku-4-5" for settings in self.built))
+        self.assertEqual(self.built, [{"model": "claude-haiku-4-5", "temperature": 0}] * 2)
+        self.assertTrue(all(call["llm_kwargs"] == {"temperature": 0} for call in self.llm.calls))
+
+    def test_no_plain_text_call_is_made(self):
+        self.run_main()
+        self.assertEqual(self.llm.prompts, [])
 
 
 class TheBenchmarksPrompt(unittest.TestCase):

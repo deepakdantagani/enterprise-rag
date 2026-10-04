@@ -5,29 +5,29 @@
 The leaderboard scores an answer as correct (0 or 1) x completeness (%). For qst_0009 the judge
 makes 6 calls:
 
-    1 correctness call   question + gold answer + our answer   -> aligned: yes / no
-    5 completeness calls our answer + one fact each            -> contained: true / false
+    1 correctness call   question + gold answer + our answer   -> {"reason": "...", "aligned": true | false}
+    5 completeness calls our answer + one fact each            -> {"contained": true | false}
 
-Correctness is LlamaIndex's CorrectnessEvaluator with the benchmark's prompt; its 1-to-5 scale
-is used at its two ends only (yes 5.0, no 1.0, passing at 4.0). Completeness is the one
-evaluator we write, because LlamaIndex has none that checks one statement at a time; its reply
-is Claude's structured output (astructured_predict sends FactVerdict as the output schema), so
-no parser is needed. LlamaIndex's BatchEvalRunner runs both over 25 answers per call, and each
-batch is saved as soon as it is judged, so a crash or a re-run never pays twice. The prompts
-are in judge_prompts.py; examples/judge_one_question.py is the same call for one question.
+Both judges work the same way. The input is a Pydantic model checked before any call is paid
+for (CorrectnessCheck, FactCheck). The prompt is the benchmark's own (judge_prompts.py). The
+output is Claude's structured output: LlamaIndex's astructured_predict sends a Pydantic model as
+the output schema (CorrectnessVerdict, FactVerdict), so the reply can only have that shape and
+no parser is written. LlamaIndex's own CorrectnessEvaluator makes plain-text calls only, so both
+evaluators are ours, on its BaseEvaluator interface. BatchEvalRunner runs them over 25 answers
+per call, and each batch is saved as soon as it is judged, so a crash or a re-run never pays
+twice. examples/judge_one_question.py is the same call for one question.
 
-    >>> aligned('{"reason": "Same package terms.", "aligned": "yes"}')
-    (5.0, 'Same package terms.')
+    >>> CorrectnessVerdict(reason="Same package terms.", aligned=True).aligned
+    True
     >>> FactCheck(answer="Redwood proposed a 12-month commit package.", facts=["A 99.9 percent latency SLO."]).facts
     ['A 99.9 percent latency SLO.']
 """
 import asyncio
 import json
-import re
 from pathlib import Path
-from typing import Annotated, Any, List, Optional, Sequence, Tuple
+from typing import Annotated, Any, List, Optional, Sequence
 
-from llama_index.core.evaluation import BaseEvaluator, BatchEvalRunner, CorrectnessEvaluator, EvaluationResult
+from llama_index.core.evaluation import BaseEvaluator, BatchEvalRunner, EvaluationResult
 from llama_index.core.llms import LLM
 from llama_index.llms.anthropic import Anthropic
 from pydantic import BaseModel, Field
@@ -43,19 +43,45 @@ JUDGMENTS = ROOT / "data/_index/judgments/v4-gemma4-base__claude-haiku-4-5.jsonl
 BATCH = 25  # answers judged per call, then saved
 
 
-# 1. Reads the correctness judge's reply
-
-ALIGNED, MISALIGNED = 5.0, 1.0  # CorrectnessEvaluator passes a score of 4.0 or more
+JUDGE_KWARGS = {"temperature": 0}  # LlamaIndex's Anthropic structured call takes sampling settings only this way
 
 
-def aligned(reply: str) -> Tuple[float, str]:
-    """The judge's {"reason", "aligned": "yes"|"no"} reply as CorrectnessEvaluator's (score, reason)."""
-    found = re.search(r"\{.*\}", reply, re.DOTALL)  # the JSON may sit inside a code fence
-    if not found:
-        raise ValueError(f"no JSON verdict in the judge's reply: {reply!r}")
-    verdict = json.loads(found.group())
-    is_aligned = re.search(r"\byes\b", verdict["aligned"], re.IGNORECASE) is not None  # as the official scorer reads it
-    return (ALIGNED if is_aligned else MISALIGNED), verdict["reason"]
+# 1. The correctness judge: one structured call per answer
+
+class CorrectnessCheck(BaseModel):
+    """Input: what one correctness judgment needs, validated before the call is paid for."""
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+    gold_answer: str = Field(min_length=1)
+
+
+class CorrectnessVerdict(BaseModel):
+    """Output: the judge's structured reply for one answer."""
+    reason: str = Field(description="One sentence on why the candidate answer is aligned or misaligned.")
+    aligned: bool = Field(description="True if the candidate answer is aligned with the gold answer (yes), else false.")
+
+
+class StructuredCorrectnessEvaluator(BaseEvaluator):
+    """Does our answer agree with the gold answer? LlamaIndex's CorrectnessEvaluator, with a structured reply."""
+
+    def __init__(self, llm: LLM) -> None:
+        self._llm = llm
+
+    def _get_prompts(self) -> dict:
+        return {"eval_template": CORRECTNESS_TEMPLATE}
+
+    def _update_prompts(self, prompts: dict) -> None:
+        pass  # the benchmark's prompt is fixed
+
+    async def aevaluate(self, query: Optional[str] = None, response: Optional[str] = None,
+                        contexts: Optional[Sequence[str]] = None, reference: Optional[str] = None,
+                        **kwargs: Any) -> EvaluationResult:
+        check = CorrectnessCheck(question=query or "", answer=response or "", gold_answer=reference or "")
+        verdict = await self._llm.astructured_predict(CorrectnessVerdict, CORRECTNESS_TEMPLATE, llm_kwargs=JUDGE_KWARGS,
+                                                      query=check.question, reference_answer=check.gold_answer,
+                                                      generated_answer=check.answer)
+        return EvaluationResult(query=query, response=response, passing=verdict.aligned,
+                                score=1.0 if verdict.aligned else 0.0, feedback=verdict.reason)
 
 
 # 2. The completeness judge: one structured call per fact
@@ -69,9 +95,6 @@ class FactCheck(BaseModel):
 class FactVerdict(BaseModel):
     """Output: the judge's structured reply for one fact."""
     contained: bool = Field(description="True if the answer is consistent with and contains the statement.")
-
-
-JUDGE_KWARGS = {"temperature": 0}  # LlamaIndex's Anthropic structured call takes sampling settings only this way
 
 
 class CompletenessEvaluator(BaseEvaluator):
@@ -126,10 +149,8 @@ async def main() -> None:
         results = await BatchEvalRunner(
             # Who judges: two evaluators on Claude Haiku 4.5
             evaluators={
-                "correctness": CorrectnessEvaluator(
-                    llm=Anthropic(model="claude-haiku-4-5", temperature=0, max_tokens=256),
-                    eval_template=CORRECTNESS_TEMPLATE, parser_function=aligned),
-                "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5")),
+                "correctness": StructuredCorrectnessEvaluator(Anthropic(model="claude-haiku-4-5", temperature=0)),
+                "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5", temperature=0)),
             },
             workers=8,  # questions judged at the same time
         ).aevaluate_response_strs(

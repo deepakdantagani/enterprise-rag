@@ -642,6 +642,16 @@ no is 1.0; only `passing` goes on to the score. 10 tests, no network, no judge c
 **Dependencies:** `llama-index-core` `CorrectnessEvaluator`, `PromptTemplate`. New module
 `pipeline/eval/judge.py`.
 
+**Decision** (2026-10-04, replaces the parser above): correctness is enforced on both sides,
+like completeness. Input: `CorrectnessCheck` (non-empty question, answer and gold answer),
+checked before the call. Output: `CorrectnessVerdict(reason: str, aligned: bool)` as Claude's
+structured output through `astructured_predict`. LlamaIndex's `CorrectnessEvaluator` makes
+plain-text calls only, so it is replaced by `StructuredCorrectnessEvaluator`, a `BaseEvaluator`
+of ours with the same inputs (`query`, `response`, `reference`) and the same benchmark prompt;
+`aligned` and `correctness_judge` are removed. The cost: one more class of ours in place of a
+library class, and a reply format that differs from the official scorer's (JSON text it parses
+itself), which GEN-9f measures. 5 tests with a stand-in LLM; no judge call made yet.
+
 ## GEN-9b  `FactCheck`, `FactVerdict` and `CompletenessEvaluator`  ✅
 
 **Status:** Done
@@ -691,9 +701,9 @@ a wrong verdict can be audited fact by fact.
 and no parser is written. The prompt text stays the benchmark's; the difference from the
 official scorer (plain text, "yes" on the first line, `validate_single_fact`) is the reply
 format only, and GEN-9f measures whether it moves any verdict. The input is validated by
-`FactCheck` (non-empty answer, at least one non-blank fact) before any call. Correctness keeps
-`CorrectnessEvaluator` and the `aligned` parser: its prompt already asks for JSON, and a
-structured version would replace a library class with ours.
+`FactCheck` (non-empty answer, at least one non-blank fact) before any call. Correctness first
+kept `CorrectnessEvaluator` and the `aligned` parser; from 2026-10-04 it works the same way as
+completeness (see GEN-9a).
 
 Read in the same source, to confirm on the first real call: that structured call does not pass
 the LLM's own `temperature`, so the evaluator sends `llm_kwargs={"temperature": 0}`; and its
