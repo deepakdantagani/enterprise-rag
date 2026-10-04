@@ -1,0 +1,111 @@
+{
+ "config": {
+  "retrieval": "v4 (titles, voyage-4-lite + BM25, RRF, top 100 reranked by rerank-3-lite)",
+  "documents_read": 10,
+  "prompt": "ANSWER_PROMPT_V2",
+  "answerer": "gemma4:26b",
+  "judge": "claude-haiku-4-5",
+  "note": "our judge, not the leaderboard's gpt-5.4"
+ },
+ "rows": [
+  {
+   "group": "overall",
+   "questions": 500,
+   "means": {
+    "correct": 0.69,
+    "completeness": 0.7551353999999999,
+    "score": 0.6243446
+   }
+  },
+  {
+   "group": "source:confluence",
+   "questions": 114,
+   "means": {
+    "correct": 0.5263157894736842,
+    "completeness": 0.6806491228070175,
+    "score": 0.4472210526315789
+   }
+  },
+  {
+   "group": "source:fireflies",
+   "questions": 25,
+   "means": {
+    "correct": 0.64,
+    "completeness": 0.593432,
+    "score": 0.5253359999999999
+   }
+  },
+  {
+   "group": "source:github",
+   "questions": 60,
+   "means": {
+    "correct": 0.6666666666666666,
+    "completeness": 0.691105,
+    "score": 0.57472
+   }
+  },
+  {
+   "group": "source:gmail",
+   "questions": 55,
+   "means": {
+    "correct": 0.7636363636363637,
+    "completeness": 0.7387254545454545,
+    "score": 0.6583636363636364
+   }
+  },
+  {
+   "group": "source:google_drive",
+   "questions": 60,
+   "means": {
+    "correct": 0.5833333333333334,
+    "completeness": 0.7006000000000001,
+    "score": 0.5345483333333333
+   }
+  },
+  {
+   "group": "source:hubspot",
+   "questions": 34,
+   "means": {
+    "correct": 0.7058823529411765,
+    "completeness": 0.7941176470588235,
+    "score": 0.6764705882352942
+   }
+  },
+  {
+   "group": "source:jira",
+   "questions": 100,
+   "means": {
+    "correct": 0.68,
+    "completeness": 0.769457,
+    "score": 0.591279
+   }
+  },
+  {
+   "group": "source:linear",
+   "questions": 58,
+   "means": {
+    "correct": 0.6724137931034483,
+    "completeness": 0.7750724137931034,
+    "score": 0.6132189655172414
+   }
+  },
+  {
+   "group": "source:none",
+   "questions": 30,
+   "means": {
+    "correct": 0.8333333333333334,
+    "completeness": 0.925,
+    "score": 0.8333333333333334
+   }
+  },
+  {
+   "group": "source:slack",
+   "questions": 79,
+   "means": {
+    "correct": 0.569620253164557,
+    "completeness": 0.683732911392405,
+    "score": 0.5025848101265823
+   }
+  }
+ ]
+}
