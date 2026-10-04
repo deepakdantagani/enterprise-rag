@@ -136,6 +136,7 @@ class AnswerRow(unittest.TestCase):
         prompt, = self.llm.prompts
         self.assertIn("1. Use only the documents.", prompt)
         self.assertIn("7. Include every detail the documents give that answers the question.", prompt)
+        self.assertIn("6. Start with the answer itself.", prompt)  # GEN-10a: the engine answers with v2
         self.assertIn("--- Document 1 (ID: dsid_5) ---\nTitle: Title 5\n\nContent 5", prompt)
         self.assertNotIn("doc_id:", prompt)
         self.assertIn("## Question\nWho approved the Q3 budget?\n\n## Answer", prompt)
@@ -144,6 +145,43 @@ class AnswerRow(unittest.TestCase):
         llm = answerer_llm()
         self.assertEqual((llm.model, llm.temperature, llm.thinking, llm.context_window),
                          ("gemma4:26b", 0.0, False, 40_960))
+
+
+class AnswerPromptVersions(unittest.TestCase):
+    """GEN-10a: v1 is kept as scored (62.11); v2 changes rules 3, 5, 6 and 7."""
+    v1, v2 = answers.ANSWER_PROMPT_V1.template, answers.ANSWER_PROMPT_V2.template
+
+    def test_v1_is_kept_as_it_was_scored(self):
+        self.assertIn('6. If the documents do not contain the answer, say so plainly in the first sentence', self.v1)
+        self.assertIn("no citations, no markdown.", self.v1)
+
+    def test_the_current_prompt_is_v2(self):
+        self.assertIs(answers.ANSWER_PROMPT, answers.ANSWER_PROMPT_V2)
+
+    def test_v2_answers_first_and_refuses_only_when_nothing_answers(self):
+        self.assertIn('6. Start with the answer itself. Write "The documents do not say ..." only when no document\n'
+                      "   answers the question, and never before an answer you then give.", self.v2)
+        self.assertNotIn("say so plainly in the first sentence", self.v2)
+
+    def test_v2_picks_the_document_the_question_describes(self):
+        self.assertIn("3. First find the one document (or few) the question is about.", self.v2)
+        self.assertIn("5. Report a disagreement only when two documents describe the same thing", self.v2)
+
+    def test_v2_names_every_banned_format(self):
+        self.assertIn("no preamble, no bullet points, no bold, no headings", self.v2)
+        self.assertIn('never refer to a document by its\n   number ("Document 3")', self.v2)
+
+    def test_rules_1_2_and_4_and_the_layout_are_unchanged(self):
+        for kept in ("1. Use only the documents. Never add facts from outside them or guess.",
+                     "2. Answer every part of the question. Copy exact values as written: names, numbers,",
+                     '4. If the question asks for a list or "all", include every matching item from all documents.',
+                     "## Documents\n{context_str}\n\n## Question\n{query_str}\n\n## Answer\n"):
+            self.assertIn(kept, self.v1)
+            self.assertIn(kept, self.v2)
+
+    def test_v2_answers_go_to_their_own_file_so_the_v1_answers_are_kept(self):
+        from pipeline.eval import answer_run
+        self.assertEqual(answer_run.ANSWERS.name, "v4-gemma4-v2.jsonl")
 
 
 class SaveAnswers(unittest.TestCase):

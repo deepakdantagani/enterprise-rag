@@ -200,7 +200,8 @@ synthesizer with our prompt) and `answer_row`, which returns one answer-file lin
 **so that** one question becomes one leaderboard-format answer.
 
 The prompt (a `PromptTemplate`, `text_qa_template`); each rule comes from the judge prompts or
-a question type (GEN-1):
+a question type (GEN-1). This is **prompt v1**, kept in the code as `ANSWER_PROMPT_V1`; it scored
+62.11 on our judge (GEN-9e) and was replaced by v2 in GEN-10a:
 
 ```
 You are a precise assistant answering questions about Redwood Inference, using documents
@@ -874,3 +875,60 @@ Scenario: agreement measured
 judges (`qwen3:30b`, Jev, a larger Claude model) are compared on the same set.
 
 **Dependencies:** GEN-9e. GEN-7 (the full official run) stays for the final submission.
+
+---
+
+## GEN-10a  `ANSWER_PROMPT_V2`  ✅
+
+**Status:** Done (the prompt and its tests; the answers and their score are GEN-10b)
+
+**As a** developer aiming for the top 5,
+**I want to** a second answer prompt that fixes the three habits the judge punished in v1, with v1
+kept beside it,
+**so that** the two prompts can be compared on the same 500 questions.
+
+**Why:** v1 scored 62.11 on our judge (GEN-9e). Of its 161 wrong answers, 78 read every gold
+document and 26 read some of them, so the answerer, not search, lost those. Reading the judged
+answers showed three habits:
+
+| Habit in v1 answers | Count | Real example |
+|---|---|---|
+| Opens with "The documents do not say" | 156 answers; 94 then give the right answer, 26 are wrong with every gold document read | `qst_0015`: "The documents do not say what the specific high-percentile latency concern was, only that … 120ms median and 250ms p99": 4 of 4 facts, judged wrong |
+| Lists a value from every document instead of answering | not counted | `qst_0001`: gold is 10 MiB per file and 50 MiB per request; ours lists limits from 7 documents (5MB, 25MB, 100MiB, 512MiB, 1GiB …): 2 of 2 facts, judged wrong |
+| Markdown and "Document n" although rule 7 forbids them | 286 use markdown, 168 say "Document n" | `qst_0005`: bullets and bold |
+
+**What changed** (rules 1, 2 and 4 and the layout are the same in both):
+
+| Rule | v1 | v2 | Fixes |
+|---|---|---|---|
+| intro | "many will be irrelevant" | "most are irrelevant to the question" | listing every document |
+| 3 | Respect every qualifier; ignore documents that fail one | First find the one document (or few) the question is about, even when it is described in other words ("a big retail tenant" may be "Acme Retail"); leave out the rest | the opener (`qst_0258`: "do not say what the specific name of the big retail tenant is") and the listing |
+| 5 | If documents disagree, give each value | A disagreement is two documents on the same thing; different values for different things are not one | `qst_0001` |
+| 6 | Say "The documents do not say …" in the first sentence, then add related facts | Start with the answer; write that line only when no document answers, never before an answer | `qst_0015` |
+| 7 | "No preamble, no citations, no markdown" | Names each form: no bullet points, no bold, no headings, never "Document 3"; name the source instead | `qst_0005` |
+
+The v2 text is `ANSWER_PROMPT_V2` in `pipeline/eval/answers.py`; `ANSWER_PROMPT = ANSWER_PROMPT_V2`
+is what `answer_engine` uses.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: v1 is kept as it was scored
+  Then ANSWER_PROMPT_V1 still holds rule 6 "say so plainly in the first sentence"
+
+Scenario: the engine answers with v2
+  Then ANSWER_PROMPT is ANSWER_PROMPT_V2
+  And the prompt the LLM is sent holds "6. Start with the answer itself."
+
+Scenario: the v1 answers are not overwritten
+  Then answer_run writes data/_index/answers/v4-gemma4-v2.jsonl
+  And data/_index/answers/v4-gemma4-base.jsonl keeps the 500 v1 answers and their judgments
+```
+
+**Decision:** the four rule changes go in as one version. Testing them one at a time would take
+four answer runs (~1.5 h each) and four judge runs (~$2-3 each); if v2 scores below v1, the rules
+are split then.
+
+**Non-functional Requirements:** shared ones. No model is called by this story.
+
+**Dependencies:** GEN-9e (the judged v1 answers). Next: GEN-10b answers the 500 questions with v2
+($0, ~1.5 h) and judges them (about $2-3, ask first).
