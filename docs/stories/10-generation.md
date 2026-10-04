@@ -855,26 +855,64 @@ is reported against this estimate.
 
 **Dependencies:** GEN-9d, GEN-5 (the answers).
 
-## GEN-9f  Does our judge agree with the official one?  ⬜
+## GEN-9f  Does our judge agree with the official one?  ✅
 
-**Status:** To do (paid: about $5, needs `OPENAI_API_KEY`; ask first)
+**Status:** Done (2026-10-04). On 100 answers the two judges give the same correctness verdict
+for **96** and the same verdict for **95.4%** of 524 facts. Our judge is the stricter one:
+77.45 against 80.00 for `gpt-5.4`.
 
 **As a** developer who will tune against our judge,
-**I want to** run the official scorer (`gpt-5.4`) on 100 questions spread across question types
-and compare its verdicts with ours on the same answers,
+**I want to** run the leaderboard's judge model (`gpt-5.4`) on 100 questions spread across
+question types and compare its verdicts with ours on the same answers,
 **so that** we know how far our score can be trusted before optimising against it.
+
+**The sample:** `sample_ids(questions, count=100, seed=0)` keeps each type's share of the 500:
+35 basic, 25 semantic, 8 intra_document_reasoning, 8 project_related, 6 constrained, 4 each of
+conflicting_info, completeness, miscellaneous and info_not_found, 2 high_level. An empty answer
+is never picked, because the judge cannot judge one. The answers are prompt v3 on
+`deepseek-v4-pro` (GEN-13d).
+
+**Measured** (the same 100 answers, the same two prompts, temperature 0)
+
+| | our judge (`claude-haiku-4-5`) | `gpt-5.4` |
+|---|---|---|
+| overall score | 77.45 | 80.00 |
+| answers judged correct | 81 | 85 |
+| mean completeness | 85.21% | 85.37% |
+
+- **Correctness:** 96 of 100 agree. All 4 disagreements go one way: our judge says wrong,
+  `gpt-5.4` says correct (qst_0149, qst_0182, qst_0212, qst_0285). In each, the answer holds the
+  gold answer and adds other detail; our judge counts the added detail against it.
+- **Facts:** 500 of 524 agree; the 24 disagreements split 12 and 12, so completeness is the same.
+- **Score:** `gpt-5.4` is 2.55 higher, paired bootstrap 95% interval −1.21 to +6.61. The interval
+  includes 0, so on 100 questions the difference is not established.
+
+**Decision:** our judge can be trusted for comparing two runs, and it does not flatter us. The
+official number for the full 500 still needs GEN-7.
+
+**What changed:** `judge_llm(model)` picks OpenAI for a `gpt-` model and Anthropic otherwise;
+`judge_answers(answers_file, judgments_file, model)` is the old `main` with its three settings as
+arguments; `pipeline/eval/judge_agreement.py` holds `sample_ids`, `agreement` and the run. Each
+judge call now gets its own copy of `JUDGE_KWARGS`, because LlamaIndex's `OpenAI` class adds
+`response_format` to the dict it is given.
 
 **Acceptance Criteria**
 ```gherkin
 Scenario: agreement measured
   Then correctness agreement (%), per-fact agreement (%) and the two overall scores on the 100
        questions are recorded, with the disagreements listed by question
+
+Scenario: the sample is fixed
+  Then the same seed gives the same 100 questions whatever the order of the question file
 ```
 
 **Non-functional Requirements:** the 100 questions are fixed by a seeded sample, so later
 judges (`qwen3:30b`, Jev, a larger Claude model) are compared on the same set.
 
-**Dependencies:** GEN-9e. GEN-7 (the full official run) stays for the final submission.
+**Run notes:** 100 correctness calls and 524 fact calls on `gpt-5.4`. Estimated
+cost under $5; the actual bill was not read.
+
+**Dependencies:** GEN-9e, GEN-13d. GEN-7 (the full official run) stays for the final submission.
 
 ---
 

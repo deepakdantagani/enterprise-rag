@@ -574,3 +574,25 @@ used the whole 8,192-token output) are counted as wrong.
 On the leaderboard as read on 2026-10-04 (5th place 80.26), 77.50 would sit 7th. Of the 125
 semantic questions, 93 read their gold document and 85 of those are correct; 32 did not and none
 is correct.
+
+## Judge agreement: our judge (claude-haiku-4-5) against the leaderboard's (gpt-5.4)
+
+100 of the prompt v3 answers, a seeded sample with each question type's share of the 500, judged
+by both models with the same two prompts at temperature 0 (GEN-9f). Run 2026-10-04.
+
+| | our judge | gpt-5.4 |
+|---|---|---|
+| **overall score on the 100** | 77.45 | **80.00** |
+| answers judged correct | 81 | 85 |
+| mean completeness | 85.21% | 85.37% |
+
+| | agree | of |
+|---|---|---|
+| correctness verdicts | 96 | 100 |
+| fact verdicts | 500 | 524 |
+
+The 4 correctness disagreements are all "our judge: wrong, gpt-5.4: correct" (qst_0149, qst_0182,
+qst_0212, qst_0285). The 24 fact disagreements split 12 and 12. The score difference is +2.55 for
+gpt-5.4, paired bootstrap 95% interval −1.21 to +6.61, which includes 0. **This is not a
+leaderboard score for the 500**; it shows our judge is close to the official one and, on this
+sample, slightly stricter.
