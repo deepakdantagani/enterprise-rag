@@ -422,3 +422,37 @@ Reference leaderboard scores: BM25 + GPT-5.4 baseline 50.6, 10th place 65.61, 1s
 | semantic | 125 | 53.2 |
 | project_related | 40 | 38.0 |
 | completeness | 20 | 17.3 |
+
+## Answer prompt v2 against v1, our judge (claude-haiku-4-5)
+
+**Not a leaderboard score.** Same 500 questions, same 10 documents per question, same answerer
+(`gemma4:26b`) and same judge; only the answer prompt changed (`ANSWER_PROMPT_V1` →
+`ANSWER_PROMPT_V2`, GEN-10a). Judged 2026-10-04.
+
+| | v1 | v2 |
+|---|---|---|
+| **overall score** | 62.11 | **62.43** |
+| answers judged correct | 339 | 345 |
+| mean completeness | 76.75% (1,770 facts) | 75.51% (1,725 facts) |
+| opens with "The documents do not say" | 156 | 71 |
+| uses markdown | 288 | 113 |
+| says "Document n" | 168 | 13 |
+
+The difference is +0.33, with a paired bootstrap 95% interval of −3.18 to +3.94: **within noise**.
+45 answers went from wrong to right and 39 from right to wrong.
+
+| type | questions | v1 | v2 | change |
+|---|---|---|---|---|
+| miscellaneous | 20 | 77.1 | 84.6 | +7.5 |
+| completeness | 20 | 17.3 | 23.5 | +6.2 |
+| conflicting_info | 20 | 61.8 | 66.0 | +4.3 |
+| basic | 175 | 71.0 | 72.9 | +2.0 |
+| intra_document_reasoning | 40 | 64.8 | 65.6 | +0.8 |
+| constrained | 30 | 69.1 | 69.3 | +0.2 |
+| info_not_found | 20 | 95.0 | 95.0 | 0.0 |
+| semantic | 125 | 53.2 | 53.0 | −0.2 |
+| project_related | 40 | 38.0 | 28.7 | −9.4 |
+| high_level | 10 | 77.5 | 60.0 | −17.5 |
+
+v2's 155 wrong answers by gold documents among the 10 read: all 68, some 28, none 54, question has
+no gold document 5.
