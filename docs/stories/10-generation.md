@@ -821,9 +821,13 @@ already saved judges only qst_0481. 7 tests, no network. Output
 **Dependencies:** GEN-9c, GEN-3 (`all_questions`, with gold answer and facts), GEN-6. Output
 `data/_index/judgments/<answers>__<judge>.jsonl` (gitignored).
 
-## GEN-9e  First judged score (`claude-haiku-4-5`)  ⬜
+## GEN-9e  First judged score (`claude-haiku-4-5`)  ✅
 
-**Status:** To do (paid: approved up to about $3 on 2026-09-30; confirm before running)
+**Status:** Done (2026-10-04). Overall score **62.11** on our judge: 339 of 500 answers correct
+(67.8%), mean completeness 76.75% (1,770 of 2,427 facts). Of the 161 wrong answers, 54 are search
+misses (no gold document among the 10 read), 26 read some of the gold documents, 78 read all of
+them and 3 have no gold document. Weakest types: completeness 17.3, project_related 38.0,
+semantic 53.2. Full tables in `docs/eval/results.md`. Not a leaderboard score.
 
 **As a** developer aiming for the top 5,
 **I want to** judge the 500 `v4-gemma4-base` answers and compute the overall score,
