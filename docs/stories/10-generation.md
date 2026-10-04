@@ -1157,3 +1157,47 @@ Scenario: no answer run
 
 **Dependencies:** GEN-11b, GEN-12a.
 
+---
+
+## GEN-12c  Answers by question type  ✅
+
+**Status:** Done
+
+**As a** reader of the evaluation report,
+**I want to** the answer metrics per question type, in each run's `metrics.json` and on the
+report page beside the per-source table,
+**so that** the question types that lose the most points are visible for each answering model.
+
+**Example with real data** (correct / complete / score; recall@10 is retrieval v4 on the
+questions of that type that have expected documents):
+
+| question type | questions | recall@10 | gemma4:26b | deepseek-v4-pro |
+|---|---|---|---|---|
+| All | 500 | 0.834 | 69.0% / 75.5% / 62.4 | 73.4% / 78.0% / 68.0 |
+| basic | 175 | 0.886 | 78.9% / 81.9% / 72.9 | 80.0% / 82.8% / 75.4 |
+| semantic | 125 | 0.744 | 59.2% / 63.6% / 53.0 | 62.4% / 66.1% / 57.6 |
+| intra_document_reasoning | 40 | 1.000 | 72.5% / 83.2% / 65.6 | 92.5% / 87.2% / 84.7 |
+| project_related | 40 | 0.663 | 40.0% / 58.4% / 28.7 | 52.5% / 68.3% / 41.2 |
+| constrained | 30 | 0.933 | 73.3% / 89.5% / 69.3 | 80.0% / 93.7% / 77.4 |
+| completeness | 20 | 0.592 | 35.0% / 53.5% / 23.5 | 50.0% / 50.7% / 36.6 |
+| conflicting_info | 20 | 0.875 | 80.0% / 74.1% / 66.0 | 85.0% / 82.0% / 78.1 |
+| info_not_found | 20 | n/a | 95.0% / 95.0% / 95.0 | 100% / 100% / 100.0 |
+| miscellaneous | 20 | 1.000 | 90.0% / 89.6% / 84.6 | 65.0% / 84.8% / 63.3 |
+| high_level | 10 | n/a | 60.0% / 87.5% / 60.0 | 70.0% / 85.0% / 67.5 |
+
+**What changed:** `answer_rows` adds one `type:<question_type>` row per type (a question has one
+type); `answer_summary` returns `rows` (by source) and `types` (by question type); the page has a
+"By source / By question type" switch next to the model switch.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: question-type rows
+  Then each question counts under exactly one "type:" group
+  And the 10 type groups of a real run add up to 500 questions
+
+Scenario: the page
+  Then each answer run embeds "types": All first, then types by question count, with that type's recall@10
+```
+
+**Dependencies:** GEN-12b.
+

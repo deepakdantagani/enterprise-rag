@@ -13,9 +13,9 @@ sys.path.insert(0, str(ROOT))
 from pipeline.eval import answer_metrics  # noqa: E402
 from pipeline.eval.answer_metrics import METRICS, answer_rows  # noqa: E402
 
-QUESTIONS = [{"question_id": "q1", "source_types": ["slack"]},
-             {"question_id": "q2", "source_types": ["slack", "jira"]},
-             {"question_id": "q3", "source_types": []}]
+QUESTIONS = [{"question_id": "q1", "question_type": "basic", "source_types": ["slack"]},
+             {"question_id": "q2", "question_type": "semantic", "source_types": ["slack", "jira"]},
+             {"question_id": "q3", "question_type": "basic", "source_types": []}]
 JUDGMENTS = [{"question_id": "q1", "answer_correct": True, "completeness_pct": 100.0},
              {"question_id": "q2", "answer_correct": False, "completeness_pct": 50.0},
              {"question_id": "q3", "answer_correct": True, "completeness_pct": 80.0}]
@@ -39,9 +39,14 @@ class AnswerRows(unittest.TestCase):
         self.assertEqual(self.rows["source:none"], {"group": "source:none", "questions": 1, "means": {
             "correct": 1.0, "completeness": 0.8, "score": 0.8}})
 
-    def test_the_groups_are_overall_then_each_source(self):
+    def test_the_groups_are_overall_then_each_source_then_each_question_type(self):
         self.assertEqual([row["group"] for row in answer_rows(QUESTIONS, JUDGMENTS)],
-                         ["overall", "source:jira", "source:none", "source:slack"])
+                         ["overall", "source:jira", "source:none", "source:slack", "type:basic", "type:semantic"])
+
+    def test_a_question_counts_under_its_one_question_type(self):
+        self.assertEqual(self.rows["type:basic"], {"group": "type:basic", "questions": 2, "means": {
+            "correct": 1.0, "completeness": 0.9, "score": 0.9}})
+        self.assertEqual(self.rows["type:semantic"]["means"], {"correct": 0.0, "completeness": 0.5, "score": 0.0})
 
     def test_a_question_that_was_not_judged_fails_loudly(self):
         with self.assertRaises(KeyError):
@@ -62,6 +67,11 @@ class RealV2Answers(unittest.TestCase):
     def test_confluence_is_the_largest_and_weakest_source(self):
         confluence = self.rows["source:confluence"]
         self.assertEqual((confluence["questions"], round(confluence["means"]["score"] * 100, 1)), (114, 44.7))
+
+    def test_the_ten_question_types_add_up_to_500_and_completeness_is_the_weakest(self):
+        types = {name: row for name, row in self.rows.items() if name.startswith("type:")}
+        self.assertEqual((len(types), sum(row["questions"] for row in types.values())), (10, 500))
+        self.assertEqual(min(types, key=lambda name: types[name]["means"]["score"]), "type:completeness")
 
     def test_the_run_names_its_prompt_answerer_and_judge(self):
         self.assertEqual((self.config["prompt"], self.config["answerer"], self.config["judge"]),

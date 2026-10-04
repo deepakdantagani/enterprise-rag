@@ -78,15 +78,18 @@ def version_summary(runs_dir: Path, versions: Sequence[Tuple[str, str, str]]) ->
 
 
 def answer_summary(runs_dir: Path, run_name: str, retrieval: List[dict]) -> dict:
-    """GEN-11b: the judged answers per source, largest first, with the last retrieval step's recall@10 beside."""
+    """GEN-11b: the judged answers per source (GEN-12c: and per question type), largest first, recall@10 beside."""
     saved = json.loads((runs_dir / run_name / "metrics.json").read_text())
     recall = {row["group"]: round(row["means"]["recall"], 3) for row in retrieval if row["k"] == 10}
-    rows = sorted(saved["rows"], key=lambda row: (row["group"] != "overall", -row["questions"], row["group"]))
     names = {"overall": "All", "source:none": "no expected document"}
-    return {"config": saved["config"], "rows": [
-        {"name": names.get(row["group"], row["group"].split(":", 1)[-1]), "questions": row["questions"],
-         "recall": recall.get(row["group"]), **{name: round(value, 3) for name, value in row["means"].items()}}
-        for row in rows]}
+
+    def rows_of(kind: str) -> List[dict]:
+        rows = [row for row in saved["rows"] if row["group"] == "overall" or row["group"].startswith(kind + ":")]
+        rows.sort(key=lambda row: (row["group"] != "overall", -row["questions"], row["group"]))
+        return [{"name": names.get(row["group"], row["group"].split(":", 1)[-1]), "questions": row["questions"],
+                 "recall": recall.get(row["group"]), **{name: round(value, 3) for name, value in row["means"].items()}}
+                for row in rows]
+    return {"config": saved["config"], "rows": rows_of("source"), "types": rows_of("type")}
 
 
 def answer_runs(runs_dir: Path, run_names: Sequence[str], retrieval: List[dict]) -> List[dict]:
@@ -194,11 +197,12 @@ code { font-family: var(--mono); font-size: 0.85em; }
   <section aria-labelledby="answers-title" id="answers" hidden>
     <div class="label" id="answers-title">Answer score by answering model</div>
     <div class="versions" id="answer-cards"></div>
-    <div class="label">Answers by source</div>
+    <div class="label">Answers by source and by question type</div>
     <nav id="answer-runs" aria-label="Answering model"></nav>
+    <nav id="answer-views" aria-label="Breakdown"></nav>
     <p class="count" id="answers-about"></p>
     <div class="scroll"><table id="answers-table"></table></div>
-    <p class="count">Recall@10 is the retrieval step the answerer reads from, on the 470 questions that have expected documents. Correct and complete are judged per answer; score is correct × completeness, the leaderboard's number, so a wrong answer scores 0 however complete it is. Shaded cells are the weakest source in each column.</p>
+    <p class="count">Recall@10 is the retrieval step the answerer reads from, on the 470 questions that have expected documents. Correct and complete are judged per answer; score is correct × completeness, the leaderboard's number, so a wrong answer scores 0 however complete it is. Shaded cells are the weakest row in each column. A question has one question type, and counts under each source of its expected documents.</p>
   </section>
   <footer>Generated from the run files in <code>docs/eval/runs</code> by <code>python -m pipeline.eval.html_report</code>. "HNSW" rows use Qdrant's approximate graph index; every other row searches every vector. Answer rows come from <code>python -m pipeline.eval.answer_metrics</code>. A question counts under each source of its expected documents.</footer>
 </main>
@@ -235,11 +239,14 @@ function show(group) {
 }
 const shown = [["recall", "Recall@10", v => v.toFixed(3)], ["correct", "Correct", v => (v * 100).toFixed(1) + "%"],
                ["completeness", "Complete", v => (v * 100).toFixed(1) + "%"], ["score", "Score", v => (v * 100).toFixed(1)]];
-function showAnswers(run) {
-  const c = run.config, rows = run.rows, table = document.getElementById("answers-table"); table.replaceChildren();
+let answerRun = null, answerView = "rows";
+function showAnswers(run, view) {
+  answerRun = run; answerView = view;
+  document.querySelectorAll("#answer-views button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === view));
+  const c = run.config, rows = run[view], table = document.getElementById("answers-table"); table.replaceChildren();
   document.querySelectorAll("#answer-runs button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === c.answerer));
   document.getElementById("answers-about").textContent = rows[0].questions + " questions · " + c.prompt + " · answered by " + c.answerer + " · judged by " + c.judge + " (our judge, not the leaderboard's)";
-  const head = table.insertRow(); ["Source", "Questions"].concat(shown.map(s => s[1])).forEach(h => head.append(el("th", h)));
+  const head = table.insertRow(); [view === "rows" ? "Source" : "Question type", "Questions"].concat(shown.map(s => s[1])).forEach(h => head.append(el("th", h)));
   const weakest = Object.fromEntries(shown.map(([m]) => [m, Math.min(...rows.slice(1).map(r => r[m]).filter(v => v !== null))]));
   rows.forEach((row, i) => {
     const tr = table.insertRow(); if (i === 0) tr.className = "current";
@@ -258,10 +265,14 @@ if (data.answers.length) {
                 el("div", i === 0 ? "Base: 10 whole documents from v4, prompt v2" : "Same documents and prompt, a stronger model", "about"),
                 el("div", run.gain === null ? "baseline" : (run.gain < 0 ? "\u2212" + (-run.gain * 100).toFixed(1) : "+" + (run.gain * 100).toFixed(1)) + " over " + data.answers[i - 1].config.answerer, "gain"));
     document.getElementById("answer-cards").append(card);
-    const b = el("button", run.config.answerer); b.dataset.id = run.config.answerer; b.onclick = () => showAnswers(run);
+    const b = el("button", run.config.answerer); b.dataset.id = run.config.answerer; b.onclick = () => showAnswers(run, answerView);
     document.getElementById("answer-runs").append(b);
   });
-  showAnswers(latest);
+  [["rows", "By source"], ["types", "By question type"]].forEach(([id, name]) => {
+    const b = el("button", name); b.dataset.id = id; b.onclick = () => showAnswers(answerRun, id);
+    document.getElementById("answer-views").append(b);
+  });
+  showAnswers(latest, "rows");
 }
 for (const group of data.groups) {
   const b = el("button", group.name); b.dataset.id = group.id; b.onclick = () => show(group);
