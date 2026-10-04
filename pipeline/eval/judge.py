@@ -30,6 +30,7 @@ from typing import Annotated, Any, List, Optional, Sequence
 from llama_index.core.evaluation import BaseEvaluator, BatchEvalRunner, EvaluationResult
 from llama_index.core.llms import LLM
 from llama_index.llms.anthropic import Anthropic
+from llama_index.llms.openai import OpenAI
 from pydantic import BaseModel, Field
 
 from pipeline.eval.judge_prompts import CORRECTNESS_TEMPLATE, FACT_TEMPLATE
@@ -40,12 +41,19 @@ ROOT = Path(__file__).resolve().parents[2]
 QUESTIONS = ROOT / "data/_full/questions.jsonl"  # the benchmark: question, gold_answer, answer_facts
 ANSWERS = ROOT / "data/_index/answers/v4-deepseek-v4-pro-v3.jsonl"  # ours: deepseek-v4-pro on ANSWER_PROMPT_V3 (v2: v4-deepseek-v4-pro-v2, v4-gemma4-v2)
 JUDGMENTS = ROOT / "data/_index/judgments/v4-deepseek-v4-pro-v3__claude-haiku-4-5.jsonl"  # written here
+JUDGE = "claude-haiku-4-5"  # our judge; the leaderboard's is gpt-5.4 (GEN-9f compares the two)
 BATCH = 25  # answers judged per call, then saved
 
 
 # Temperature 0, so a re-run gives the same verdicts. The Anthropic SDK 1.x has no temperature
 # parameter, so it goes in the request body; claude-haiku-4-5 accepts it (Opus 5.5 and Sonnet 5.5 would not).
+# Each call gets its own copy, because LlamaIndex's OpenAI class adds response_format to the dict it is given.
 JUDGE_KWARGS = {"extra_body": {"temperature": 0}}
+
+
+def judge_llm(model: str) -> LLM:
+    """The judge model: a gpt- model on OpenAI (the leaderboard's own judge), any other on Anthropic."""
+    return OpenAI(model=model) if model.startswith("gpt-") else Anthropic(model=model)
 
 
 # 1. The correctness judge: one structured call per answer
@@ -79,7 +87,7 @@ class StructuredCorrectnessEvaluator(BaseEvaluator):
                         contexts: Optional[Sequence[str]] = None, reference: Optional[str] = None,
                         **kwargs: Any) -> EvaluationResult:
         check = CorrectnessCheck(question=query or "", answer=response or "", gold_answer=reference or "")
-        verdict = await self._llm.astructured_predict(CorrectnessVerdict, CORRECTNESS_TEMPLATE, llm_kwargs=JUDGE_KWARGS,
+        verdict = await self._llm.astructured_predict(CorrectnessVerdict, CORRECTNESS_TEMPLATE, llm_kwargs=dict(JUDGE_KWARGS),
                                                       query=check.question, reference_answer=check.gold_answer,
                                                       generated_answer=check.answer)
         return EvaluationResult(query=query, response=response, passing=verdict.aligned,
@@ -117,7 +125,7 @@ class CompletenessEvaluator(BaseEvaluator):
         check = FactCheck(answer=response or "", facts=list(facts))  # an empty answer or no facts: no call is made
         contained = []
         for fact in check.facts:
-            verdict = await self._llm.astructured_predict(FactVerdict, FACT_TEMPLATE, llm_kwargs=JUDGE_KWARGS,
+            verdict = await self._llm.astructured_predict(FactVerdict, FACT_TEMPLATE, llm_kwargs=dict(JUDGE_KWARGS),
                                                           answer=check.answer, statement=fact)
             contained.append(verdict.contained)
         share = sum(contained) / len(contained)
@@ -128,12 +136,13 @@ class CompletenessEvaluator(BaseEvaluator):
 
 # 3. The run
 
-async def main() -> None:
+async def judge_answers(answers_file: Path, judgments_file: Path, model: str) -> None:
+    """Judge every answer of answers_file not yet in judgments_file, on one judge model."""
     # Load the benchmark's questions and our answers; skip the answers already judged
     questions = {row["question_id"]: row for row in read_jsonl(QUESTIONS)}
-    judged = {row["question_id"] for row in read_jsonl(JUDGMENTS)} if JUDGMENTS.exists() else set()
-    answers = [row for row in read_jsonl(ANSWERS) if row["question_id"] not in judged]
-    JUDGMENTS.parent.mkdir(parents=True, exist_ok=True)
+    judged = {row["question_id"] for row in read_jsonl(judgments_file)} if judgments_file.exists() else set()
+    answers = [row for row in read_jsonl(answers_file) if row["question_id"] not in judged]
+    judgments_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Judge 25 answers per call and save after each call, so a crash loses at most 25
     for start in range(0, len(answers), BATCH):
@@ -149,10 +158,10 @@ async def main() -> None:
             facts.append(question["answer_facts"])
 
         results = await BatchEvalRunner(
-            # Who judges: two evaluators on Claude Haiku 4.5
+            # Who judges: two evaluators on the same judge model
             evaluators={
-                "correctness": StructuredCorrectnessEvaluator(Anthropic(model="claude-haiku-4-5")),
-                "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5")),
+                "correctness": StructuredCorrectnessEvaluator(judge_llm(model)),
+                "completeness": CompletenessEvaluator(judge_llm(model)),
             },
             workers=8,  # questions judged at the same time
         ).aevaluate_response_strs(
@@ -163,13 +172,17 @@ async def main() -> None:
         )
 
         # One saved line per question, in the official scorer's format
-        with JUDGMENTS.open("a") as out:
+        with judgments_file.open("a") as out:
             for answer, correct, complete in zip(batch, results["correctness"], results["completeness"]):
                 out.write(json.dumps({"question_id": answer["question_id"], "answer_correct": correct.passing,
                                       "completeness_pct": round(complete.score * 100, 2), "reason": correct.feedback,
                                       "facts": json.loads(complete.feedback)}) + "\n")
 
-    print("overall score:", overall_score({"questions": read_jsonl(JUDGMENTS)}))
+    print("overall score:", overall_score({"questions": read_jsonl(judgments_file)}))
+
+
+async def main() -> None:
+    await judge_answers(ANSWERS, JUDGMENTS, JUDGE)
 
 
 if __name__ == "__main__":
