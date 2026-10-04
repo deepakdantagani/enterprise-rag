@@ -594,9 +594,9 @@ Prompt caching does not apply: the repeated prefix of a fact call is the instruc
 answer, about 450 tokens, under `claude-haiku-4-5`'s 4,096-token minimum. The saving comes from
 the judgments file instead: a judged question is never paid for twice (GEN-9d).
 
-## GEN-9a  `aligned` and `correctness_judge`  ⬜
+## GEN-9a  `aligned` and `correctness_judge`  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer scoring answers,
 **I want to** LlamaIndex's `CorrectnessEvaluator` to ask the benchmark's correctness prompt and
@@ -630,6 +630,14 @@ package with the following components: ~40% off list…". One call, one `Evaluat
 
 **Non-functional Requirements:** tests use a recording LLM, no network. The benchmark's prompt
 text is kept in the module with its source path (`src/prompts/answer_evaluation.py`, MIT).
+
+**Measured** (2026-10-01): `pipeline/eval/judge.py`. `CORRECTNESS_TEMPLATE` equals the
+benchmark's `ANSWER_WHOLISTIC_EVALUATION_PROMPT` character for character once the two names
+are mapped back; the benchmark's file is pinned in `tests/fixtures/benchmark/` (commit
+`82954993d1`, byte-identical to GitHub on 2026-09-30). `aligned` reads the reply as the official
+scorer does (the JSON object, then the word "yes" in `aligned`). `CorrectnessEvaluator` fills
+`query`, `reference_answer`, `generated_answer` and passes at a score of 4.0, so yes is 5.0 and
+no is 1.0; only `passing` goes on to the score. 10 tests, no network, no judge call made yet.
 
 **Dependencies:** `llama-index-core` `CorrectnessEvaluator`, `PromptTemplate`. New module
 `pipeline/eval/judge.py`.
