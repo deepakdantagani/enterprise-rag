@@ -8,10 +8,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from llama_index.core.evaluation import BatchEvalRunner
+from llama_index.llms.anthropic import Anthropic
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pipeline.eval.judge import CompletenessEvaluator, correctness_judge, judge_llm  # noqa: E402
+from pipeline.eval.judge import CompletenessEvaluator, StructuredCorrectnessEvaluator  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -20,8 +21,10 @@ async def main():
     results = await BatchEvalRunner(
         # Who judges: two evaluators on Claude Haiku 4.5
         evaluators={
-            "correctness": correctness_judge(judge_llm("claude-haiku-4-5")),       # agrees with the gold answer?
-            "completeness": CompletenessEvaluator(judge_llm("claude-haiku-4-5")),  # how many facts are contained?
+            # Does our answer agree with the gold answer?
+            "correctness": StructuredCorrectnessEvaluator(Anthropic(model="claude-haiku-4-5")),
+            # How many of the facts does our answer contain?
+            "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5")),
         },
         workers=8,  # questions judged at the same time
     ).aevaluate_response_strs(
