@@ -1,10 +1,14 @@
 import asyncio
+import contextlib
 import doctest
+import io
 import json
 import runpy
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -12,9 +16,9 @@ sys.path.insert(0, str(ROOT))
 from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 
 from pipeline.eval import judge, judge_prompts  # noqa: E402
-from pipeline.eval.judge import (CompletenessEvaluator, FactCheck, FactVerdict, aligned, correctness_judge,  # noqa: E402
-                                 judge_llm, judge_runner)
+from pipeline.eval.judge import CompletenessEvaluator, FactCheck, FactVerdict, aligned  # noqa: E402
 from pipeline.eval.judge_prompts import CORRECTNESS_TEMPLATE, FACT_TEMPLATE  # noqa: E402
+from llama_index.core.evaluation import CorrectnessEvaluator  # noqa: E402
 
 BENCHMARK_PROMPTS = ROOT / "tests/fixtures/benchmark/answer_evaluation.py"  # the judge's prompt file, unchanged
 
@@ -64,7 +68,8 @@ class Aligned(unittest.TestCase):
 class CorrectnessJudge(unittest.TestCase):
     def judged(self, reply):
         llm = RecordingLLM(reply=reply, prompts=[])
-        result = asyncio.run(correctness_judge(llm).aevaluate(query=QUERY, response=OURS, reference=GOLD))
+        judge_of = CorrectnessEvaluator(llm=llm, eval_template=CORRECTNESS_TEMPLATE, parser_function=aligned)
+        result = asyncio.run(judge_of.aevaluate(query=QUERY, response=OURS, reference=GOLD))
         return llm, result
 
     def test_an_aligned_answer_passes_with_the_judges_reason(self):
@@ -158,28 +163,56 @@ NOT_FOUND_OURS = "The documents do not say which accounts are allowlisted."
 NOT_FOUND_FACTS = ["The answer must state at some point that the query is not fully answerable from available documents."]
 
 
-class JudgeLLM(unittest.TestCase):
-    def test_the_judge_is_haiku_deterministic_with_short_replies(self):
-        llm = judge_llm(api_key="test")
-        self.assertEqual((llm.model, llm.temperature, llm.max_tokens), ("claude-haiku-4-5", 0, 256))
-
-    def test_another_model_is_one_setting(self):
-        self.assertEqual(judge_llm("claude-sonnet-5-5", api_key="test").model, "claude-sonnet-5-5")
+def jsonl(path, rows):
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    return path
 
 
-class JudgeRunner(unittest.TestCase):
+class Main(unittest.TestCase):
+    """main() on two questions in temporary files, with a stand-in for Claude."""
+
     def setUp(self):
-        self.llm = StructuredLLM(reply='{"reason": "ok", "aligned": "yes"}', calls=[], prompts=[],
-                                 contained={fact: True for fact in FACTS + NOT_FOUND_FACTS})
-        self.results = asyncio.run(judge_runner(self.llm).aevaluate_response_strs(
-            queries=[QUERY, NOT_FOUND_QUERY], response_strs=[OURS, NOT_FOUND_OURS],
-            correctness={"reference": [GOLD, NOT_FOUND_GOLD]}, completeness={"facts": [FACTS, NOT_FOUND_FACTS]}))
+        folder = Path(tempfile.mkdtemp())
+        self.judgments = folder / "judgments" / "run.jsonl"
+        self.llm = StructuredLLM(reply='{"reason": "Same terms.", "aligned": "yes"}', calls=[], prompts=[],
+                                 contained={**{fact: True for fact in FACTS + NOT_FOUND_FACTS}, FACTS[0]: False})
+        self.built = []  # the settings each Anthropic(...) was created with
+        patches = [
+            mock.patch.object(judge, "QUESTIONS", jsonl(folder / "questions.jsonl", [
+                {"question_id": "qst_0009", "question": QUERY, "gold_answer": GOLD, "answer_facts": FACTS},
+                {"question_id": "qst_0481", "question": NOT_FOUND_QUERY, "gold_answer": NOT_FOUND_GOLD,
+                 "answer_facts": NOT_FOUND_FACTS}])),
+            mock.patch.object(judge, "ANSWERS", jsonl(folder / "answers.jsonl", [
+                {"question_id": "qst_0009", "answer": OURS, "document_ids": []},
+                {"question_id": "qst_0481", "answer": NOT_FOUND_OURS, "document_ids": []}])),
+            mock.patch.object(judge, "JUDGMENTS", self.judgments),
+            mock.patch.object(judge, "Anthropic", lambda **settings: self.built.append(settings) or self.llm)]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
 
-    def test_each_question_gets_one_result_from_each_judge_in_question_order(self):
-        self.assertEqual([result.query for result in self.results["correctness"]], [QUERY, NOT_FOUND_QUERY])
-        self.assertEqual([result.query for result in self.results["completeness"]], [QUERY, NOT_FOUND_QUERY])
+    def run_main(self):
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            asyncio.run(judge.main())
+        return printed.getvalue()
+
+    def rows(self):
+        return [json.loads(line) for line in self.judgments.read_text().splitlines()]
+
+    def test_every_answer_gets_one_row_in_the_official_scorers_format(self):
+        self.run_main()
+        self.assertEqual(self.rows()[0], {
+            "question_id": "qst_0009", "answer_correct": True, "completeness_pct": 80.0, "reason": "Same terms.",
+            "facts": [{"fact": fact, "contained": fact != FACTS[0]} for fact in FACTS]})
+        self.assertEqual([(row["question_id"], row["completeness_pct"]) for row in self.rows()],
+                         [("qst_0009", 80.0), ("qst_0481", 100.0)])
+
+    def test_the_overall_score_is_printed(self):
+        self.assertIn("overall score: 90.0", self.run_main())  # (1 x 80 + 1 x 100) / 2
 
     def test_the_correctness_call_of_each_question_holds_its_own_gold_answer(self):
+        self.run_main()
         by_question = {QUERY: (GOLD, NOT_FOUND_GOLD), NOT_FOUND_QUERY: (NOT_FOUND_GOLD, GOLD)}
         self.assertEqual(len(self.llm.prompts), 2)
         for prompt in self.llm.prompts:
@@ -188,9 +221,29 @@ class JudgeRunner(unittest.TestCase):
             self.assertNotIn(other, prompt)
 
     def test_the_fact_calls_of_each_question_hold_only_its_own_facts(self):
+        self.run_main()
         asked = {answer: [call["statement"] for call in self.llm.calls if call["answer"] == answer]
                  for answer in (OURS, NOT_FOUND_OURS)}
         self.assertEqual(asked, {OURS: FACTS, NOT_FOUND_OURS: NOT_FOUND_FACTS})
+
+    def test_a_second_run_judges_nothing_and_keeps_the_rows(self):
+        self.run_main()
+        calls = len(self.llm.calls) + len(self.llm.prompts)
+        self.run_main()
+        self.assertEqual(len(self.llm.calls) + len(self.llm.prompts), calls)
+        self.assertEqual(len(self.rows()), 2)
+
+    def test_a_run_resumes_after_the_questions_already_judged(self):
+        self.judgments.parent.mkdir(parents=True)
+        jsonl(self.judgments, [{"question_id": "qst_0009", "answer_correct": True, "completeness_pct": 80.0}])
+        self.run_main()
+        self.assertEqual([row["question_id"] for row in self.rows()], ["qst_0009", "qst_0481"])
+        self.assertEqual({call["answer"] for call in self.llm.calls}, {NOT_FOUND_OURS})
+
+    def test_the_judge_is_haiku_deterministic_with_short_replies(self):
+        self.run_main()
+        self.assertIn({"model": "claude-haiku-4-5", "temperature": 0, "max_tokens": 256}, self.built)
+        self.assertTrue(all(settings["model"] == "claude-haiku-4-5" for settings in self.built))
 
 
 class TheBenchmarksPrompt(unittest.TestCase):

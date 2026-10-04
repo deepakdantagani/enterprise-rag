@@ -710,7 +710,7 @@ no judge call made yet.
 **Dependencies:** GEN-9a (module). `llama-index-core` `BaseEvaluator`, `EvaluationResult`,
 `LLM.astructured_predict`.
 
-## GEN-9c  `judge_llm` and `judge_runner`  ✅
+## GEN-9c  The judge model and `BatchEvalRunner`  ✅
 
 **Status:** Done
 
@@ -738,22 +738,25 @@ tokens, a correctness reply about 50); a reply cut at the cap must fail, not sco
 dependency `llama-index-llms-anthropic`; the key is `ANTHROPIC_API_KEY` in `.env`, never
 printed. The model is a parameter, so `qwen3:30b` or another judge can be compared later.
 
-**Measured** (2026-10-04): `judge_llm` and `judge_runner` in `pipeline/eval/judge.py`, which
-now reads top to bottom (correctness, completeness, model and runner) with the two prompts in
-`judge_prompts.py`. `BatchEvalRunner` gives each evaluator its own inputs through
+**Measured** (2026-10-04): `BatchEvalRunner` gives each evaluator its own inputs through
 `correctness={"reference": [...]}, completeness={"facts": [...]}` (checked against the installed
 `llama-index-core`); with two questions, each correctness call holds only its own gold answer
 and each fact call only its own question's facts (tested). `llama-index-llms-anthropic` 0.12.2
 added (with `anthropic` 1.11.0). `examples/judge_one_question.py` is the whole judge for
-qst_0009 as one flat script, 6 calls; it has not been run yet (paid, a fraction of a cent), so
+qst_0009 as one call, 6 Claude calls; it has not been run yet (paid, a fraction of a cent), so
 the structured call, temperature 0 and the reply cap are still unconfirmed against Claude.
-5 new tests, no network.
+
+**Decision** (2026-10-04): no `judge_llm` or `judge_runner` functions. The model
+(`Anthropic(model="claude-haiku-4-5", temperature=0, max_tokens=256)`) and the runner are
+written inline in the one call inside `main()` (GEN-9d), where they are read in place; a second
+judge model is an edit of that line. Chosen for readability: the file reads like the one-call
+example.
 
 **Dependencies:** GEN-9a, GEN-9b. `llama-index-core` `BatchEvalRunner`.
 
-## GEN-9d  `judged_row` and `save_judgments` (resumable)  ⬜
+## GEN-9d  `main`: judge the saved answers (resumable)  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** developer paying for a judge,
 **I want to** each question's verdict written as one line in the official scorer's row format
@@ -764,24 +767,37 @@ unchanged.
 **Acceptance Criteria**
 ```gherkin
 Scenario: the row is the official scorer's
-  Given a passing correctness result and a completeness score of 0.8 for qst_0009
-  Then judged_row is {"question_id": "qst_0009", "answer_correct": true,
-       "completeness_pct": 80.0, "reason": "...", "facts": [false, true, true, true, true]}
+  Given a passing correctness result and 4 of 5 facts contained for qst_0009
+  Then its saved row is {"question_id": "qst_0009", "answer_correct": true,
+       "completeness_pct": 80.0, "reason": "...", "facts": [{"fact": "...", "contained": false}, ...]}
 
 Scenario: resume
   Given the judgments file already holds q1
-  When save_judgments runs for q1 and q2
-  Then only q2 is judged, and it returns 1
+  When the run starts for q1 and q2
+  Then only q2 is judged
 
 Scenario: nothing new
   When it runs again
-  Then the LLM is not called and it returns 0
+  Then the LLM is not called and the file is unchanged
 ```
 
 **Example with real data:** the same pattern as `save_answers` (GEN-2e), which survived the
 5.6 h answer run.
 
 **Non-functional Requirements:** shared ones; one flushed line per question.
+
+**Decision** (2026-10-04): no `judged_row` or `save_judgments` functions. `main()` in
+`pipeline/eval/judge.py` is one flat run, top to bottom: load the questions and answers, skip
+the answers already judged, then per batch of 25 build the inputs, make the one
+`BatchEvalRunner(...).aevaluate_response_strs(...)` call, and append one line per question. So a
+crash loses at most one batch (25 questions, about $0.15), not one question as first written.
+
+**Measured** (2026-10-04): `uv run python -m pipeline.eval.judge`. On two questions in temporary
+files with a stand-in for Claude: rows are `{"question_id", "answer_correct",
+"completeness_pct", "reason", "facts": [{"fact", "contained"}, …]}`, which `overall_score`
+(GEN-6) reads unchanged (80 and 100 give 90.0); a second run makes no call; a run with qst_0009
+already saved judges only qst_0481. 7 tests, no network. Output
+`data/_index/judgments/v4-gemma4-base__claude-haiku-4-5.jsonl`.
 
 **Dependencies:** GEN-9c, GEN-3 (`all_questions`, with gold answer and facts), GEN-6. Output
 `data/_index/judgments/<answers>__<judge>.jsonl` (gitignored).
