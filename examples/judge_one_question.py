@@ -10,7 +10,9 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pipeline.eval.judge import judge_llm, judge_runner  # noqa: E402
+from llama_index.core.evaluation import BatchEvalRunner  # noqa: E402
+
+from pipeline.eval.judge import CompletenessEvaluator, correctness_judge, judge_llm  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -32,17 +34,23 @@ our_answer = """Redwood proposed a 12-month commit package with the following co
 - Seat/license option: An option to add a predictable monthly seat fee to cap variable spend, where seat fees reduce effective unit cost further for covered traffic.
 - Operational concession: 99.9% latency SLO for hosted instances in the US region, including a short remediation runbook in the SOW."""
 
-# 2. The judge: Claude Haiku 4.5, and the runner holding the correctness and completeness evaluators
-runner = judge_runner(judge_llm())
+# 2. The judge model
+llm = judge_llm()  # Claude Haiku 4.5, temperature 0
 
 
-# 3. Run both judges and print the score
+# 3. Run both judges in one call and print the score
 async def main():
-    results = await runner.aevaluate_response_strs(
+    results = await BatchEvalRunner(
+        evaluators={
+            "correctness": correctness_judge(llm),       # does our answer agree with the gold answer?
+            "completeness": CompletenessEvaluator(llm),  # how many of the facts does our answer contain?
+        },
+        workers=8,                                       # questions judged at the same time
+    ).aevaluate_response_strs(
         queries=[question],
         response_strs=[our_answer],
-        correctness={"reference": [gold_answer]},  # only the correctness judge gets the gold answer
-        completeness={"facts": [facts]},           # only the completeness judge gets the facts
+        correctness={"reference": [gold_answer]},        # only the correctness judge gets the gold answer
+        completeness={"facts": [facts]},                 # only the completeness judge gets the facts
     )
     correctness, completeness = results["correctness"][0], results["completeness"][0]
     print("correct:     ", correctness.passing, "|", correctness.feedback)
