@@ -13,25 +13,26 @@ completeness (GEN-9b).
     >>> aligned('{"reason": "Same package terms.", "aligned": "yes"}')
     (5.0, 'Same package terms.')
 
-GEN-9b: fact_verdict and CompletenessEvaluator. Completeness is the share of a question's
-answer_facts that the answer contains. The judge reads our answer and one fact per call
-(INDIVIDUAL_FACT_VALIDATOR_PROMPT; never the question or the gold answer) and replies yes or no,
-read from the first line as the official scorer does (validate_single_fact). qst_0009 has 5
-facts, so 5 calls; 4 contained is 0.8. LlamaIndex has no evaluator that checks one statement at
-a time, so this is the one evaluator we write.
+GEN-9b: FactCheck, FactVerdict and CompletenessEvaluator. Completeness is the share of a
+question's answer_facts that the answer contains. The judge reads our answer and one fact per
+call (INDIVIDUAL_FACT_VALIDATOR_PROMPT; never the question or the gold answer). qst_0009 has 5
+facts, so 5 calls; 4 contained is 0.8. The reply is Claude's structured output: LlamaIndex's
+astructured_predict sends FactVerdict as the output schema (Anthropic messages.parse), so the
+reply can only be {"contained": true|false} and no parser is needed. LlamaIndex has no evaluator
+that checks one statement at a time, so this is the one evaluator we write.
 
-    >>> fact_verdict("The package included a 99.9 percent latency SLO.", "yes")
-    FactVerdict(fact='The package included a 99.9 percent latency SLO.', contained=True)
+    >>> FactCheck(answer="Redwood proposed a 12-month commit package.", facts=["A 99.9 percent latency SLO."]).facts
+    ['A 99.9 percent latency SLO.']
 """
 import asyncio
 import json
 import re
-from typing import Any, Optional, Sequence, Tuple
+from typing import Annotated, Any, List, Optional, Sequence, Tuple
 
 from llama_index.core import PromptTemplate
 from llama_index.core.evaluation import BaseEvaluator, CorrectnessEvaluator, EvaluationResult
 from llama_index.core.llms import LLM
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ALIGNED, MISALIGNED = 5.0, 1.0  # CorrectnessEvaluator passes a score of 4.0 or more
 
@@ -126,21 +127,22 @@ FACT_TEMPLATE = PromptTemplate(  # the benchmark's INDIVIDUAL_FACT_VALIDATOR_PRO
     "answer does not contain the information in the statement or contradicts the statement.")
 
 
+class FactCheck(BaseModel):
+    """Input: what one completeness judgment needs, validated before any call is paid for."""
+    answer: str = Field(min_length=1)
+    facts: List[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+
+
 class FactVerdict(BaseModel):
-    fact: str
-    contained: bool
+    """Output: the judge's structured reply for one fact."""
+    contained: bool = Field(description="True if the answer is consistent with and contains the statement.")
 
 
-def fact_verdict(fact: str, reply: str) -> FactVerdict:
-    """The judge's yes or no on one fact, read from the reply's first line as the official scorer reads it."""
-    first_line = reply.strip().splitlines()[0] if reply.strip() else ""
-    if not re.search(r"\b(yes|no)\b", first_line, re.IGNORECASE):
-        raise ValueError(f"neither yes nor no in the judge's reply: {reply!r}")
-    return FactVerdict(fact=fact, contained=re.search(r"\byes\b", first_line, re.IGNORECASE) is not None)
+JUDGE_KWARGS = {"temperature": 0}  # LlamaIndex's Anthropic structured call takes sampling settings only this way
 
 
 class CompletenessEvaluator(BaseEvaluator):
-    """The share of a question's facts that the answer contains, one judge call per fact."""
+    """The share of a question's facts that the answer contains, one structured judge call per fact."""
 
     def __init__(self, llm: LLM) -> None:
         self._llm = llm
@@ -154,11 +156,13 @@ class CompletenessEvaluator(BaseEvaluator):
     async def aevaluate(self, query: Optional[str] = None, response: Optional[str] = None,
                         contexts: Optional[Sequence[str]] = None, facts: Sequence[str] = (),
                         **kwargs: Any) -> EvaluationResult:
-        if not facts:
-            raise ValueError("completeness needs the question's answer_facts")
-        replies = await asyncio.gather(*(self._llm.apredict(FACT_TEMPLATE, answer=response, statement=fact)
-                                         for fact in facts))
-        verdicts = [fact_verdict(fact, reply) for fact, reply in zip(facts, replies)]
-        share = sum(verdict.contained for verdict in verdicts) / len(verdicts)
+        check = FactCheck(answer=response or "", facts=list(facts))  # an empty answer or no facts: no call is made
+        verdicts = await asyncio.gather(*(
+            self._llm.astructured_predict(FactVerdict, FACT_TEMPLATE, llm_kwargs=JUDGE_KWARGS,
+                                          answer=check.answer, statement=fact)
+            for fact in check.facts))
+        contained = [verdict.contained for verdict in verdicts]
+        share = sum(contained) / len(contained)
         return EvaluationResult(query=query, response=response, score=share, passing=share == 1.0,
-                                feedback=json.dumps([verdict.model_dump() for verdict in verdicts]))
+                                feedback=json.dumps([{"fact": fact, "contained": found}
+                                                     for fact, found in zip(check.facts, contained)]))

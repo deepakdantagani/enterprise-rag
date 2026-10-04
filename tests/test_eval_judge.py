@@ -12,8 +12,8 @@ sys.path.insert(0, str(ROOT))
 from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 
 from pipeline.eval import judge  # noqa: E402
-from pipeline.eval.judge import (CORRECTNESS_TEMPLATE, FACT_TEMPLATE, CompletenessEvaluator, FactVerdict, aligned,  # noqa: E402
-                                 correctness_judge, fact_verdict)
+from pipeline.eval.judge import (CORRECTNESS_TEMPLATE, FACT_TEMPLATE, CompletenessEvaluator, FactCheck,  # noqa: E402
+                                 FactVerdict, aligned, correctness_judge)
 
 BENCHMARK_PROMPTS = ROOT / "tests/fixtures/benchmark/answer_evaluation.py"  # the judge's prompt file, unchanged
 
@@ -86,64 +86,69 @@ class CorrectnessJudge(unittest.TestCase):
         self.assertIn('{\n  "reason": "reason for the classification",\n  "aligned": "yes or no"\n}', llm.prompts[0])
 
 
-class FactLLM(RecordingLLM):
-    """Answers each fact prompt with the reply given for the fact it holds."""
+class StructuredLLM(RecordingLLM):
+    """Stands in for Claude's structured output: a FactVerdict per fact, every call recorded."""
     reply: str = ""
-    replies: dict = {}
+    contained: dict = {}
+    calls: list = []
 
-    def complete(self, prompt, formatted=False, **kwargs):
-        self.prompts.append(prompt)
-        return CompletionResponse(text=next(reply for fact, reply in self.replies.items() if fact in prompt))
-
-
-class FactVerdictOf(unittest.TestCase):
-    def test_yes_on_the_first_line_is_contained(self):
-        self.assertEqual(fact_verdict("a fact", "Yes\nbecause it says so"), FactVerdict(fact="a fact", contained=True))
-
-    def test_no_is_not_contained(self):
-        self.assertFalse(fact_verdict("a fact", "no").contained)
-
-    def test_a_reply_that_is_neither_raises(self):
-        with self.assertRaises(ValueError):
-            fact_verdict("a fact", "It depends.")
-
-    def test_an_empty_reply_raises(self):
-        with self.assertRaises(ValueError):
-            fact_verdict("a fact", "  ")
+    async def astructured_predict(self, output_cls, prompt, llm_kwargs=None, **prompt_args):
+        self.calls.append({"output_cls": output_cls, "prompt": prompt, "llm_kwargs": llm_kwargs, **prompt_args})
+        return output_cls(contained=self.contained[prompt_args["statement"]])
 
 
 class Completeness(unittest.TestCase):
-    def judged(self, replies):
-        llm = FactLLM(replies=dict(zip(FACTS, replies)), prompts=[])
-        return llm, asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=OURS, facts=FACTS))
+    def judged(self, contained, response=OURS, facts=FACTS):
+        llm = StructuredLLM(contained=dict(zip(FACTS, contained)), calls=[], prompts=[])
+        return llm, asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=response, facts=facts))
 
     def test_four_of_five_facts_is_eighty_percent_and_not_passing(self):
-        _, result = self.judged(["no", "yes", "yes", "yes", "yes"])
+        _, result = self.judged([False, True, True, True, True])
         self.assertEqual(result.score, 0.8)
         self.assertFalse(result.passing)
 
     def test_every_fact_is_complete_and_passing(self):
-        _, result = self.judged(["yes"] * 5)
+        _, result = self.judged([True] * 5)
         self.assertEqual(result.score, 1.0)
         self.assertTrue(result.passing)
 
-    def test_one_call_per_fact_with_our_answer_exactly_one_fact_and_no_question(self):
-        llm, _ = self.judged(["yes"] * 5)
-        self.assertEqual(len(llm.prompts), 5)
-        for prompt in llm.prompts:
-            self.assertIn(OURS, prompt)
-            self.assertEqual(sum(fact in prompt for fact in FACTS), 1)
-            self.assertNotIn(QUERY, prompt)
+    def test_one_structured_call_per_fact_with_our_answer_and_that_fact_only(self):
+        llm, _ = self.judged([True] * 5)
+        self.assertEqual([call["statement"] for call in llm.calls], FACTS)
+        for call in llm.calls:
+            self.assertIs(call["output_cls"], FactVerdict)
+            self.assertIs(call["prompt"], FACT_TEMPLATE)
+            self.assertEqual(call["answer"], OURS)
+            self.assertNotIn("query", call)  # the question is never sent
+
+    def test_the_judge_is_asked_at_temperature_zero(self):
+        llm, _ = self.judged([True] * 5)
+        self.assertTrue(all(call["llm_kwargs"] == {"temperature": 0} for call in llm.calls))
 
     def test_the_verdict_of_each_fact_is_kept_in_order_for_audit(self):
-        _, result = self.judged(["no", "yes", "yes", "yes", "yes"])
+        _, result = self.judged([False, True, True, True, True])
         verdicts = json.loads(result.feedback)
         self.assertEqual([verdict["fact"] for verdict in verdicts], FACTS)
         self.assertEqual([verdict["contained"] for verdict in verdicts], [False, True, True, True, True])
 
-    def test_a_question_without_facts_raises(self):
+    def test_no_facts_raises_before_any_call(self):
+        llm = StructuredLLM(calls=[], prompts=[])
         with self.assertRaises(ValueError):
-            asyncio.run(CompletenessEvaluator(FactLLM(prompts=[])).aevaluate(query=QUERY, response=OURS, facts=[]))
+            asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=OURS, facts=[]))
+        self.assertEqual(llm.calls, [])
+
+    def test_an_empty_answer_raises_before_any_call(self):
+        llm = StructuredLLM(calls=[], prompts=[])
+        for empty in ("", None):
+            with self.assertRaises(ValueError):
+                asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=empty, facts=FACTS))
+        self.assertEqual(llm.calls, [])
+
+
+class FactCheckInput(unittest.TestCase):
+    def test_a_blank_fact_is_rejected(self):
+        with self.assertRaises(ValueError):
+            FactCheck(answer=OURS, facts=["a fact", ""])
 
 
 class TheBenchmarksPrompt(unittest.TestCase):
