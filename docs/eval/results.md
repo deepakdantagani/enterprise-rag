@@ -476,3 +476,50 @@ complete are means over every question in the row; score is the mean of correct 
 | hubspot | 34 | 85.3% | 64.7% | 84.1% | 64.0 | 70.6% | 79.4% | 67.6 |
 | fireflies | 25 | 72.0% | 72.0% | 73.2% | 67.1 | 64.0% | 59.3% | 52.5 |
 | no expected document | 30 | n/a | 90.0% | 95.8% | 89.2 | 83.3% | 92.5% | 83.3 |
+
+## Answerer: deepseek-v4-pro against gemma4:26b, our judge (claude-haiku-4-5)
+
+**Not a leaderboard score.** Same 500 questions, same 10 documents per question, same prompt
+(`ANSWER_PROMPT_V2`), temperature 0 and thinking off for both, same judge; only the answering
+model changed (GEN-12a). Run 2026-10-04.
+
+| | gemma4:26b | deepseek-v4-pro |
+|---|---|---|
+| **overall score** | 62.43 | **67.97** |
+| answers judged correct | 345 | 367 |
+| mean completeness | 75.51% | 77.98% |
+| opens with "The documents do not say" | 71 | 137 |
+| uses markdown | 113 | 8 |
+| says "Document n" | 13 | 46 |
+
+The difference is +5.54, with a paired bootstrap 95% interval of +1.90 to +9.15: **a real gain**.
+58 answers went from wrong to right and 36 from right to wrong.
+
+| type | questions | gemma | deepseek | change |
+|---|---|---|---|---|
+| intra_document_reasoning | 40 | 65.6 | 84.7 | +19.1 |
+| completeness | 20 | 23.5 | 36.6 | +13.2 |
+| project_related | 40 | 28.7 | 41.2 | +12.5 |
+| conflicting_info | 20 | 66.0 | 78.1 | +12.0 |
+| constrained | 30 | 69.3 | 77.4 | +8.1 |
+| high_level | 10 | 60.0 | 67.5 | +7.5 |
+| info_not_found | 20 | 95.0 | 100.0 | +5.0 |
+| semantic | 125 | 53.0 | 57.6 | +4.6 |
+| basic | 175 | 72.9 | 75.4 | +2.5 |
+| miscellaneous | 20 | 84.6 | 63.3 | −21.2 |
+
+| source | questions | gemma | deepseek | change |
+|---|---|---|---|---|
+| confluence | 114 | 44.7 | 57.6 | +12.9 |
+| jira | 100 | 59.1 | 65.6 | +6.5 |
+| slack | 79 | 50.3 | 57.2 | +6.9 |
+| github | 60 | 57.5 | 60.6 | +3.1 |
+| google_drive | 60 | 53.5 | 58.2 | +4.8 |
+| linear | 58 | 61.3 | 68.2 | +6.9 |
+| gmail | 55 | 65.8 | 70.7 | +4.9 |
+| hubspot | 34 | 67.6 | 65.2 | −2.5 |
+| fireflies | 25 | 52.5 | 65.7 | +13.1 |
+| no expected document | 30 | 83.3 | 89.2 | +5.8 |
+
+deepseek's 133 wrong answers by gold documents among the 10 read: all 52, some 23, none 55,
+question has no gold document 3.

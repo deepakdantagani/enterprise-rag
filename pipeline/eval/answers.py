@@ -25,6 +25,7 @@ from pydantic import PrivateAttr
 
 TOP_DOCUMENTS = 10  # as the benchmark's baseline answerer
 ANSWERER = "gemma4:26b"  # GEN-2d: local on Ollama, $0; thinking off for the base case (a later story compares)
+DEEPSEEK_ANSWERER = "deepseek-v4-pro"  # GEN-12a: paid, about $5.60 per 500 questions off-peak
 CONTEXT_WINDOW = 40_960  # the largest top 10 is ~35K tokens; Ollama's default window would cut it silently
 
 # GEN-2d: the first prompt, kept as it was scored. 62.11 on our judge (GEN-9e): 339 of 500 correct.
@@ -143,6 +144,18 @@ class FullDocuments(BaseNodePostprocessor):
 def answerer_llm(model: str = ANSWERER) -> LLM:
     from llama_index.llms.ollama import Ollama
     return Ollama(model=model, temperature=0, thinking=False, context_window=CONTEXT_WINDOW, request_timeout=600)
+
+
+def deepseek_answerer_llm(api_key: Optional[str] = None) -> LLM:
+    """GEN-12a: the same documents and prompt on a stronger model; temperature 0 and thinking off, as the local one.
+
+    gemma4:26b answers 69.0% correctly with recall@10 0.834; 68 of its 155 wrong answers read every
+    gold document. The key is DEEPSEEK_API_KEY in .env. The model reads 1M tokens; 128K is set so
+    LlamaIndex never splits a top 10 (the largest is ~35K tokens) into two calls.
+    """
+    from llama_index.llms.deepseek import DeepSeek
+    return DeepSeek(model=DEEPSEEK_ANSWERER, api_key=api_key, temperature=0.0, max_tokens=2_048, context_window=128_000,
+                    additional_kwargs={"extra_body": {"thinking": {"type": "disabled"}}})
 
 
 def answer_engine(retriever: BaseRetriever, llm: LLM, documents: Dict[str, Tuple[str, str]],

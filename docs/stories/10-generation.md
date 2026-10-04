@@ -1063,3 +1063,59 @@ Scenario: no answer run
 
 **Dependencies:** GEN-11a; EVAL-5c (`html_report`).
 
+---
+
+## GEN-12a  A stronger answerer on the same documents (`deepseek-v4-pro`)  ✅
+
+**Status:** Done (2026-10-04). **67.97** against gemma4:26b's 62.43 on our judge: +5.54, paired
+bootstrap 95% interval +1.90 to +9.15, a real gain.
+
+**As a** developer aiming for the top 5,
+**I want to** answer the same 500 questions from the same 10 documents with the same prompt on a
+stronger model,
+**so that** we know how many points the local answerer costs.
+
+**Why:** prompt v2 did not move the score (62.11 → 62.43), 68 of gemma's 155 wrong answers read
+every gold document, and on the leaderboard OpenClaw answers 81.6% correctly with document recall
+79.0 while we answer 69.0% with recall@10 0.834. `deepseek-v4-pro` was chosen on price: $0.66 per
+1M input tokens off-peak against $1 for claude-haiku-4-5, and it is not the judge's own model.
+
+**What changed:** `deepseek_answerer_llm()` (LlamaIndex `DeepSeek`, temperature 0, thinking
+disabled through `extra_body`, as the local answerer); `answer_run` answers with it and writes
+`v4-deepseek-v4-pro-v2.jsonl`; the judge reads that file. gemma's answers and judgments are kept.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: only the model differs
+  Then the answerer is deepseek-v4-pro at temperature 0 with thinking disabled
+  And every question is answered from the same 10 documents as the gemma run
+  And the gemma answers and judgments are unchanged
+
+Scenario: the comparison is recorded
+  Then docs/eval/results.md holds both scores, the interval, the flips, and the change by type and source
+```
+
+**Measured**
+
+| | gemma4:26b | deepseek-v4-pro |
+|---|---|---|
+| overall score | 62.43 | 67.97 |
+| answers judged correct | 345 | 367 |
+| mean completeness | 75.51% | 77.98% |
+| opens with "The documents do not say" | 71 | 137 |
+| uses markdown | 113 | 8 |
+
+58 answers went from wrong to right, 36 from right to wrong. The largest gains are
+`intra_document_reasoning` (+19.1), `completeness` (+13.2), `project_related` (+12.5) and
+`conflicting_info` (+12.0); `miscellaneous` fell 21.2 (20 questions). deepseek opens with "The
+documents do not say" in 137 answers, twice gemma's 71, so the hedge is not a gemma habit.
+
+**Run notes:** about 30 minutes for the 500 answers (~3.5 s each), all off-peak (a Sunday).
+Estimated cost $5.60 for the answers (8M input tokens) and $2-3 for the judge; the actual bills
+were not read.
+
+**Decision:** the model is a real lever (+5.5) but not the whole gap: 67.97 is still 12 points
+under the 5th place (80.26). 78 of deepseek's 133 wrong answers are missing a gold document.
+
+**Dependencies:** GEN-10b; `llama-index-llms-deepseek`.
+
