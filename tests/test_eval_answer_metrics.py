@@ -1,0 +1,78 @@
+"""GEN-11a: answer_rows, the judged answers of one run as metrics.json rows, overall and per source.
+
+Run: uv run python -m unittest tests.test_eval_answer_metrics
+"""
+import doctest
+import json
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from pipeline.eval import answer_metrics  # noqa: E402
+from pipeline.eval.answer_metrics import METRICS, answer_rows  # noqa: E402
+
+QUESTIONS = [{"question_id": "q1", "source_types": ["slack"]},
+             {"question_id": "q2", "source_types": ["slack", "jira"]},
+             {"question_id": "q3", "source_types": []}]
+JUDGMENTS = [{"question_id": "q1", "answer_correct": True, "completeness_pct": 100.0},
+             {"question_id": "q2", "answer_correct": False, "completeness_pct": 50.0},
+             {"question_id": "q3", "answer_correct": True, "completeness_pct": 80.0}]
+
+
+class AnswerRows(unittest.TestCase):
+    def setUp(self):
+        self.rows = {row["group"]: row for row in answer_rows(QUESTIONS, JUDGMENTS)}
+
+    def test_overall_is_every_question(self):
+        self.assertEqual(self.rows["overall"], {"group": "overall", "questions": 3, "means": {
+            "correct": 2 / 3, "completeness": (100 + 50 + 80) / 300, "score": (100 + 0 + 80) / 300}})
+
+    def test_a_wrong_answer_scores_zero_but_keeps_its_completeness(self):
+        self.assertEqual(self.rows["source:jira"]["means"], {"correct": 0.0, "completeness": 0.5, "score": 0.0})
+
+    def test_a_question_counts_under_every_source_of_its_expected_documents(self):
+        self.assertEqual((self.rows["source:slack"]["questions"], self.rows["source:jira"]["questions"]), (2, 1))
+
+    def test_questions_with_no_expected_document_get_their_own_group(self):
+        self.assertEqual(self.rows["source:none"], {"group": "source:none", "questions": 1, "means": {
+            "correct": 1.0, "completeness": 0.8, "score": 0.8}})
+
+    def test_the_groups_are_overall_then_each_source(self):
+        self.assertEqual([row["group"] for row in answer_rows(QUESTIONS, JUDGMENTS)],
+                         ["overall", "source:jira", "source:none", "source:slack"])
+
+    def test_a_question_that_was_not_judged_fails_loudly(self):
+        with self.assertRaises(KeyError):
+            answer_rows(QUESTIONS, JUDGMENTS[:2])
+
+
+@unittest.skipUnless((answer_metrics.RUN / "metrics.json").is_file(), "no answer metrics yet")
+class RealV2Answers(unittest.TestCase):
+    def setUp(self):
+        saved = json.loads((answer_metrics.RUN / "metrics.json").read_text())
+        self.config, self.rows = saved["config"], {row["group"]: row for row in saved["rows"]}
+
+    def test_overall_is_62_43_over_500_questions(self):
+        overall = self.rows["overall"]
+        self.assertEqual((overall["questions"], round(overall["means"]["score"] * 100, 2),
+                          round(overall["means"]["correct"] * 500)), (500, 62.43, 345))
+
+    def test_confluence_is_the_largest_and_weakest_source(self):
+        confluence = self.rows["source:confluence"]
+        self.assertEqual((confluence["questions"], round(confluence["means"]["score"] * 100, 1)), (114, 44.7))
+
+    def test_the_run_names_its_prompt_answerer_and_judge(self):
+        self.assertEqual((self.config["prompt"], self.config["answerer"], self.config["judge"]),
+                         ("ANSWER_PROMPT_V2", "gemma4:26b", "claude-haiku-4-5"))
+
+
+class Doctests(unittest.TestCase):
+    def test_doctests(self):
+        self.assertEqual(doctest.testmod(answer_metrics).failed, 0)
+        self.assertEqual(METRICS, ("correct", "completeness", "score"))
+
+
+if __name__ == "__main__":
+    unittest.main()
