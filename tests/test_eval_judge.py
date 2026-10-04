@@ -12,7 +12,8 @@ sys.path.insert(0, str(ROOT))
 from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 
 from pipeline.eval import judge, judge_prompts  # noqa: E402
-from pipeline.eval.judge import CompletenessEvaluator, FactCheck, FactVerdict, aligned, correctness_judge  # noqa: E402
+from pipeline.eval.judge import (CompletenessEvaluator, FactCheck, FactVerdict, aligned, correctness_judge,  # noqa: E402
+                                 judge_llm, judge_runner)
 from pipeline.eval.judge_prompts import CORRECTNESS_TEMPLATE, FACT_TEMPLATE  # noqa: E402
 
 BENCHMARK_PROMPTS = ROOT / "tests/fixtures/benchmark/answer_evaluation.py"  # the judge's prompt file, unchanged
@@ -149,6 +150,47 @@ class FactCheckInput(unittest.TestCase):
     def test_a_blank_fact_is_rejected(self):
         with self.assertRaises(ValueError):
             FactCheck(answer=OURS, facts=["a fact", ""])
+
+
+NOT_FOUND_QUERY = "Which accounts are allowlisted, and what are their budget values?"  # as qst_0481: one fact
+NOT_FOUND_GOLD = "The documents do not list the allowlisted accounts or their budgets."
+NOT_FOUND_OURS = "The documents do not say which accounts are allowlisted."
+NOT_FOUND_FACTS = ["The answer must state at some point that the query is not fully answerable from available documents."]
+
+
+class JudgeLLM(unittest.TestCase):
+    def test_the_judge_is_haiku_deterministic_with_short_replies(self):
+        llm = judge_llm(api_key="test")
+        self.assertEqual((llm.model, llm.temperature, llm.max_tokens), ("claude-haiku-4-5", 0, 256))
+
+    def test_another_model_is_one_setting(self):
+        self.assertEqual(judge_llm("claude-sonnet-5-5", api_key="test").model, "claude-sonnet-5-5")
+
+
+class JudgeRunner(unittest.TestCase):
+    def setUp(self):
+        self.llm = StructuredLLM(reply='{"reason": "ok", "aligned": "yes"}', calls=[], prompts=[],
+                                 contained={fact: True for fact in FACTS + NOT_FOUND_FACTS})
+        self.results = asyncio.run(judge_runner(self.llm).aevaluate_response_strs(
+            queries=[QUERY, NOT_FOUND_QUERY], response_strs=[OURS, NOT_FOUND_OURS],
+            correctness={"reference": [GOLD, NOT_FOUND_GOLD]}, completeness={"facts": [FACTS, NOT_FOUND_FACTS]}))
+
+    def test_each_question_gets_one_result_from_each_judge_in_question_order(self):
+        self.assertEqual([result.query for result in self.results["correctness"]], [QUERY, NOT_FOUND_QUERY])
+        self.assertEqual([result.query for result in self.results["completeness"]], [QUERY, NOT_FOUND_QUERY])
+
+    def test_the_correctness_call_of_each_question_holds_its_own_gold_answer(self):
+        by_question = {QUERY: (GOLD, NOT_FOUND_GOLD), NOT_FOUND_QUERY: (NOT_FOUND_GOLD, GOLD)}
+        self.assertEqual(len(self.llm.prompts), 2)
+        for prompt in self.llm.prompts:
+            own, other = next(golds for query, golds in by_question.items() if query in prompt)
+            self.assertIn(own, prompt)
+            self.assertNotIn(other, prompt)
+
+    def test_the_fact_calls_of_each_question_hold_only_its_own_facts(self):
+        asked = {answer: [call["statement"] for call in self.llm.calls if call["answer"] == answer]
+                 for answer in (OURS, NOT_FOUND_OURS)}
+        self.assertEqual(asked, {OURS: FACTS, NOT_FOUND_OURS: NOT_FOUND_FACTS})
 
 
 class TheBenchmarksPrompt(unittest.TestCase):

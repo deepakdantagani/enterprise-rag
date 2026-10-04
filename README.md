@@ -135,6 +135,7 @@ pipeline/
   slack/        Slack threads → clean text → one node per thread
   gmail/        Gmail threads → messages, headers, quotes, attachments
   *.py          Confluence: cleaning, heading detection, markdown with stable line ranges
+examples/       one flat, runnable script per feature (start here to read the code)
 tests/          unittest suite, doctests, corpus goldens, hand-labelled truth sets
 docs/
   stories/      every story, with acceptance criteria and measured numbers
