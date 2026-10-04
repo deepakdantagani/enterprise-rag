@@ -23,7 +23,8 @@ REPORT = ROOT / "docs/eval/report.html"
 METRICS = ("hit_rate", "recall", "precision", "mrr", "ndcg")
 KS = (10, 5, 20)
 TITLE = "EnterpriseRAG Retrieval Scoreboard"
-ANSWERS = "2026-10-04-answers-v4-gemma4-v2"  # GEN-11b: the base answer run (retrieval v4, ANSWER_PROMPT_V2), GEN-11a's rows
+ANSWERS = ("2026-10-04-answers-v4-gemma4-v2",  # GEN-11b: the base answer run (retrieval v4, ANSWER_PROMPT_V2)
+           "2026-10-04-answers-v4-deepseek-v4-pro-v2")  # GEN-12b: the same documents and prompt on deepseek-v4-pro
 VERSIONS = (  # each version is one change on the one before, scored exactly on the 470 questions
     ("v0", "2026-09-27-hybrid__voyage_4__bm25-dense-exact", "Dense search: voyage-4 vectors"),
     ("v1", "2026-09-27-hybrid__voyage_4__bm25-hybrid-rrf-exact", "+ BM25, fused by RRF"),
@@ -88,14 +89,25 @@ def answer_summary(runs_dir: Path, run_name: str, retrieval: List[dict]) -> dict
         for row in rows]}
 
 
+def answer_runs(runs_dir: Path, run_names: Sequence[str], retrieval: List[dict]) -> List[dict]:
+    """GEN-12b: each answer run's rows, its overall score, and its gain over the run before."""
+    runs, previous = [], None
+    for run_name in run_names:
+        summary = answer_summary(runs_dir, run_name, retrieval)
+        score = summary["rows"][0]["score"]
+        runs.append({**summary, "score": score, "gain": None if previous is None else round(score - previous, 3)})
+        previous = score
+    return runs
+
+
 def html_report(steps: Sequence[Tuple[str, str, str]], runs_dir: Path, title: str,
-                versions: Sequence[Tuple[str, str, str]] = (), answers: str = "") -> str:
+                versions: Sequence[Tuple[str, str, str]] = (), answers: Sequence[str] = ()) -> str:
     runs = [load_rows(runs_dir, run_name) for _, _, run_name in steps]
     groups = groups_of(runs[0])
     step_names = [(label, search) for label, search, _ in steps]
     data = {"groups": groups, "tables": {g["id"]: tables_for(runs, step_names, g["id"]) for g in groups},
             "versions": version_summary(runs_dir, versions),
-            "answers": answer_summary(runs_dir, answers, runs[-1]) if answers else None}
+            "answers": answer_runs(runs_dir, answers, runs[-1])}
     embedded = json.dumps(data).replace("</", "<\\/")
     return PAGE.replace("{title}", title).replace("{data}", embedded)
 
@@ -180,7 +192,10 @@ code { font-family: var(--mono); font-size: 0.85em; }
     <div id="tables"></div>
   </section>
   <section aria-labelledby="answers-title" id="answers" hidden>
-    <div class="label" id="answers-title">Answers by source · base run</div>
+    <div class="label" id="answers-title">Answer score by answering model</div>
+    <div class="versions" id="answer-cards"></div>
+    <div class="label">Answers by source</div>
+    <nav id="answer-runs" aria-label="Answering model"></nav>
     <p class="count" id="answers-about"></p>
     <div class="scroll"><table id="answers-table"></table></div>
     <p class="count">Recall@10 is the retrieval step the answerer reads from, on the 470 questions that have expected documents. Correct and complete are judged per answer; score is correct × completeness, the leaderboard's number, so a wrong answer scores 0 however complete it is. Shaded cells are the weakest source in each column.</p>
@@ -218,19 +233,35 @@ function show(group) {
     const wrap = el("div", undefined, "scroll"); wrap.append(table); out.append(wrap);
   }
 }
-if (data.answers) {
-  const c = data.answers.config, rows = data.answers.rows, table = document.getElementById("answers-table"), head = table.insertRow();
-  const shown = [["recall", "Recall@10", v => v.toFixed(3)], ["correct", "Correct", v => (v * 100).toFixed(1) + "%"],
-                 ["completeness", "Complete", v => (v * 100).toFixed(1) + "%"], ["score", "Score", v => (v * 100).toFixed(1)]];
-  document.getElementById("answers").hidden = false;
+const shown = [["recall", "Recall@10", v => v.toFixed(3)], ["correct", "Correct", v => (v * 100).toFixed(1) + "%"],
+               ["completeness", "Complete", v => (v * 100).toFixed(1) + "%"], ["score", "Score", v => (v * 100).toFixed(1)]];
+function showAnswers(run) {
+  const c = run.config, rows = run.rows, table = document.getElementById("answers-table"); table.replaceChildren();
+  document.querySelectorAll("#answer-runs button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === c.answerer));
   document.getElementById("answers-about").textContent = rows[0].questions + " questions · " + c.prompt + " · answered by " + c.answerer + " · judged by " + c.judge + " (our judge, not the leaderboard's)";
-  ["Source", "Questions"].concat(shown.map(s => s[1])).forEach(h => head.append(el("th", h)));
+  const head = table.insertRow(); ["Source", "Questions"].concat(shown.map(s => s[1])).forEach(h => head.append(el("th", h)));
   const weakest = Object.fromEntries(shown.map(([m]) => [m, Math.min(...rows.slice(1).map(r => r[m]).filter(v => v !== null))]));
   rows.forEach((row, i) => {
     const tr = table.insertRow(); if (i === 0) tr.className = "current";
     tr.append(el("td", row.name), el("td", String(row.questions)));
     shown.forEach(([m, , format]) => tr.append(el("td", row[m] === null ? "n/a" : format(row[m]), i > 0 && row[m] === weakest[m] ? "weak" : "")));
   });
+}
+if (data.answers.length) {
+  const latest = data.answers[data.answers.length - 1];
+  document.getElementById("answers").hidden = false;
+  data.answers.forEach((run, i) => {
+    const card = el("div", undefined, "version" + (run === latest ? " current" : ""));
+    const figure = el("div", (run.score * 100).toFixed(1), "figure"); figure.append(el("small", "  " + (run.rows[0].correct * 100).toFixed(1) + "% correct"));
+    const bar = el("div", undefined, "bar"); const fill = el("span"); fill.style.width = (run.score * 100) + "%"; bar.append(fill);
+    card.append(el("div", run.config.answerer + (run === latest ? " · current" : ""), "label"), figure, bar,
+                el("div", i === 0 ? "Base: 10 whole documents from v4, prompt v2" : "Same documents and prompt, a stronger model", "about"),
+                el("div", run.gain === null ? "baseline" : (run.gain < 0 ? "\u2212" + (-run.gain * 100).toFixed(1) : "+" + (run.gain * 100).toFixed(1)) + " over " + data.answers[i - 1].config.answerer, "gain"));
+    document.getElementById("answer-cards").append(card);
+    const b = el("button", run.config.answerer); b.dataset.id = run.config.answerer; b.onclick = () => showAnswers(run);
+    document.getElementById("answer-runs").append(b);
+  });
+  showAnswers(latest);
 }
 for (const group of data.groups) {
   const b = el("button", group.name); b.dataset.id = group.id; b.onclick = () => show(group);

@@ -68,6 +68,25 @@ class RealV2Answers(unittest.TestCase):
                          ("ANSWER_PROMPT_V2", "gemma4:26b", "claude-haiku-4-5"))
 
 
+@unittest.skipUnless((answer_metrics.RUNS_DIR / answer_metrics.DEEPSEEK_RUN / "metrics.json").is_file(), "no deepseek answer metrics yet")
+class RealDeepSeekAnswers(unittest.TestCase):
+    def test_deepseek_is_67_97_over_the_same_500_questions(self):
+        saved = json.loads((answer_metrics.RUNS_DIR / answer_metrics.DEEPSEEK_RUN / "metrics.json").read_text())
+        overall = saved["rows"][0]
+        self.assertEqual((overall["group"], overall["questions"], round(overall["means"]["score"] * 100, 2)),
+                         ("overall", 500, 67.97))
+        self.assertEqual((saved["config"]["prompt"], saved["config"]["answerer"]), ("ANSWER_PROMPT_V2", "deepseek-v4-pro"))
+
+
+class EveryRun(unittest.TestCase):
+    def test_the_runs_are_gemma_then_deepseek_on_the_same_prompt_and_judge(self):
+        self.assertEqual([(name, run.config["answerer"], run.config["prompt"], run.config["judge"])
+                          for name, run in answer_metrics.ANSWER_RUNS.items()],
+                         [("2026-10-04-answers-v4-gemma4-v2", "gemma4:26b", "ANSWER_PROMPT_V2", "claude-haiku-4-5"),
+                          ("2026-10-04-answers-v4-deepseek-v4-pro-v2", "deepseek-v4-pro", "ANSWER_PROMPT_V2", "claude-haiku-4-5")])
+        self.assertEqual(answer_metrics.RUN, answer_metrics.RUNS_DIR / "2026-10-04-answers-v4-gemma4-v2")
+
+
 class Doctests(unittest.TestCase):
     def test_doctests(self):
         self.assertEqual(doctest.testmod(answer_metrics).failed, 0)

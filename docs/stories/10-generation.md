@@ -1119,3 +1119,41 @@ under the 5th place (80.26). 78 of deepseek's 133 wrong answers are missing a go
 
 **Dependencies:** GEN-10b; `llama-index-llms-deepseek`.
 
+---
+
+## GEN-12b  Answering models side by side in `report.html`  ✅
+
+**Status:** Done
+
+**As a** reader of the evaluation report,
+**I want to** every answer run on the report page: a card per answering model with its score and
+its gain over the run before, and the per-source table switchable by model,
+**so that** the effect of the answering model is visible next to the retrieval steps.
+
+**Example with real data** (the two cards):
+
+| answering model | score | correct | gain |
+|---|---|---|---|
+| gemma4:26b | 62.4 | 69.0% | baseline |
+| deepseek-v4-pro | 68.0 | 73.4% | +5.6 over gemma4:26b |
+
+The gain is the difference of the shown scores (68.0 − 62.4); the exact difference is 5.54
+(`docs/eval/results.md`).
+
+**What changed:** `answer_metrics` writes one run folder per entry of `ANSWER_RUNS` (gemma, then
+deepseek); `html_report(answers=[...])` takes a list of answer runs and embeds each with its
+score and gain. The table opens on the latest run.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: two answer runs
+  Given html_report(..., answers=["run-gemma", "run-deepseek"])
+  Then the page embeds both runs in that order, each with its overall score
+  And the second carries its gain over the first, the first carries none
+
+Scenario: no answer run
+  Then the embedded "answers" is an empty list and the section stays hidden
+```
+
+**Dependencies:** GEN-11b, GEN-12a.
+
