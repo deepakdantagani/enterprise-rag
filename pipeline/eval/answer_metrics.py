@@ -7,7 +7,7 @@ claude-haiku-4-5) the overall score is 62.43, but confluence (114 questions) sco
 hubspot (34) 67.6. A question counts under every source of its expected documents, as in the
 retrieval rows; the 30 questions with no expected document are the group "source:none". A
 question also counts under its one question type ("type:completeness", 20 questions, 23.5). Each
-answer run (GEN-12a added deepseek-v4-pro, 67.97 overall) gets its own run folder. All
+answer run (GEN-12a added deepseek-v4-pro, 67.97 overall; GEN-13d its ANSWER_PROMPT_V3 run, 77.50) gets its own run folder. All
 three means are fractions of 1: correct, completeness, and score (correct × completeness, the
 leaderboard's number).
 
@@ -35,17 +35,23 @@ class AnswerRun(NamedTuple):
     config: Dict[str, object]
 
 
-def run_of(answerer: str, judgments: str) -> AnswerRun:
-    """Every run so far reads v4's 10 documents with ANSWER_PROMPT_V2 and is judged by claude-haiku-4-5."""
-    return AnswerRun(judgments, {"retrieval": RETRIEVAL, "documents_read": 10, "prompt": "ANSWER_PROMPT_V2",
+def run_of(answerer: str, judgments: str, change: str, prompt: str = "v2") -> AnswerRun:
+    """Every run reads v4's 10 documents and is judged by claude-haiku-4-5; `change` is the one thing it changed."""
+    return AnswerRun(judgments, {"name": f"{answerer} · prompt {prompt}", "change": change, "retrieval": RETRIEVAL,
+                                 "documents_read": 10, "prompt": f"ANSWER_PROMPT_{prompt.upper()}",
                                  "answerer": answerer, "judge": "claude-haiku-4-5",
                                  "note": "our judge, not the leaderboard's gpt-5.4"})
 
 
 GEMMA_RUN = "2026-10-04-answers-v4-gemma4-v2"  # the base answer run
 DEEPSEEK_RUN = "2026-10-04-answers-v4-deepseek-v4-pro-v2"  # GEN-12a: the same documents and prompt, a stronger model
-ANSWER_RUNS = {GEMMA_RUN: run_of("gemma4:26b", "v4-gemma4-v2__claude-haiku-4-5.jsonl"),
-               DEEPSEEK_RUN: run_of("deepseek-v4-pro", "v4-deepseek-v4-pro-v2__claude-haiku-4-5.jsonl")}
+V3_RUN = "2026-10-04-answers-v4-deepseek-v4-pro-v3"  # GEN-13d: the same model and documents, ANSWER_PROMPT_V3
+ANSWER_RUNS = {GEMMA_RUN: run_of("gemma4:26b", "v4-gemma4-v2__claude-haiku-4-5.jsonl",
+                                 "Base: 10 whole documents from v4, prompt v2"),
+               DEEPSEEK_RUN: run_of("deepseek-v4-pro", "v4-deepseek-v4-pro-v2__claude-haiku-4-5.jsonl",
+                                    "Same documents and prompt, a stronger model"),
+               V3_RUN: run_of("deepseek-v4-pro", "v4-deepseek-v4-pro-v3__claude-haiku-4-5.jsonl",
+                              "Same model and documents, prompt v3: quotes before the answer", prompt="v3")}
 RUN = RUNS_DIR / GEMMA_RUN
 METRICS = ("correct", "completeness", "score")
 

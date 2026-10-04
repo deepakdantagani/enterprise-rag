@@ -13,8 +13,9 @@ from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # 
 from llama_index.core.schema import MetadataMode, NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode  # noqa: E402
 
 from pipeline.eval import answers  # noqa: E402
-from pipeline.eval.answers import (FullDocuments, answer_engine, answer_row, answerer_llm, document_block,  # noqa: E402
-                                   documents_by_id, first_documents, live_reranker, live_retriever, save_answers)
+from pipeline.eval.answers import (FullDocuments, answer_engine, answer_of, answer_row, answerer_llm,  # noqa: E402
+                                   document_block, document_tags, documents_by_id, first_documents, live_reranker,
+                                   live_retriever, quotes_of, save_answers, sources_by_id)
 from pipeline.eval.questions import Question  # noqa: E402
 from pipeline.eval.rerank import ReplayRetriever  # noqa: E402
 
@@ -58,7 +59,8 @@ def parquet_of(rows):
     import pyarrow.parquet as pq
     folder = tempfile.mkdtemp()
     path = Path(folder) / "documents.parquet"
-    pq.write_table(pa.Table.from_pylist([{"doc_id": d, "title": t, "content": c} for d, t, c in rows]), path)
+    pq.write_table(pa.Table.from_pylist([{"doc_id": d, "title": t, "content": c, "source_type": "slack"}
+                                         for d, t, c in rows]), path)
     return path
 
 
@@ -76,6 +78,57 @@ class DocumentsById(unittest.TestCase):
 
     def test_an_unknown_id_is_left_out(self):
         self.assertEqual(documents_by_id(parquet_of([("a", "A", "about a")]), ["zzz"]), {})
+
+
+class SourcesById(unittest.TestCase):
+    def test_each_asked_document_gets_its_source_system(self):
+        path = parquet_of([("a", "A", "about a"), ("b", "B", "about b")])
+        self.assertEqual(sources_by_id(path, ["a", "zzz"]), {"a": "slack"})
+
+
+class DocumentTags(unittest.TestCase):
+    """GEN-13a: a document as labelled fields, with its source and without a number to copy."""
+
+    def test_source_title_and_content_are_separate_fields(self):
+        self.assertEqual(document_tags("confluence", "Q3 budget", "Priya approved it."),
+                         "<document>\n<source>confluence</source>\n<title>Q3 budget</title>\n"
+                         "<content>\nPriya approved it.\n</content>\n</document>")
+
+    def test_full_documents_uses_the_tags_when_it_is_given_the_sources(self):
+        kept = FullDocuments(DOCUMENTS, sources={"dsid_5": "jira"}).postprocess_nodes([chunk_of("dsid_5")])
+        self.assertEqual(kept[0].node.text, document_tags("jira", "Title 5", "Content 5"))
+        self.assertEqual(kept[0].node.metadata["doc_id"], "dsid_5")
+
+    def test_a_live_document_takes_its_source_from_its_chunk(self):  # GEN-13e: the ask page has no source map
+        chunk = chunk_of("dsid_5")
+        chunk.node.metadata["source_type"] = "gmail"
+        kept = FullDocuments(DOCUMENTS, sources={}).postprocess_nodes([chunk, chunk_of("dsid_2")])
+        self.assertEqual([found.node.text for found in kept],
+                         [document_tags("gmail", "Title 5", "Content 5"), document_tags("unknown", "Title 2", "Content 2")])
+
+    def test_without_sources_the_numbered_block_is_kept(self):
+        kept = FullDocuments(DOCUMENTS).postprocess_nodes([chunk_of("dsid_5")])
+        self.assertEqual(kept[0].node.text, document_block(1, "dsid_5", "Title 5", "Content 5"))
+
+
+class AnswerOf(unittest.TestCase):
+    """GEN-13b: the reader and the judge get the <answer> part; the quotes are the model's working."""
+    response = '<quotes>\n"- Overall: At Risk" (Weekly status update)\n</quotes>\n<answer>\nThree updates.\n</answer>'
+
+    def test_the_answer_is_the_text_inside_the_answer_tags(self):
+        self.assertEqual(answer_of(self.response), "Three updates.")
+
+    def test_the_quotes_are_the_text_inside_the_quotes_tags(self):
+        self.assertEqual(quotes_of(self.response), '"- Overall: At Risk" (Weekly status update)')
+
+    def test_a_response_without_tags_is_the_answer_as_it_is(self):
+        self.assertEqual((answer_of(" Priya approved it. "), quotes_of(" Priya approved it. ")), ("Priya approved it.", ""))
+
+    def test_an_answer_cut_off_before_its_closing_tag_is_kept(self):
+        self.assertEqual(answer_of("<quotes>none</quotes>\n<answer>Three upd"), "Three upd")
+
+    def test_quotes_cut_off_before_any_answer_leave_an_empty_answer(self):
+        self.assertEqual(answer_of('<quotes>\n"- Overall: At'), "")
 
 
 DOCUMENTS = {"dsid_2": ("Title 2", "Content 2"), "dsid_5": ("Title 5", "Content 5")}
@@ -106,6 +159,7 @@ class FullDocumentsPostprocessor(unittest.TestCase):
 class RecordingLLM(CustomLLM):
     """Answers with a fixed text and keeps every prompt it was sent."""
     prompts: list = []
+    text: str = " Priya approved the Q3 budget. "
 
     @property
     def metadata(self) -> LLMMetadata:
@@ -113,7 +167,7 @@ class RecordingLLM(CustomLLM):
 
     def complete(self, prompt, formatted=False, **kwargs):
         self.prompts.append(prompt)
-        return CompletionResponse(text=" Priya approved the Q3 budget. ")
+        return CompletionResponse(text=self.text)
 
     def stream_complete(self, prompt, formatted=False, **kwargs):
         raise NotImplementedError
@@ -142,6 +196,18 @@ class AnswerRow(unittest.TestCase):
         self.assertNotIn("doc_id:", prompt)
         self.assertIn("## Question\nWho approved the Q3 budget?\n\n## Answer", prompt)
 
+    def test_a_v3_response_is_saved_as_its_answer_with_the_quotes_beside_it(self):
+        llm = RecordingLLM(prompts=[], text='<quotes>\n"Priya approved it." (Title 5)\n</quotes>\n<answer>Priya.</answer>')
+        engine = answer_engine(self.engine.retriever, llm, DOCUMENTS, prompt=answers.ANSWER_PROMPT_V3,
+                               sources={"dsid_5": "slack", "dsid_2": "jira"})
+        self.assertEqual(answer_row(engine, "q1", "Who approved the Q3 budget?"),
+                         {"question_id": "q1", "answer": "Priya.", "document_ids": ["dsid_5", "dsid_2"],
+                          "quotes": '"Priya approved it." (Title 5)'})
+        prompt, = llm.prompts
+        self.assertIn("<documents>\n" + document_tags("slack", "Title 5", "Content 5"), prompt)
+        self.assertTrue(prompt.endswith("<question>Who approved the Q3 budget?</question>\n"))
+        self.assertNotIn("Document 1", prompt)
+
     def test_the_answerer_is_local_deterministic_and_has_room_for_the_largest_top_ten(self):
         llm = answerer_llm()
         self.assertEqual((llm.model, llm.temperature, llm.thinking, llm.context_window),
@@ -161,7 +227,7 @@ class DeepSeekAnswerer(unittest.TestCase):
         self.assertEqual(self.llm.additional_kwargs, {"extra_body": {"thinking": {"type": "disabled"}}})
 
     def test_the_largest_top_ten_fits_in_one_call_with_room_for_a_long_answer(self):
-        self.assertEqual((self.llm.context_window, self.llm.max_tokens), (128_000, 2_048))
+        self.assertEqual((self.llm.context_window, self.llm.max_tokens), (128_000, 8_192))  # GEN-13d: at 4,096 the quotes of 12 answers used the whole output
 
     def test_the_key_comes_from_the_environment(self):
         with mock.patch.dict("os.environ", {"DEEPSEEK_API_KEY": "from-env"}):
@@ -206,7 +272,51 @@ class AnswerPromptVersions(unittest.TestCase):
 
     def test_v2_answers_go_to_their_own_file_so_the_v1_answers_are_kept(self):
         from pipeline.eval import answer_run
-        self.assertEqual(answer_run.ANSWERS.name, "v4-deepseek-v4-pro-v2.jsonl")  # GEN-12a: gemma's stay in v4-gemma4-v2.jsonl
+        self.assertEqual(answer_run.ANSWERS.name, "v4-deepseek-v4-pro-v3.jsonl")  # GEN-13d: v2's stay in v4-deepseek-v4-pro-v2.jsonl
+
+    def test_the_answer_run_answers_with_v3(self):
+        from pipeline.eval import answer_run
+        self.assertIs(answer_run.PROMPT, answers.ANSWER_PROMPT_V3)
+
+
+class AnswerPromptV3(unittest.TestCase):
+    """GEN-13c: documents first, tags for every part, quotes before the answer, a reason in each rule, 3 examples."""
+    v3 = answers.ANSWER_PROMPT_V3.template
+
+    def test_the_documents_come_first_and_the_question_last(self):
+        self.assertLess(self.v3.index("<documents>\n{context_str}\n</documents>"), self.v3.index("Rules:"))
+        self.assertTrue(self.v3.endswith("<question>{query_str}</question>\n"))
+
+    def test_it_has_no_markdown_headings_and_no_document_numbers(self):
+        self.assertNotIn("##", self.v3)
+        self.assertNotIn("Document 3", self.v3)
+
+    def test_it_asks_for_quotes_before_the_answer(self):
+        self.assertIn("First, inside <quotes> tags, copy word for word every\nsentence from the documents", self.v3)
+        self.assertIn("The reader sees only the <answer> part.", self.v3)
+
+    def test_an_answer_can_be_worked_out_from_several_documents(self):
+        self.assertIn("a count, a total, a comparison, an order, an earliest or latest. Work it out yourself", self.v3)
+
+    def test_documents_that_disagree_get_one_value(self):
+        self.assertIn("answer with the\n   value from the newer or more authoritative document", self.v3)
+
+    def test_every_rule_carries_its_reason_and_none_says_never(self):
+        self.assertIn("sees only the answer, not the\ndocuments.", self.v3)
+        self.assertIn("A guessed value looks the same as a\n   real one", self.v3)
+        self.assertNotIn("never", self.v3.lower())
+
+    def test_three_invented_examples_each_show_quotes_then_an_answer(self):
+        self.assertEqual([self.v3.count(tag) for tag in ("<example>", "<quotes>\n\"", "</answer>\n</example>")], [3, 3, 3])
+        self.assertNotIn("Redwood", self.v3[self.v3.index("<examples>"):])
+
+    def test_it_fills_in_like_the_other_prompts(self):
+        filled = answers.ANSWER_PROMPT_V3.format(context_str="DOCS", query_str="Why?")
+        self.assertIn("<documents>\nDOCS\n</documents>", filled)
+        self.assertTrue(filled.endswith("<question>Why?</question>\n"))
+
+    def test_the_scored_prompt_is_still_v2_until_v3_is_judged(self):
+        self.assertIs(answers.ANSWER_PROMPT, answers.ANSWER_PROMPT_V2)
 
 
 class SaveAnswers(unittest.TestCase):

@@ -38,8 +38,8 @@ from pipeline.eval.rerank import read_jsonl
 
 ROOT = Path(__file__).resolve().parents[2]
 QUESTIONS = ROOT / "data/_full/questions.jsonl"  # the benchmark: question, gold_answer, answer_facts
-ANSWERS = ROOT / "data/_index/answers/v4-deepseek-v4-pro-v2.jsonl"  # ours: deepseek-v4-pro on ANSWER_PROMPT_V2 (gemma: v4-gemma4-v2)
-JUDGMENTS = ROOT / "data/_index/judgments/v4-deepseek-v4-pro-v2__claude-haiku-4-5.jsonl"  # written here
+ANSWERS = ROOT / "data/_index/answers/v4-deepseek-v4-pro-v3.jsonl"  # ours: deepseek-v4-pro on ANSWER_PROMPT_V3 (v2: v4-deepseek-v4-pro-v2, v4-gemma4-v2)
+JUDGMENTS = ROOT / "data/_index/judgments/v4-deepseek-v4-pro-v3__claude-haiku-4-5.jsonl"  # written here
 BATCH = 25  # answers judged per call, then saved
 
 

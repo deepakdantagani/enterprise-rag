@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
+from pipeline.eval.answers import ANSWER_PROMPT_V3, answer_of
 from pipeline.eval.questions import Question
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +28,7 @@ CORPUS = ROOT / "data/_full/documents.parquet"
 QUESTIONS = ROOT / "data/_full/questions.jsonl"
 QUESTION_VECTORS = ROOT / "data/_index/question_embeddings/voyage-4.jsonl"
 CORPUS_SIZE = "511,962"
+PROMPT = ANSWER_PROMPT_V3  # GEN-13e: quotes first, then the answer; the page shows the answer part
 SOURCES = {"gmail": "Gmail", "slack": "Slack", "github": "GitHub", "jira": "Jira", "linear": "Linear",
            "confluence": "Confluence", "google_drive": "Google Drive", "hubspot": "HubSpot", "fireflies": "Fireflies"}
 EXAMPLES = [  # real benchmark questions, one per source system, and one new question
@@ -146,8 +148,21 @@ def tokens_with_ticks(stream, tick: float = 0.5) -> Iterator[Optional[str]]:
         yield token
 
 
+def streamed_answer(text: str) -> str:
+    """GEN-13e: the answer part of a response still being written, without a half-written tag at its end.
+
+        >>> streamed_answer('<quotes>"- Overall: At Risk" (Weekly status')
+        ''
+        >>> streamed_answer("<quotes>none</quotes><answer>Three updates.</ans")
+        'Three updates.'
+    """
+    return re.sub(r"<[^>]*$", "", answer_of(text)).strip()
+
+
 def stage_of(text: str, documents: int) -> str:
-    return "Writing the answer" if text else f"Reading {documents} documents before writing"
+    if not text:
+        return f"Reading {documents} documents before writing"
+    return "Writing the answer" if streamed_answer(text) else "Copying the sentences that answer the question"
 
 
 def ask(engine, documents: Dict[str, Tuple[str, str]], benchmark: Dict, question: str) -> Iterator[Tuple[str, str, str, str]]:
@@ -167,11 +182,11 @@ def ask(engine, documents: Dict[str, Tuple[str, str]], benchmark: Dict, question
     text = ""
     for token in tokens_with_ticks(lambda: engine.synthesize(QueryBundle(question), nodes).response_gen):
         if token is None:  # no new words yet: gemma4 is still reading ~14K tokens of documents
-            yield status_html(stage_of(text, len(nodes)), time.time() - start, True), answer_card(text), cards, check
+            yield status_html(stage_of(text, len(nodes)), time.time() - start, True), answer_card(streamed_answer(text)), cards, check
             continue
         text += token
-        yield status_html("Writing the answer", time.time() - start, True), answer_card(text), cards, check
-    yield status_html(f"Answered from {len(nodes)} documents", time.time() - start, False), answer_card(text), cards, check
+        yield status_html(stage_of(text, len(nodes)), time.time() - start, True), answer_card(streamed_answer(text)), cards, check
+    yield status_html(f"Answered from {len(nodes)} documents", time.time() - start, False), answer_card(streamed_answer(text)), cards, check
 
 
 CSS = """
@@ -248,7 +263,8 @@ def main() -> None:
     questions = saved_query_embeddings(QUESTION_VECTORS, fallback=embed_model_named("voyage-4", voyage_api_key=key))
     documents: Dict[str, Tuple[str, str]] = {}
     engine = answer_engine(live_retriever(QdrantClient(url="http://localhost:6333", timeout=600), questions),
-                           answerer_llm(), documents, reranker=live_reranker(api_key=key), corpus=CORPUS, streaming=True)
+                           answerer_llm(), documents, reranker=live_reranker(api_key=key), corpus=CORPUS, streaming=True,
+                           prompt=PROMPT, sources={})  # {}: each live document's source comes from its chunk
     build_page(engine, documents, benchmark_questions()).launch(server_port=7860, css=CSS, head=HEAD,
                                                                 theme=gr.themes.Base(primary_hue="blue"))
 

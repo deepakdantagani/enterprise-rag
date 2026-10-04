@@ -12,6 +12,7 @@ All 470 saved questions reach 10 documents, within 11 chunks at the median and 2
     '--- Document 1 (ID: dsid_a) ---\\nTitle: Q3 budget\\n\\nPriya approved it.'
 """
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -75,6 +76,116 @@ ANSWER_PROMPT_V2 = PromptTemplate(
     "   number (\"Document 3\"); name its source instead (\"the go-live runbook\").\n\n"
     "## Documents\n{context_str}\n\n## Question\n{query_str}\n\n## Answer\n")
 
+# GEN-13c: not yet scored. Documents first and the question last, a tag for every part, quotes before
+# the answer, a reason in each rule, and three invented examples (office facilities, not Redwood).
+ANSWER_PROMPT_V3 = PromptTemplate(
+    "You answer questions about Redwood Inference for its employees, using documents from the\n"
+    "company's internal systems. The documents below come from an imperfect search: most are\n"
+    "not about the question, and some are outdated or duplicated.\n\n"
+    "<documents>\n{context_str}\n</documents>\n\n"
+    "The reader is an employee who will act on your answer and sees only the answer, not the\n"
+    "documents.\n\n"
+    "Rules:\n"
+    "1. Take every fact in the answer from the documents. A guessed value looks the same as a\n"
+    "   real one, and the reader cannot tell them apart.\n"
+    "2. Answer every part of the question. Copy exact values as written: names, numbers,\n"
+    "   units, dates, versions, IDs, flags and config keys. The reader will paste them into a\n"
+    "   command, a config or a ticket, where a reworded value fails.\n"
+    "3. First find the one document (or few) the question is about. The question often describes\n"
+    "   it in other words (\"a big retail tenant\" may be \"Acme Retail\"): a document that fits the\n"
+    "   description is the right one even if the wording differs. Answer from it, and leave out\n"
+    "   every document about a different customer, project, meeting or system. Search returns\n"
+    "   look-alikes, and a detail taken from one makes the answer wrong.\n"
+    "4. If the question asks for a list or \"all\", include every matching item from all documents.\n"
+    "   Some answers are not written in any single document and must be worked out from several:\n"
+    "   a count, a total, a comparison, an order, an earliest or latest. Work it out yourself,\n"
+    "   and give the result together with the items it is based on. The reader asks because no\n"
+    "   single document states it, so sending them back to the documents leaves the question\n"
+    "   open.\n"
+    "5. When two documents describe the same thing and give different values, answer with the\n"
+    "   value from the newer or more authoritative document (a decision record or spec over a\n"
+    "   draft or a chat message; each document's <source> says what it is). Mention the other\n"
+    "   value in one short clause. The reader needs one value to act on. Different values for\n"
+    "   different things are not a disagreement.\n"
+    "6. Start the answer with the answer itself, because the first sentence is read first. Write\n"
+    "   \"The documents do not say ...\" only when no document answers the question, and then add\n"
+    "   what the documents do say about it.\n"
+    "7. Include every detail the documents give that answers the question. Write the answer as\n"
+    "   plain prose paragraphs, joining the items of a list into sentences. Name a document by\n"
+    "   its title or source (\"the go-live runbook\").\n\n"
+    "Write your response in two parts. First, inside <quotes> tags, copy word for word every\n"
+    "sentence from the documents that helps answer the question, one per line, each followed by\n"
+    "the title of its document. These are your evidence, so copy them exactly. If no sentence\n"
+    "helps, write \"none\". Then, inside <answer> tags, answer the question from those quotes.\n"
+    "The reader sees only the <answer> part.\n\n"
+    "<examples>\n"
+    "<example>\n"
+    "<documents>\n"
+    "<document>\n<source>jira</source>\n<title>FAC-12</title>\n<content>\n"
+    "2025-03-03. Badge reader at the Austin office failed. Channel: email.\n</content>\n</document>\n"
+    "<document>\n<source>jira</source>\n<title>FAC-15</title>\n<content>\n"
+    "2025-03-09. Badge reader at the Austin office failed again. Channel: Slack.\n</content>\n</document>\n"
+    "<document>\n<source>jira</source>\n<title>FAC-19</title>\n<content>\n"
+    "2025-03-20. Badge reader at the Denver office failed. Channel: email.\n</content>\n</document>\n"
+    "</documents>\n"
+    "<question>Which office had the most badge reader failures in March 2025?</question>\n"
+    "<quotes>\n"
+    "\"Badge reader at the Austin office failed.\" (FAC-12)\n"
+    "\"Badge reader at the Austin office failed again.\" (FAC-15)\n"
+    "\"Badge reader at the Denver office failed.\" (FAC-19)\n"
+    "</quotes>\n"
+    "<answer>\n"
+    "Austin had the most badge reader failures in March 2025, with two (FAC-12 on 2025-03-03 and\n"
+    "FAC-15 on 2025-03-09), against one for Denver (FAC-19 on 2025-03-20).\n"
+    "</answer>\n"
+    "</example>\n"
+    "<example>\n"
+    "<documents>\n"
+    "<document>\n<source>confluence</source>\n<title>Facilities policy v2, decision record</title>\n<content>\n"
+    "2025-02-10. Visitor badges at the Austin office expire after 8 hours. Visitors must be escorted\n"
+    "on floors 3 and 4. Badges are requested through the front desk form `visitor-request`.\n</content>\n</document>\n"
+    "<document>\n<source>slack</source>\n<title>#facilities</title>\n<content>\n"
+    "2024-11-05. Priya: visitor badges are good for 24 hours, just FYI\n</content>\n</document>\n"
+    "<document>\n<source>confluence</source>\n<title>Facilities policy, Denver office</title>\n<content>\n"
+    "2025-01-15. Visitor badges expire after 12 hours.\n</content>\n</document>\n"
+    "</documents>\n"
+    "<question>How long is a visitor badge valid at the Austin office, and what else does a visitor need?</question>\n"
+    "<quotes>\n"
+    "\"Visitor badges at the Austin office expire after 8 hours.\" (Facilities policy v2, decision record)\n"
+    "\"Visitors must be escorted on floors 3 and 4.\" (Facilities policy v2, decision record)\n"
+    "\"Badges are requested through the front desk form `visitor-request`.\" (Facilities policy v2, decision record)\n"
+    "\"visitor badges are good for 24 hours, just FYI\" (#facilities)\n"
+    "</quotes>\n"
+    "<answer>\n"
+    "A visitor badge at the Austin office is valid for 8 hours, under the facilities policy v2\n"
+    "decision record of 2025-02-10; an older Slack message from 2024-11-05 said 24 hours. Visitors\n"
+    "must be escorted on floors 3 and 4, and the badge is requested through the front desk form\n"
+    "`visitor-request`.\n"
+    "</answer>\n"
+    "</example>\n"
+    "<example>\n"
+    "<documents>\n"
+    "<document>\n<source>gmail</source>\n<title>Denver lease renewal</title>\n<content>\n"
+    "2025-04-02. The Denver office lease renewal is under negotiation. The landlord proposed a\n"
+    "5-year term.\n</content>\n</document>\n"
+    "<document>\n<source>fireflies</source>\n<title>Facilities sync</title>\n<content>\n"
+    "2025-04-10. Finance to review the Denver lease proposal by end of April.\n</content>\n</document>\n"
+    "</documents>\n"
+    "<question>What monthly rent was agreed for the Denver office lease renewal?</question>\n"
+    "<quotes>\n"
+    "\"The Denver office lease renewal is under negotiation.\" (Denver lease renewal)\n"
+    "\"The landlord proposed a 5-year term.\" (Denver lease renewal)\n"
+    "\"Finance to review the Denver lease proposal by end of April.\" (Facilities sync)\n"
+    "</quotes>\n"
+    "<answer>\n"
+    "The documents do not say what monthly rent was agreed. They show the renewal was still under\n"
+    "negotiation on 2025-04-02, with a 5-year term proposed by the landlord, and that Finance was\n"
+    "to review the proposal by the end of April 2025.\n"
+    "</answer>\n"
+    "</example>\n"
+    "</examples>\n\n"
+    "<question>{query_str}</question>\n")
+
 ANSWER_PROMPT = ANSWER_PROMPT_V2  # the prompt answer_engine uses
 
 
@@ -104,6 +215,23 @@ def documents_by_id(parquet_path: Union[str, Path], doc_ids: Sequence[str]) -> D
     return documents
 
 
+def sources_by_id(parquet_path: Union[str, Path], doc_ids: Sequence[str]) -> Dict[str, str]:
+    """GEN-13a: the source system of each asked document; the replayed chunks do not carry it."""
+    import pyarrow.parquet as pq
+    rows = pq.read_table(parquet_path, columns=["doc_id", "source_type"], filters=[("doc_id", "in", list(doc_ids))])
+    return dict(zip(rows["doc_id"].to_pylist(), rows["source_type"].to_pylist()))
+
+
+def document_tags(source: str, title: str, content: str) -> str:
+    """GEN-13a: one document as labelled fields, with its source and no number.
+
+    The numbered block marks parts with lines a Confluence page can contain, hides whether a
+    document is a chat message or a spec, and gives the model "Document 3" to copy (46 of 500
+    deepseek answers did). Of 511,962 documents, 1 contains "</document>" and 0 "</content>".
+    """
+    return f"<document>\n<source>{source}</source>\n<title>{title}</title>\n<content>\n{content}\n</content>\n</document>"
+
+
 def document_block(number: int, doc_id: str, title: str, content: str) -> str:
     """One document as the benchmark's baseline shows it to its LLM (src/utils/retrieval.py)."""
     return f"--- Document {number} (ID: {doc_id}) ---\nTitle: {title}\n\n{content}"
@@ -115,15 +243,17 @@ class FullDocuments(BaseNodePostprocessor):
     The chunks only choose the documents and their order; the text comes from `documents`
     (documents_by_id, loaded once for every question). The doc_id stays in metadata for the
     answer file's document_ids but is hidden from the LLM, which already reads it in the block.
+    GEN-13a: given `sources` (doc_id to source system), each document is written as document_tags.
     """
     count: int = TOP_DOCUMENTS
     _documents: Dict[str, Tuple[str, str]] = PrivateAttr()
     _corpus: Optional[Path] = PrivateAttr()
+    _sources: Optional[Dict[str, str]] = PrivateAttr()
 
     def __init__(self, documents: Dict[str, Tuple[str, str]], count: int = TOP_DOCUMENTS,
-                 corpus: Optional[Union[str, Path]] = None) -> None:
+                 corpus: Optional[Union[str, Path]] = None, sources: Optional[Dict[str, str]] = None) -> None:
         super().__init__(count=count)
-        self._documents, self._corpus = documents, Path(corpus) if corpus else None
+        self._documents, self._corpus, self._sources = documents, Path(corpus) if corpus else None, sources
 
     def _postprocess_nodes(self, nodes: List[NodeWithScore],
                            query_bundle: Optional[QueryBundle] = None) -> List[NodeWithScore]:
@@ -134,7 +264,10 @@ class FullDocuments(BaseNodePostprocessor):
         sources = {}  # GEN-8b: each document's source system, from its best chunk, for the ask page
         for chunk in nodes:
             sources.setdefault(chunk.node.ref_doc_id, chunk.node.metadata.get("source_type"))
-        return [NodeWithScore(node=TextNode(id_=doc_id, text=document_block(number, doc_id, *self._documents[doc_id]),
+        tagged = self._sources is not None  # GEN-13e: a live document is not in the map; its chunk names its source
+        return [NodeWithScore(node=TextNode(id_=doc_id, text=document_tags(self._sources.get(doc_id) or sources.get(doc_id)
+                                                                           or "unknown", *self._documents[doc_id])
+                                            if tagged else document_block(number, doc_id, *self._documents[doc_id]),
                                             metadata={"doc_id": doc_id, "source_type": sources.get(doc_id)},
                                             excluded_llm_metadata_keys=["doc_id", "source_type"]),
                               score=1.0)
@@ -154,24 +287,54 @@ def deepseek_answerer_llm(api_key: Optional[str] = None) -> LLM:
     LlamaIndex never splits a top 10 (the largest is ~35K tokens) into two calls.
     """
     from llama_index.llms.deepseek import DeepSeek
-    return DeepSeek(model=DEEPSEEK_ANSWERER, api_key=api_key, temperature=0.0, max_tokens=2_048, context_window=128_000,
+    return DeepSeek(model=DEEPSEEK_ANSWERER, api_key=api_key, temperature=0.0, max_tokens=8_192, context_window=128_000,
                     additional_kwargs={"extra_body": {"thinking": {"type": "disabled"}}})
 
 
 def answer_engine(retriever: BaseRetriever, llm: LLM, documents: Dict[str, Tuple[str, str]],
                   reranker: Optional[BaseNodePostprocessor] = None,
-                  corpus: Optional[Union[str, Path]] = None, streaming: bool = False) -> RetrieverQueryEngine:
-    """GEN-2d: retriever → (GEN-8a: reranker) → FullDocuments → compact synthesizer with ANSWER_PROMPT."""
-    steps = ([reranker] if reranker else []) + [FullDocuments(documents, corpus=corpus)]
-    return RetrieverQueryEngine.from_args(retriever, llm=llm, text_qa_template=ANSWER_PROMPT, node_postprocessors=steps,
+                  corpus: Optional[Union[str, Path]] = None, streaming: bool = False,
+                  prompt: PromptTemplate = ANSWER_PROMPT, sources: Optional[Dict[str, str]] = None) -> RetrieverQueryEngine:
+    """GEN-2d: retriever → (GEN-8a: reranker) → FullDocuments → compact synthesizer with `prompt`.
+
+    GEN-13c: ANSWER_PROMPT_V3 needs `sources`, so each document is written as document_tags.
+    """
+    steps = ([reranker] if reranker else []) + [FullDocuments(documents, corpus=corpus, sources=sources)]
+    return RetrieverQueryEngine.from_args(retriever, llm=llm, text_qa_template=prompt, node_postprocessors=steps,
                                           streaming=streaming)  # GEN-8b: the ask page shows the answer as it is written
 
 
+ANSWER_PART = re.compile(r"<answer>(.*?)(?:</answer>|$)", re.DOTALL)
+QUOTES_PART = re.compile(r"<quotes>(.*?)(?:</quotes>|<answer>|$)", re.DOTALL)
+
+
+def answer_of(response: str) -> str:
+    """GEN-13b: the text inside <answer> tags, even when cut off; a response without any tag is the answer.
+
+        >>> answer_of('<quotes>"- Overall: At Risk" (Weekly status update)</quotes><answer>Three updates.</answer>')
+        'Three updates.'
+        >>> answer_of("Priya approved it.")
+        'Priya approved it.'
+    """
+    found = ANSWER_PART.search(response)
+    if found:
+        return found.group(1).strip()
+    return "" if "<quotes>" in response else response.strip()  # only quotes: the output ended before the answer
+
+
+def quotes_of(response: str) -> str:
+    """GEN-13b: the sentences the model copied before answering, kept to see why an answer is wrong."""
+    found = QUOTES_PART.search(response)
+    return found.group(1).strip() if found else ""
+
+
 def answer_row(engine: RetrieverQueryEngine, question_id: str, question: str) -> dict:
-    """GEN-2d: one line of the leaderboard's answer file."""
+    """GEN-2d: one line of the leaderboard's answer file. GEN-13b: plus the quotes, when the prompt asks for them."""
     response = engine.query(question)
-    return {"question_id": question_id, "answer": str(response).strip(),
-            "document_ids": [found.node.metadata["doc_id"] for found in response.source_nodes]}
+    row = {"question_id": question_id, "answer": answer_of(str(response)),
+           "document_ids": [found.node.metadata["doc_id"] for found in response.source_nodes]}
+    quotes = quotes_of(str(response))
+    return {**row, "quotes": quotes} if quotes else row
 
 
 def save_answers(engine: RetrieverQueryEngine, questions: Sequence, out_path: Union[str, Path]) -> int:

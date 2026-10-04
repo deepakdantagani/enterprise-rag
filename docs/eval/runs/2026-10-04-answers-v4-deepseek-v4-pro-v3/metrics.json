@@ -1,10 +1,10 @@
 {
  "config": {
-  "name": "deepseek-v4-pro \u00b7 prompt v2",
-  "change": "Same documents and prompt, a stronger model",
+  "name": "deepseek-v4-pro \u00b7 prompt v3",
+  "change": "Same model and documents, prompt v3: quotes before the answer",
   "retrieval": "v4 (titles, voyage-4-lite + BM25, RRF, top 100 reranked by rerank-3-lite)",
   "documents_read": 10,
-  "prompt": "ANSWER_PROMPT_V2",
+  "prompt": "ANSWER_PROMPT_V3",
   "answerer": "deepseek-v4-pro",
   "judge": "claude-haiku-4-5",
   "note": "our judge, not the leaderboard's gpt-5.4"
@@ -14,81 +14,81 @@
    "group": "overall",
    "questions": 500,
    "means": {
-    "correct": 0.734,
-    "completeness": 0.7797972,
-    "score": 0.6797380000000001
+    "correct": 0.808,
+    "completeness": 0.8456484,
+    "score": 0.7749606
    }
   },
   {
    "group": "source:confluence",
    "questions": 114,
    "means": {
-    "correct": 0.6578947368421053,
-    "completeness": 0.7173350877192982,
-    "score": 0.5758114035087719
+    "correct": 0.7368421052631579,
+    "completeness": 0.7395736842105263,
+    "score": 0.6510447368421053
    }
   },
   {
    "group": "source:fireflies",
    "questions": 25,
    "means": {
-    "correct": 0.72,
-    "completeness": 0.668096,
-    "score": 0.656668
+    "correct": 0.64,
+    "completeness": 0.69476,
+    "score": 0.59
    }
   },
   {
    "group": "source:github",
    "questions": 60,
    "means": {
-    "correct": 0.6666666666666666,
-    "completeness": 0.7592316666666667,
-    "score": 0.6059666666666667
+    "correct": 0.7833333333333333,
+    "completeness": 0.7966083333333333,
+    "score": 0.7287016666666667
    }
   },
   {
    "group": "source:gmail",
    "questions": 55,
    "means": {
-    "correct": 0.7818181818181819,
-    "completeness": 0.7690145454545454,
-    "score": 0.7073018181818181
+    "correct": 0.8545454545454545,
+    "completeness": 0.8380927272727273,
+    "score": 0.8200727272727272
    }
   },
   {
    "group": "source:google_drive",
    "questions": 60,
    "means": {
-    "correct": 0.65,
-    "completeness": 0.73575,
-    "score": 0.5822816666666667
+    "correct": 0.75,
+    "completeness": 0.8235450000000001,
+    "score": 0.7229466666666667
    }
   },
   {
    "group": "source:hubspot",
    "questions": 34,
    "means": {
-    "correct": 0.7058823529411765,
-    "completeness": 0.7549029411764706,
-    "score": 0.6519617647058824
+    "correct": 0.7941176470588235,
+    "completeness": 0.8848058823529412,
+    "score": 0.7769617647058824
    }
   },
   {
    "group": "source:jira",
    "questions": 100,
    "means": {
-    "correct": 0.72,
-    "completeness": 0.8086270000000001,
-    "score": 0.655997
+    "correct": 0.85,
+    "completeness": 0.853081,
+    "score": 0.795615
    }
   },
   {
    "group": "source:linear",
    "questions": 58,
    "means": {
-    "correct": 0.7241379310344828,
-    "completeness": 0.7977224137931035,
-    "score": 0.6824172413793104
+    "correct": 0.7931034482758621,
+    "completeness": 0.8795931034482759,
+    "score": 0.7870948275862069
    }
   },
   {
@@ -96,53 +96,53 @@
    "questions": 30,
    "means": {
     "correct": 0.9,
-    "completeness": 0.95,
-    "score": 0.8916666666666667
+    "completeness": 0.9583333333333334,
+    "score": 0.9
    }
   },
   {
    "group": "source:slack",
    "questions": 79,
    "means": {
-    "correct": 0.620253164556962,
-    "completeness": 0.7554037974683544,
-    "score": 0.571959493670886
+    "correct": 0.7215189873417721,
+    "completeness": 0.8046860759493671,
+    "score": 0.6908721518987342
    }
   },
   {
    "group": "type:basic",
    "questions": 175,
    "means": {
-    "correct": 0.8,
-    "completeness": 0.8280817142857143,
-    "score": 0.7542862857142857
+    "correct": 0.8742857142857143,
+    "completeness": 0.8921908571428572,
+    "score": 0.8474285714285714
    }
   },
   {
    "group": "type:completeness",
    "questions": 20,
    "means": {
-    "correct": 0.5,
-    "completeness": 0.50725,
-    "score": 0.36635500000000004
+    "correct": 0.75,
+    "completeness": 0.65195,
+    "score": 0.620165
    }
   },
   {
    "group": "type:conflicting_info",
    "questions": 20,
    "means": {
-    "correct": 0.85,
-    "completeness": 0.819935,
-    "score": 0.78065
+    "correct": 0.9,
+    "completeness": 0.8547,
+    "score": 0.8404149999999999
    }
   },
   {
    "group": "type:constrained",
    "questions": 30,
    "means": {
-    "correct": 0.8,
-    "completeness": 0.9372733333333334,
-    "score": 0.7741033333333334
+    "correct": 0.8333333333333334,
+    "completeness": 0.9410233333333334,
+    "score": 0.8224066666666666
    }
   },
   {
@@ -150,8 +150,8 @@
    "questions": 10,
    "means": {
     "correct": 0.7,
-    "completeness": 0.85,
-    "score": 0.675
+    "completeness": 0.875,
+    "score": 0.7
    }
   },
   {
@@ -167,36 +167,36 @@
    "group": "type:intra_document_reasoning",
    "questions": 40,
    "means": {
-    "correct": 0.925,
-    "completeness": 0.8720275000000001,
-    "score": 0.8470275
+    "correct": 0.975,
+    "completeness": 0.98125,
+    "score": 0.95625
    }
   },
   {
    "group": "type:miscellaneous",
    "questions": 20,
    "means": {
-    "correct": 0.65,
-    "completeness": 0.8483350000000001,
-    "score": 0.633335
+    "correct": 0.8,
+    "completeness": 0.931665,
+    "score": 0.79
    }
   },
   {
    "group": "type:project_related",
    "questions": 40,
    "means": {
-    "correct": 0.525,
-    "completeness": 0.68286,
-    "score": 0.411685
+    "correct": 0.65,
+    "completeness": 0.6645549999999999,
+    "score": 0.53366
    }
   },
   {
    "group": "type:semantic",
    "questions": 125,
    "means": {
-    "correct": 0.624,
-    "completeness": 0.6612816,
-    "score": 0.575524
+    "correct": 0.68,
+    "completeness": 0.7608928,
+    "score": 0.6632008
    }
   }
  ]
