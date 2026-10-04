@@ -5,7 +5,8 @@ means; the judged answers were only a jsonl under data/, which is not committed.
 puts them in the report: on the 500 v2 answers (ANSWER_PROMPT_V2, gemma4:26b, judged by
 claude-haiku-4-5) the overall score is 62.43, but confluence (114 questions) scores 44.7 and
 hubspot (34) 67.6. A question counts under every source of its expected documents, as in the
-retrieval rows; the 30 questions with no expected document are the group "source:none". All
+retrieval rows; the 30 questions with no expected document are the group "source:none". Each
+answer run (GEN-12a added deepseek-v4-pro, 67.97 overall) gets its own run folder. All
 three means are fractions of 1: correct, completeness, and score (correct × completeness, the
 leaderboard's number).
 
@@ -17,17 +18,34 @@ Run: uv run python -m pipeline.eval.answer_metrics
 """
 import json
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, NamedTuple, Sequence
 
 from pipeline.eval.rerank import read_jsonl
 
 ROOT = Path(__file__).resolve().parents[2]
 QUESTIONS = ROOT / "data/_full/questions.jsonl"
-JUDGMENTS = ROOT / "data/_index/judgments/v4-gemma4-v2__claude-haiku-4-5.jsonl"
-RUN = ROOT / "docs/eval/runs/2026-10-04-answers-v4-gemma4-v2"  # the base answer run: retrieval v4, prompt v2
-CONFIG = {"retrieval": "v4 (titles, voyage-4-lite + BM25, RRF, top 100 reranked by rerank-3-lite)",
-          "documents_read": 10, "prompt": "ANSWER_PROMPT_V2", "answerer": "gemma4:26b",
-          "judge": "claude-haiku-4-5", "note": "our judge, not the leaderboard's gpt-5.4"}
+JUDGMENTS_DIR = ROOT / "data/_index/judgments"
+RUNS_DIR = ROOT / "docs/eval/runs"
+RETRIEVAL = "v4 (titles, voyage-4-lite + BM25, RRF, top 100 reranked by rerank-3-lite)"
+
+
+class AnswerRun(NamedTuple):
+    judgments: str  # the judge's file under data/_index/judgments
+    config: Dict[str, object]
+
+
+def run_of(answerer: str, judgments: str) -> AnswerRun:
+    """Every run so far reads v4's 10 documents with ANSWER_PROMPT_V2 and is judged by claude-haiku-4-5."""
+    return AnswerRun(judgments, {"retrieval": RETRIEVAL, "documents_read": 10, "prompt": "ANSWER_PROMPT_V2",
+                                 "answerer": answerer, "judge": "claude-haiku-4-5",
+                                 "note": "our judge, not the leaderboard's gpt-5.4"})
+
+
+GEMMA_RUN = "2026-10-04-answers-v4-gemma4-v2"  # the base answer run
+DEEPSEEK_RUN = "2026-10-04-answers-v4-deepseek-v4-pro-v2"  # GEN-12a: the same documents and prompt, a stronger model
+ANSWER_RUNS = {GEMMA_RUN: run_of("gemma4:26b", "v4-gemma4-v2__claude-haiku-4-5.jsonl"),
+               DEEPSEEK_RUN: run_of("deepseek-v4-pro", "v4-deepseek-v4-pro-v2__claude-haiku-4-5.jsonl")}
+RUN = RUNS_DIR / GEMMA_RUN
 METRICS = ("correct", "completeness", "score")
 
 
@@ -50,9 +68,11 @@ def answer_rows(questions: Sequence[dict], judgments: Sequence[dict]) -> List[di
 
 
 def main() -> None:
-    RUN.mkdir(parents=True, exist_ok=True)
-    rows = answer_rows(read_jsonl(QUESTIONS), read_jsonl(JUDGMENTS))
-    (RUN / "metrics.json").write_text(json.dumps({"config": CONFIG, "rows": rows}, indent=1) + "\n")
+    questions = read_jsonl(QUESTIONS)
+    for name, run in ANSWER_RUNS.items():
+        (RUNS_DIR / name).mkdir(parents=True, exist_ok=True)
+        rows = answer_rows(questions, read_jsonl(JUDGMENTS_DIR / run.judgments))
+        (RUNS_DIR / name / "metrics.json").write_text(json.dumps({"config": run.config, "rows": rows}, indent=1) + "\n")
 
 
 if __name__ == "__main__":

@@ -31,13 +31,13 @@ def write_metrics(runs_dir, run_name, value):
     (runs_dir / run_name / "metrics.json").write_text(json.dumps({"config": {}, "rows": rows}))
 
 
-def write_answer_metrics(runs_dir, run_name):
-    rows = [{"group": group, "questions": questions, "means": {"correct": correct, "completeness": 0.75, "score": correct * 0.75}}
+def write_answer_metrics(runs_dir, run_name, answerer="gemma4:26b", lift=0.0):
+    rows = [{"group": group, "questions": questions, "means": {"correct": correct, "completeness": 0.75, "score": correct * 0.75 + lift}}
             for group, questions, correct in (("overall", 5, 0.6), ("source:jira", 3, 0.3333), ("source:none", 1, 1.0),
                                               ("source:slack", 1, 1.0))]
     (runs_dir / run_name).mkdir(parents=True)
     (runs_dir / run_name / "metrics.json").write_text(json.dumps(
-        {"config": {"prompt": "ANSWER_PROMPT_V2", "answerer": "gemma4:26b", "judge": "claude-haiku-4-5"}, "rows": rows}))
+        {"config": {"prompt": "ANSWER_PROMPT_V2", "answerer": answerer, "judge": "claude-haiku-4-5"}, "rows": rows}))
 
 
 def embedded(page):
@@ -86,12 +86,22 @@ class HtmlReport(unittest.TestCase):
             {"name": "v1", "about": "hybrid", "recall": 0.71, "mrr": 0.71, "gain": 0.2}])
 
     def test_without_an_answer_run_the_page_has_no_answer_rows(self):
-        self.assertIsNone(self.data["answers"])
+        self.assertEqual(self.data["answers"], [])
+
+    def test_each_answer_run_carries_its_score_and_its_gain_over_the_run_before(self):
+        write_answer_metrics(self.runs_dir, "run-gemma")
+        write_answer_metrics(self.runs_dir, "run-deepseek", answerer="deepseek-v4-pro", lift=0.05)
+        answers = embedded(html_report([("1. Dense", "exact", "run-dense"), ("2. RRF", "exact", "run-rrf")],
+                                       self.runs_dir, "Retrieval", answers=["run-gemma", "run-deepseek"]))["answers"]
+        self.assertEqual([(run["config"]["answerer"], run["score"], run["gain"]) for run in answers],
+                         [("gemma4:26b", 0.45, None), ("deepseek-v4-pro", 0.5, 0.05)])
+        self.assertEqual(answers[1]["rows"][1], {"name": "jira", "questions": 3, "recall": 0.71, "correct": 0.333,
+                                                 "completeness": 0.75, "score": 0.3})
 
     def test_answers_are_all_then_sources_by_question_count_with_the_retrieval_recall_beside(self):
         write_answer_metrics(self.runs_dir, "run-answers")
         answers = embedded(html_report([("1. Dense", "exact", "run-dense"), ("2. RRF", "exact", "run-rrf")],
-                                       self.runs_dir, "Retrieval", answers="run-answers"))["answers"]
+                                       self.runs_dir, "Retrieval", answers=["run-answers"]))["answers"][0]
         self.assertEqual(answers["config"], {"prompt": "ANSWER_PROMPT_V2", "answerer": "gemma4:26b", "judge": "claude-haiku-4-5"})
         self.assertEqual(answers["rows"], [
             {"name": "All", "questions": 5, "recall": 0.71, "correct": 0.6, "completeness": 0.75, "score": 0.45},
@@ -127,7 +137,10 @@ class RealV1Report(unittest.TestCase):
 
     def test_the_v2_answers_are_62_4_overall_and_weakest_on_confluence(self):
         from pipeline.eval.html_report import ANSWERS
-        rows = embedded(html_report(REPORT_STEPS, RUNS, "v4", answers=ANSWERS))["answers"]["rows"]
+        runs = embedded(html_report(REPORT_STEPS, RUNS, "v4", answers=ANSWERS))["answers"]
+        self.assertEqual([(run["config"]["answerer"], run["score"], run["gain"]) for run in runs],
+                         [("gemma4:26b", 0.624, None), ("deepseek-v4-pro", 0.68, 0.056)])  # the gain of the shown scores
+        rows = runs[0]["rows"]
         self.assertEqual([(row["name"], row["questions"], row["recall"], row["score"]) for row in rows[:2]],
                          [("All", 500, 0.834, 0.624), ("confluence", 114, rows[1]["recall"], 0.447)])
         self.assertEqual(min(rows, key=lambda row: row["score"])["name"], "confluence")
