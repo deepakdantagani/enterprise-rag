@@ -596,3 +596,39 @@ qst_0212, qst_0285). The 24 fact disagreements split 12 and 12. The score differ
 gpt-5.4, paired bootstrap 95% interval −1.21 to +6.61, which includes 0. **This is not a
 leaderboard score for the 500**; it shows our judge is close to the official one and, on this
 sample, slightly stricter.
+
+## All 500 prompt v3 answers on gpt-5.4, the leaderboard's judge model
+
+Our judge code (the benchmark's two prompts) on `gpt-5.4`, for every prompt v3 answer (GEN-9g).
+**Not an official leaderboard score**: the benchmark's own scorer script was not run. Run
+2026-10-04.
+
+| | our judge (claude-haiku-4-5) | gpt-5.4 |
+|---|---|---|
+| **overall score** | 77.50 | **80.05** |
+| answers judged correct | 404 | 418 |
+| mean completeness | 84.56% | 85.34% |
+
+| | agree | of |
+|---|---|---|
+| correctness verdicts | 480 | 500 |
+| fact verdicts | 2,312 | 2,427 |
+
+Of the 20 correctness disagreements, 17 are "our judge wrong, gpt-5.4 correct" and 3 the other
+way. The difference is +2.56 for gpt-5.4, paired bootstrap 95% interval +0.96 to +4.27: our judge
+is the stricter one. The 3 empty answers are counted as wrong by both.
+
+| type | questions | our judge | gpt-5.4 |
+|---|---|---|---|
+| basic | 175 | 84.7 | 86.8 |
+| semantic | 125 | 66.3 | 71.4 |
+| intra_document_reasoning | 40 | 95.6 | 95.6 |
+| project_related | 40 | 53.4 | 54.4 |
+| constrained | 30 | 82.2 | 80.2 |
+| conflicting_info | 20 | 84.0 | 84.5 |
+| completeness | 20 | 62.0 | 58.5 |
+| miscellaneous | 20 | 79.0 | 97.3 |
+| info_not_found | 20 | 100.0 | 100.0 |
+| high_level | 10 | 70.0 | 70.0 |
+
+On the leaderboard as read on 2026-10-04, 80.05 would sit 6th: 5th place is 80.26, 6th is 79.3.

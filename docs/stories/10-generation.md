@@ -916,6 +916,65 @@ cost under $5; the actual bill was not read.
 
 ---
 
+## GEN-9g  All 500 answers on `gpt-5.4`  ✅
+
+**Status:** Done (2026-10-04). **80.05** on `gpt-5.4` against 77.50 on our judge for the same
+500 prompt v3 answers. The 5th place on the leaderboard is 80.26, so we are 0.21 under it.
+
+**As a** developer aiming for the top 5,
+**I want to** every prompt v3 answer judged on the leaderboard's judge model,
+**so that** we know our place before a submission, and not only on our own judge.
+
+**What this is and is not:** our judge code (the benchmark's two prompts, structured replies) on
+the leaderboard's model. It is not the benchmark's own scorer script (GEN-7), so 80.05 is close
+to a leaderboard score, not one.
+
+**Measured** (the same 500 answers, the same two prompts, temperature 0)
+
+| | our judge (`claude-haiku-4-5`) | `gpt-5.4` |
+|---|---|---|
+| overall score | 77.50 | 80.05 |
+| answers judged correct | 404 | 418 |
+| mean completeness | 84.56% | 85.34% |
+
+- **Correctness:** 480 of 500 verdicts agree. Of the 20 disagreements, 17 are "our judge wrong,
+  `gpt-5.4` correct" and 3 the other way.
+- **Facts:** 2,312 of 2,427 agree (95.3%); the 115 disagreements split 55 and 60.
+- **Score:** `gpt-5.4` is 2.56 higher, paired bootstrap 95% interval +0.96 to +4.27. On 500
+  questions the difference is real: our judge is the stricter one.
+- **By type** (our judge / `gpt-5.4`): basic 84.7 / 86.8, semantic 66.3 / 71.4,
+  intra_document_reasoning 95.6 / 95.6, project_related 53.4 / 54.4, constrained 82.2 / 80.2,
+  conflicting_info 84.0 / 84.5, completeness 62.0 / 58.5, miscellaneous 79.0 / 97.3,
+  info_not_found 100 / 100, high_level 70.0 / 70.0.
+
+The 3 empty answers (qst_0351, qst_0358, qst_0362) cannot be judged; `not_judged` records each as
+wrong with 0% completeness. Over the 497 judged answers alone the score is 80.54.
+
+**Decision:** on the leaderboard as read on 2026-10-04, 80.05 would sit 6th (5th ZNV AgentCube
+80.26, 6th Skyller AI 79.3). The weakest types are the same on both judges: `project_related`,
+`completeness` and `semantic`, which are search problems.
+
+**What changed:** `pipeline/eval/gpt_judge.py` with `not_judged` and the run. It starts from the
+100 judgments of GEN-9f, so none is paid for twice.
+
+**Acceptance Criteria**
+```gherkin
+Scenario: every answer has a row
+  Then the judgments file holds 500 rows, one per question
+  And the 3 empty answers are the only rows marked "Not judged"
+
+Scenario: nothing is paid for twice
+  Given the 100 judgments of GEN-9f
+  Then only the other answers are judged
+```
+
+**Run notes:** 2,256 calls for the 397 remaining answers, about 1.7M input tokens. Estimated cost
+$5 to $8; the actual bill was not read.
+
+**Dependencies:** GEN-9f, GEN-13d.
+
+---
+
 ## GEN-10a  `ANSWER_PROMPT_V2`  ✅
 
 **Status:** Done (the prompt and its tests; the answers and their score are GEN-10b)
