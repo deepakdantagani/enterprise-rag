@@ -384,3 +384,41 @@ collection (dense voyage-4-lite + BM25 over the same chunks). Earlier chains sta
 | 3. Hybrid RRF | exact | 0.680 | 0.660 | 0.050 | 0.371 | 0.429 |
 | 4. Top 100 + rerank-3-lite (v4) | exact | **0.720** | **0.720** | **0.054** | **0.520** | **0.569** |
 <!-- end generated -->
+
+## Answer score, our judge (claude-haiku-4-5)
+
+**Not a leaderboard score.** The leaderboard is judged by gpt-5.4 (GEN-7). This is the benchmark's
+own two judge prompts run on `claude-haiku-4-5` (`pipeline/eval/judge.py`, 2026-10-04), over the
+500 `v4-gemma4-base` answers: 500 correctness calls and 2,427 fact calls.
+
+| | value |
+|---|---|
+| **overall score** (mean of correct × completeness) | **62.11** |
+| answers judged correct | 339 of 500 (67.8%) |
+| mean completeness | 76.75% (1,770 of 2,427 facts) |
+
+Reference leaderboard scores: BM25 + GPT-5.4 baseline 50.6, 10th place 65.61, 1st place 86.58.
+
+### The 161 answers judged wrong
+
+| gold documents among the 10 read | wrong answers | kind |
+|---|---|---|
+| all | 78 | answer miss |
+| some | 26 | answer miss, partly a search miss |
+| none | 54 | search miss |
+| question has no gold document | 3 | answer miss |
+
+### Score by question type
+
+| type | questions | score |
+|---|---|---|
+| info_not_found | 20 | 95.0 |
+| high_level | 10 | 77.5 |
+| miscellaneous | 20 | 77.1 |
+| basic | 175 | 71.0 |
+| constrained | 30 | 69.1 |
+| intra_document_reasoning | 40 | 64.8 |
+| conflicting_info | 20 | 61.8 |
+| semantic | 125 | 53.2 |
+| project_related | 40 | 38.0 |
+| completeness | 20 | 17.3 |
