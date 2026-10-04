@@ -5,12 +5,13 @@ means; the judged answers were only a jsonl under data/, which is not committed.
 puts them in the report: on the 500 v2 answers (ANSWER_PROMPT_V2, gemma4:26b, judged by
 claude-haiku-4-5) the overall score is 62.43, but confluence (114 questions) scores 44.7 and
 hubspot (34) 67.6. A question counts under every source of its expected documents, as in the
-retrieval rows; the 30 questions with no expected document are the group "source:none". Each
+retrieval rows; the 30 questions with no expected document are the group "source:none". A
+question also counts under its one question type ("type:completeness", 20 questions, 23.5). Each
 answer run (GEN-12a added deepseek-v4-pro, 67.97 overall) gets its own run folder. All
 three means are fractions of 1: correct, completeness, and score (correct × completeness, the
 leaderboard's number).
 
-    >>> answer_rows([{"question_id": "q1", "source_types": ["slack"]}],
+    >>> answer_rows([{"question_id": "q1", "question_type": "basic", "source_types": ["slack"]}],
     ...             [{"question_id": "q1", "answer_correct": True, "completeness_pct": 75.0}])[1]
     {'group': 'source:slack', 'questions': 1, 'means': {'correct': 1.0, 'completeness': 0.75, 'score': 0.75}}
 
@@ -57,13 +58,14 @@ def means_of(judgments: Sequence[dict]) -> Dict[str, float]:
 
 
 def answer_rows(questions: Sequence[dict], judgments: Sequence[dict]) -> List[dict]:
-    """One row for all questions, then one per source in name order; every question must be judged."""
+    """One row for all questions, one per source, one per question type; every question must be judged."""
     judged = {row["question_id"]: row for row in judgments}
     groups: Dict[str, List[dict]] = {"overall": [judged[question["question_id"]] for question in questions]}
     for question in questions:
         for source in sorted(question["source_types"]) or ["none"]:
             groups.setdefault(f"source:{source}", []).append(judged[question["question_id"]])
-    names = ["overall"] + sorted(name for name in groups if name != "overall")
+        groups.setdefault(f"type:{question['question_type']}", []).append(judged[question["question_id"]])  # GEN-12c
+    names = ["overall"] + sorted(name for name in groups if name != "overall")  # "source:…" sorts before "type:…"
     return [{"group": name, "questions": len(groups[name]), "means": means_of(groups[name])} for name in names]
 
 

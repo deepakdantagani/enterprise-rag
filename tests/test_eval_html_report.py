@@ -34,7 +34,7 @@ def write_metrics(runs_dir, run_name, value):
 def write_answer_metrics(runs_dir, run_name, answerer="gemma4:26b", lift=0.0):
     rows = [{"group": group, "questions": questions, "means": {"correct": correct, "completeness": 0.75, "score": correct * 0.75 + lift}}
             for group, questions, correct in (("overall", 5, 0.6), ("source:jira", 3, 0.3333), ("source:none", 1, 1.0),
-                                              ("source:slack", 1, 1.0))]
+                                              ("source:slack", 1, 1.0), ("type:basic", 4, 0.5), ("type:semantic", 1, 1.0))]
     (runs_dir / run_name).mkdir(parents=True)
     (runs_dir / run_name / "metrics.json").write_text(json.dumps(
         {"config": {"prompt": "ANSWER_PROMPT_V2", "answerer": answerer, "judge": "claude-haiku-4-5"}, "rows": rows}))
@@ -109,7 +109,18 @@ class HtmlReport(unittest.TestCase):
             {"name": "no expected document", "questions": 1, "recall": None, "correct": 1.0, "completeness": 0.75, "score": 0.75},
             {"name": "slack", "questions": 1, "recall": 0.71, "correct": 1.0, "completeness": 0.75, "score": 0.75}])
 
+    def test_answers_also_come_by_question_type_with_the_retrieval_recall_of_that_type(self):
+        write_answer_metrics(self.runs_dir, "run-types")
+        run = embedded(html_report([("1. Dense", "exact", "run-dense"), ("2. RRF", "exact", "run-rrf")],
+                                   self.runs_dir, "Retrieval", answers=["run-types"]))["answers"][0]
+        self.assertEqual([row["name"] for row in run["rows"]], ["All", "jira", "no expected document", "slack"])
+        self.assertEqual(run["types"], [
+            {"name": "All", "questions": 5, "recall": 0.71, "correct": 0.6, "completeness": 0.75, "score": 0.45},
+            {"name": "basic", "questions": 4, "recall": 0.71, "correct": 0.5, "completeness": 0.75, "score": 0.375},
+            {"name": "semantic", "questions": 1, "recall": None, "correct": 1.0, "completeness": 0.75, "score": 0.75}])
+
     def test_the_page_has_an_answers_section(self):
+        self.assertIn('id="answer-views"', self.page)
         self.assertIn('id="answers"', self.page)
         self.assertIn("Correct", self.page)
 

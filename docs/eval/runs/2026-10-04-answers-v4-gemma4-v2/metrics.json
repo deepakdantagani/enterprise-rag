@@ -106,6 +106,96 @@
     "completeness": 0.683732911392405,
     "score": 0.5025848101265823
    }
+  },
+  {
+   "group": "type:basic",
+   "questions": 175,
+   "means": {
+    "correct": 0.7885714285714286,
+    "completeness": 0.8188982857142857,
+    "score": 0.7293737142857143
+   }
+  },
+  {
+   "group": "type:completeness",
+   "questions": 20,
+   "means": {
+    "correct": 0.35,
+    "completeness": 0.534505,
+    "score": 0.23473
+   }
+  },
+  {
+   "group": "type:conflicting_info",
+   "questions": 20,
+   "means": {
+    "correct": 0.8,
+    "completeness": 0.74143,
+    "score": 0.6601800000000001
+   }
+  },
+  {
+   "group": "type:constrained",
+   "questions": 30,
+   "means": {
+    "correct": 0.7333333333333333,
+    "completeness": 0.8949233333333333,
+    "score": 0.6931133333333334
+   }
+  },
+  {
+   "group": "type:high_level",
+   "questions": 10,
+   "means": {
+    "correct": 0.6,
+    "completeness": 0.875,
+    "score": 0.6
+   }
+  },
+  {
+   "group": "type:info_not_found",
+   "questions": 20,
+   "means": {
+    "correct": 0.95,
+    "completeness": 0.95,
+    "score": 0.95
+   }
+  },
+  {
+   "group": "type:intra_document_reasoning",
+   "questions": 40,
+   "means": {
+    "correct": 0.725,
+    "completeness": 0.8324450000000001,
+    "score": 0.6562525
+   }
+  },
+  {
+   "group": "type:miscellaneous",
+   "questions": 20,
+   "means": {
+    "correct": 0.9,
+    "completeness": 0.895835,
+    "score": 0.845835
+   }
+  },
+  {
+   "group": "type:project_related",
+   "questions": 40,
+   "means": {
+    "correct": 0.4,
+    "completeness": 0.5843975,
+    "score": 0.2866175
+   }
+  },
+  {
+   "group": "type:semantic",
+   "questions": 125,
+   "means": {
+    "correct": 0.592,
+    "completeness": 0.6364296,
+    "score": 0.5296704
+   }
   }
  ]
 }
