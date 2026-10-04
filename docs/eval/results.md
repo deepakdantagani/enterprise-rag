@@ -456,3 +456,23 @@ The difference is +0.33, with a paired bootstrap 95% interval of −3.18 to +3.9
 
 v2's 155 wrong answers by gold documents among the 10 read: all 68, some 28, none 54, question has
 no gold document 5.
+
+### Answer score per source, v1 and v2
+
+A question counts under every source of its expected documents (as in the retrieval tables), so
+the rows add up to more than 500. "Gold read" is the share of questions whose expected documents
+are all among the 10 documents the answerer read (the same 10 for v1 and v2). Correct and
+complete are means over every question in the row; score is the mean of correct × completeness.
+
+| source | questions | gold read | v1 correct | v1 complete | v1 score | v2 correct | v2 complete | v2 score |
+|---|---|---|---|---|---|---|---|---|
+| confluence | 114 | 62.3% | 56.1% | 65.9% | 46.4 | 52.6% | 68.1% | 44.7 |
+| jira | 100 | 72.0% | 70.0% | 77.6% | 60.9 | 68.0% | 76.9% | 59.1 |
+| slack | 79 | 70.9% | 54.4% | 68.0% | 47.4 | 57.0% | 68.4% | 50.3 |
+| github | 60 | 65.0% | 56.7% | 66.7% | 48.0 | 66.7% | 69.1% | **57.5** |
+| google_drive | 60 | 73.3% | 60.0% | 75.0% | 55.3 | 58.3% | 70.1% | 53.5 |
+| linear | 58 | 79.3% | 74.1% | 80.9% | **69.7** | 67.2% | 77.5% | 61.3 |
+| gmail | 55 | 78.2% | 69.1% | 74.9% | 62.3 | 76.4% | 73.9% | 65.8 |
+| hubspot | 34 | 85.3% | 64.7% | 84.1% | 64.0 | 70.6% | 79.4% | 67.6 |
+| fireflies | 25 | 72.0% | 72.0% | 73.2% | 67.1 | 64.0% | 59.3% | 52.5 |
+| no expected document | 30 | n/a | 90.0% | 95.8% | 89.2 | 83.3% | 92.5% | 83.3 |
