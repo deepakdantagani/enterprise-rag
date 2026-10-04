@@ -705,10 +705,14 @@ format only, and GEN-9f measures whether it moves any verdict. The input is vali
 kept `CorrectnessEvaluator` and the `aligned` parser; from 2026-10-04 it works the same way as
 completeness (see GEN-9a).
 
-Read in the same source, to confirm on the first real call: that structured call does not pass
-the LLM's own `temperature`, so the evaluator sends `llm_kwargs={"temperature": 0}`; and its
-`max_tokens` is 8,192 and cannot be lowered in this version (harmless, the reply is about 10
-tokens).
+Read in the same source: that structured call does not pass the LLM's own `temperature`, and
+its `max_tokens` is 8,192 and cannot be lowered in this version (harmless, the reply is about 10
+tokens). The first real call (2026-10-04) showed more: `llm_kwargs={"temperature": 0}` fails
+with `TypeError: parse() got an unexpected keyword argument 'temperature'`, because the
+Anthropic SDK 1.x (1.11.0 here) removed the sampling parameters from its signatures. The API
+still accepts them for `claude-haiku-4-5`, so the evaluators send
+`llm_kwargs={"extra_body": {"temperature": 0}}`. Opus 5.5 and Sonnet 5.5 would reject it, so a
+change of judge model has to revisit this line.
 
 **Measured** (2026-10-04): `FactCheck`, `FactVerdict` and `CompletenessEvaluator` in
 `pipeline/eval/judge.py`. `FACT_TEMPLATE` equals the pinned benchmark prompt character for
@@ -753,8 +757,13 @@ printed. The model is a parameter, so `qwen3:30b` or another judge can be compar
 `llama-index-core`); with two questions, each correctness call holds only its own gold answer
 and each fact call only its own question's facts (tested). `llama-index-llms-anthropic` 0.12.2
 added (with `anthropic` 1.11.0). `examples/judge_one_question.py` is the whole judge for
-qst_0009 as one call, 6 Claude calls; it has not been run yet (paid, a fraction of a cent), so
-the structured call, temperature 0 and the reply cap are still unconfirmed against Claude.
+qst_0009 as one call, 6 Claude calls. Run twice on 2026-10-04 (about 6 s each, a fraction of a
+cent): the structured calls work through LlamaIndex for both judges, and both runs gave the same
+verdicts: correct, and all 5 facts contained (100%). Fact 1 ("Redwood did not match the
+competitors 50 percent blanket Year 1 discount and 60k migration credit") is counted as
+contained although our answer never states it: the benchmark's fact prompt accepts an answer
+that "does not contradict the statement". My own reading had been 4 of 5; GEN-9f shows whether
+the official judge reads it as Haiku does.
 
 **Decision** (2026-10-04): no `judge_llm` or `judge_runner` functions. The model
 (`Anthropic(model="claude-haiku-4-5", temperature=0, max_tokens=256)`) and the runner are

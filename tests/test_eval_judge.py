@@ -91,7 +91,7 @@ class Correctness(unittest.TestCase):
         self.assertIs(call["output_cls"], CorrectnessVerdict)
         self.assertIs(call["prompt"], CORRECTNESS_TEMPLATE)
         self.assertEqual((call["query"], call["reference_answer"], call["generated_answer"]), (QUERY, GOLD, OURS))
-        self.assertEqual(call["llm_kwargs"], {"temperature": 0})
+        self.assertEqual(call["llm_kwargs"], {"extra_body": {"temperature": 0}})
 
     def test_an_empty_question_answer_or_gold_answer_raises_before_any_call(self):
         for blank in ({"query": ""}, {"response": None}, {"reference": ""}):
@@ -129,7 +129,7 @@ class Completeness(unittest.TestCase):
 
     def test_the_judge_is_asked_at_temperature_zero(self):
         llm, _ = self.judged([True] * 5)
-        self.assertTrue(all(call["llm_kwargs"] == {"temperature": 0} for call in llm.calls))
+        self.assertTrue(all(call["llm_kwargs"] == {"extra_body": {"temperature": 0}} for call in llm.calls))
 
     def test_the_verdict_of_each_fact_is_kept_in_order_for_audit(self):
         _, result = self.judged([False, True, True, True, True])
@@ -241,8 +241,8 @@ class Main(unittest.TestCase):
 
     def test_both_judges_are_haiku_at_temperature_zero(self):
         self.run_main()
-        self.assertEqual(self.built, [{"model": "claude-haiku-4-5", "temperature": 0}] * 2)
-        self.assertTrue(all(call["llm_kwargs"] == {"temperature": 0} for call in self.llm.calls))
+        self.assertEqual(self.built, [{"model": "claude-haiku-4-5"}] * 2)
+        self.assertTrue(all(call["llm_kwargs"] == {"extra_body": {"temperature": 0}} for call in self.llm.calls))
 
     def test_no_plain_text_call_is_made(self):
         self.run_main()

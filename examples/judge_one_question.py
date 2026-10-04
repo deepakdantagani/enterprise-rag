@@ -22,9 +22,9 @@ async def main():
         # Who judges: two evaluators on Claude Haiku 4.5
         evaluators={
             # Does our answer agree with the gold answer?
-            "correctness": StructuredCorrectnessEvaluator(Anthropic(model="claude-haiku-4-5", temperature=0)),
+            "correctness": StructuredCorrectnessEvaluator(Anthropic(model="claude-haiku-4-5")),
             # How many of the facts does our answer contain?
-            "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5", temperature=0)),
+            "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5")),
         },
         workers=8,  # questions judged at the same time
     ).aevaluate_response_strs(

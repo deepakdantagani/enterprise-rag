@@ -43,7 +43,9 @@ JUDGMENTS = ROOT / "data/_index/judgments/v4-gemma4-base__claude-haiku-4-5.jsonl
 BATCH = 25  # answers judged per call, then saved
 
 
-JUDGE_KWARGS = {"temperature": 0}  # LlamaIndex's Anthropic structured call takes sampling settings only this way
+# Temperature 0, so a re-run gives the same verdicts. The Anthropic SDK 1.x has no temperature
+# parameter, so it goes in the request body; claude-haiku-4-5 accepts it (Opus 5.5 and Sonnet 5.5 would not).
+JUDGE_KWARGS = {"extra_body": {"temperature": 0}}
 
 
 # 1. The correctness judge: one structured call per answer
@@ -149,8 +151,8 @@ async def main() -> None:
         results = await BatchEvalRunner(
             # Who judges: two evaluators on Claude Haiku 4.5
             evaluators={
-                "correctness": StructuredCorrectnessEvaluator(Anthropic(model="claude-haiku-4-5", temperature=0)),
-                "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5", temperature=0)),
+                "correctness": StructuredCorrectnessEvaluator(Anthropic(model="claude-haiku-4-5")),
+                "completeness": CompletenessEvaluator(Anthropic(model="claude-haiku-4-5")),
             },
             workers=8,  # questions judged at the same time
         ).aevaluate_response_strs(
