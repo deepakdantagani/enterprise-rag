@@ -909,7 +909,7 @@ Scenario: the sample is fixed
 **Non-functional Requirements:** the 100 questions are fixed by a seeded sample, so later
 judges (`qwen3:30b`, Jev, a larger Claude model) are compared on the same set.
 
-**Run notes:** 100 correctness calls and 524 fact calls on `gpt-5.4`, about 3 minutes. Estimated
+**Run notes:** 100 correctness calls and 524 fact calls on `gpt-5.4`. Estimated
 cost under $5; the actual bill was not read.
 
 **Dependencies:** GEN-9e, GEN-13d. GEN-7 (the full official run) stays for the final submission.
