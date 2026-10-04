@@ -1,80 +1,35 @@
-"""GEN-9a: aligned and correctness_judge, the benchmark's correctness prompt on LlamaIndex's CorrectnessEvaluator.
+"""GEN-9a, GEN-9b: the judge, read top to bottom: correctness (yes or no), then completeness (share of facts).
 
-The leaderboard's judge asks one question per answer: does the candidate agree with the gold
-answer (ANSWER_WHOLISTIC_EVALUATION_PROMPT, EnterpriseRAG-Bench src/prompts/answer_evaluation.py,
-MIT)? For qst_0009 it reads the query, the gold answer ("Redwood said it wouldn't match the
-competitor's 50% blanket Year-1 discount … 12-month committed prepay package …") and ours
-("Redwood proposed a 12-month commit package …") and replies {"reason", "aligned"}.
-CorrectnessEvaluator already makes that call and returns an EvaluationResult; it only needs the
-benchmark's wording as its template and a parser for the reply. Correctness is yes or no: the
-evaluator's 1-to-5 scale is used at its two ends only, and partial credit comes from
-completeness (GEN-9b).
+The leaderboard scores an answer as correct (0 or 1) x completeness (%). For qst_0009 the judge
+makes 6 calls:
+
+    1 correctness call   question + gold answer + our answer   -> aligned: yes / no
+    5 completeness calls our answer + one fact each            -> contained: true / false
+
+Correctness is LlamaIndex's CorrectnessEvaluator with the benchmark's prompt; its 1-to-5 scale
+is used at its two ends only (yes 5.0, no 1.0, passing at 4.0). Completeness is the one
+evaluator we write, because LlamaIndex has none that checks one statement at a time; its reply
+is Claude's structured output (astructured_predict sends FactVerdict as the output schema), so
+no parser is needed. The prompts are in judge_prompts.py.
 
     >>> aligned('{"reason": "Same package terms.", "aligned": "yes"}')
     (5.0, 'Same package terms.')
+    >>> FactCheck(answer="Redwood proposed a 12-month commit package.", facts=["A 99.9 percent latency SLO."]).facts
+    ['A 99.9 percent latency SLO.']
 """
 import json
 import re
-from typing import Tuple
+from typing import Annotated, Any, List, Optional, Sequence, Tuple
 
-from llama_index.core import PromptTemplate
-from llama_index.core.evaluation import CorrectnessEvaluator
+from llama_index.core.evaluation import BaseEvaluator, CorrectnessEvaluator, EvaluationResult
 from llama_index.core.llms import LLM
+from pydantic import BaseModel, Field
+
+from pipeline.eval.judge_prompts import CORRECTNESS_TEMPLATE, FACT_TEMPLATE
+
+# 1. Correctness: LlamaIndex's evaluator + the benchmark's prompt + a reader for its reply
 
 ALIGNED, MISALIGNED = 5.0, 1.0  # CorrectnessEvaluator passes a score of 4.0 or more
-
-# The benchmark's text, word for word (tests/fixtures/benchmark); only gold_answer and
-# candidate_answer are renamed to the names CorrectnessEvaluator fills.
-CORRECTNESS_TEMPLATE = PromptTemplate(
-    "You are a wholistic and detail-oriented answer evaluator. Given a query, a gold answer, and a "
-    "candidate answer, evaluate if the candidate answer aligned with the gold answer.\n"
-    "Use the following metrics for evaluating the answer:\n"
-    "- The candidate answer must provide loosely the same information as the gold answer. The core "
-    "aspects directly asked by the query must be addressed in the candidate answer and they must not "
-    "conflict with the gold answer.\n"
-    "- If there are any specific quantities mentioned in both answers, they must match.\n"
-    "- The candidate answer is not required to contain all of the same details as the gold answer.\n"
-    "- The candidate answer must address the key parts of the query, if it is missing anything critical "
-    "to the question, it is misaligned.\n"
-    "- The candidate answer may contain more details, richer information, or other helpful relevant "
-    "information than the gold answer, this is ok.\n"
-    "- The candidate answer may offer up additional loosely related information that adds to the context "
-    "of the answer, this is ok as long as it does not lead the user to an incorrect conclusion (compared "
-    "to the gold answer).\n"
-    "- Do not penalize the candidate answer for stylistic differences. If the candidate answer offers "
-    "follow up questions, asks additional clarifications to the user, or offers additional context, this "
-    "is ok as long as it contains the necessary information to answer the question.\n"
-    "\n"
-    "There is a separate check for answer completeness, this is not in scope for this evaluation. "
-    "However, if there are core parts of the question being left out, this is misaligned.\n"
-    "\n"
-    "## Query\n"
-    "```\n"
-    "{query}\n"
-    "```\n"
-    "\n"
-    "## Gold Answer\n"
-    "```\n"
-    "{reference_answer}\n"
-    "```\n"
-    "\n"
-    "## Candidate Answer\n"
-    "```\n"
-    "{generated_answer}\n"
-    "```\n"
-    "\n"
-    "## Output Format\n"
-    "Output a JSON with \"reason\" and \"aligned\" fields. The \"reason\" field should be a as concise as "
-    "possible (max 1 sentence) explanation of why the candidate answer is aligned or misaligned with the "
-    "gold answer. The \"aligned\" field should be a simple \"yes\" or \"no\", use only those two strings "
-    "literally and nothing else.\n"
-    "\n"
-    "CRITICAL: Output only a JSON object with the following fields in the order shown below (with no "
-    "additional text or formatting):\n"
-    "{{\n"
-    "  \"reason\": \"reason for the classification\",\n"
-    "  \"aligned\": \"yes or no\"\n"
-    "}}")
 
 
 def aligned(reply: str) -> Tuple[float, str]:
@@ -89,3 +44,46 @@ def aligned(reply: str) -> Tuple[float, str]:
 
 def correctness_judge(llm: LLM) -> CorrectnessEvaluator:
     return CorrectnessEvaluator(llm=llm, eval_template=CORRECTNESS_TEMPLATE, parser_function=aligned)
+
+
+# 2. Completeness: one structured call per fact
+
+class FactCheck(BaseModel):
+    """Input: what one completeness judgment needs, validated before any call is paid for."""
+    answer: str = Field(min_length=1)
+    facts: List[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+
+
+class FactVerdict(BaseModel):
+    """Output: the judge's structured reply for one fact."""
+    contained: bool = Field(description="True if the answer is consistent with and contains the statement.")
+
+
+JUDGE_KWARGS = {"temperature": 0}  # LlamaIndex's Anthropic structured call takes sampling settings only this way
+
+
+class CompletenessEvaluator(BaseEvaluator):
+    """The share of a question's facts that the answer contains."""
+
+    def __init__(self, llm: LLM) -> None:
+        self._llm = llm
+
+    def _get_prompts(self) -> dict:
+        return {"fact_template": FACT_TEMPLATE}
+
+    def _update_prompts(self, prompts: dict) -> None:
+        pass  # the benchmark's prompt is fixed
+
+    async def aevaluate(self, query: Optional[str] = None, response: Optional[str] = None,
+                        contexts: Optional[Sequence[str]] = None, facts: Sequence[str] = (),
+                        **kwargs: Any) -> EvaluationResult:
+        check = FactCheck(answer=response or "", facts=list(facts))  # an empty answer or no facts: no call is made
+        contained = []
+        for fact in check.facts:
+            verdict = await self._llm.astructured_predict(FactVerdict, FACT_TEMPLATE, llm_kwargs=JUDGE_KWARGS,
+                                                          answer=check.answer, statement=fact)
+            contained.append(verdict.contained)
+        share = sum(contained) / len(contained)
+        return EvaluationResult(query=query, response=response, score=share, passing=share == 1.0,
+                                feedback=json.dumps([{"fact": fact, "contained": found}
+                                                     for fact, found in zip(check.facts, contained)]))

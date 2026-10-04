@@ -1,5 +1,6 @@
 import asyncio
 import doctest
+import json
 import runpy
 import sys
 import unittest
@@ -10,8 +11,9 @@ sys.path.insert(0, str(ROOT))
 
 from llama_index.core.llms import CompletionResponse, CustomLLM, LLMMetadata  # noqa: E402
 
-from pipeline.eval import judge  # noqa: E402
-from pipeline.eval.judge import CORRECTNESS_TEMPLATE, aligned, correctness_judge  # noqa: E402
+from pipeline.eval import judge, judge_prompts  # noqa: E402
+from pipeline.eval.judge import CompletenessEvaluator, FactCheck, FactVerdict, aligned, correctness_judge  # noqa: E402
+from pipeline.eval.judge_prompts import CORRECTNESS_TEMPLATE, FACT_TEMPLATE  # noqa: E402
 
 BENCHMARK_PROMPTS = ROOT / "tests/fixtures/benchmark/answer_evaluation.py"  # the judge's prompt file, unchanged
 
@@ -20,6 +22,11 @@ QUERY = ("In the EdgePath evaluation email thread, what alternative Year 1 prici
          "instead of matching the competitor's 50 percent first-year discount and migration credit?")
 GOLD = "Redwood said it wouldn't match the competitor's 50% blanket Year-1 discount and $60k migration credit"
 OURS = "Redwood proposed a 12-month commit package with the following components:"
+FACTS = ["Redwood did not match the competitors 50 percent blanket Year 1 discount and 60k migration credit.",
+         "Redwood proposed a 12 month committed prepay package with about 40 percent off list prices on prepay buckets.",
+         "Redwood proposed a 50,000 one time onboarding or migration credit tied to milestones.",
+         "The package included an optional seat or license fee to cap variable spend.",
+         "The package included a 99.9 percent latency SLO for hosted US instances."]
 
 
 class RecordingLLM(CustomLLM):
@@ -79,6 +86,71 @@ class CorrectnessJudge(unittest.TestCase):
         self.assertIn('{\n  "reason": "reason for the classification",\n  "aligned": "yes or no"\n}', llm.prompts[0])
 
 
+class StructuredLLM(RecordingLLM):
+    """Stands in for Claude's structured output: a FactVerdict per fact, every call recorded."""
+    reply: str = ""
+    contained: dict = {}
+    calls: list = []
+
+    async def astructured_predict(self, output_cls, prompt, llm_kwargs=None, **prompt_args):
+        self.calls.append({"output_cls": output_cls, "prompt": prompt, "llm_kwargs": llm_kwargs, **prompt_args})
+        return output_cls(contained=self.contained[prompt_args["statement"]])
+
+
+class Completeness(unittest.TestCase):
+    def judged(self, contained, response=OURS, facts=FACTS):
+        llm = StructuredLLM(contained=dict(zip(FACTS, contained)), calls=[], prompts=[])
+        return llm, asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=response, facts=facts))
+
+    def test_four_of_five_facts_is_eighty_percent_and_not_passing(self):
+        _, result = self.judged([False, True, True, True, True])
+        self.assertEqual(result.score, 0.8)
+        self.assertFalse(result.passing)
+
+    def test_every_fact_is_complete_and_passing(self):
+        _, result = self.judged([True] * 5)
+        self.assertEqual(result.score, 1.0)
+        self.assertTrue(result.passing)
+
+    def test_one_structured_call_per_fact_with_our_answer_and_that_fact_only(self):
+        llm, _ = self.judged([True] * 5)
+        self.assertEqual([call["statement"] for call in llm.calls], FACTS)
+        for call in llm.calls:
+            self.assertIs(call["output_cls"], FactVerdict)
+            self.assertIs(call["prompt"], FACT_TEMPLATE)
+            self.assertEqual(call["answer"], OURS)
+            self.assertNotIn("query", call)  # the question is never sent
+
+    def test_the_judge_is_asked_at_temperature_zero(self):
+        llm, _ = self.judged([True] * 5)
+        self.assertTrue(all(call["llm_kwargs"] == {"temperature": 0} for call in llm.calls))
+
+    def test_the_verdict_of_each_fact_is_kept_in_order_for_audit(self):
+        _, result = self.judged([False, True, True, True, True])
+        verdicts = json.loads(result.feedback)
+        self.assertEqual([verdict["fact"] for verdict in verdicts], FACTS)
+        self.assertEqual([verdict["contained"] for verdict in verdicts], [False, True, True, True, True])
+
+    def test_no_facts_raises_before_any_call(self):
+        llm = StructuredLLM(calls=[], prompts=[])
+        with self.assertRaises(ValueError):
+            asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=OURS, facts=[]))
+        self.assertEqual(llm.calls, [])
+
+    def test_an_empty_answer_raises_before_any_call(self):
+        llm = StructuredLLM(calls=[], prompts=[])
+        for empty in ("", None):
+            with self.assertRaises(ValueError):
+                asyncio.run(CompletenessEvaluator(llm).aevaluate(query=QUERY, response=empty, facts=FACTS))
+        self.assertEqual(llm.calls, [])
+
+
+class FactCheckInput(unittest.TestCase):
+    def test_a_blank_fact_is_rejected(self):
+        with self.assertRaises(ValueError):
+            FactCheck(answer=OURS, facts=["a fact", ""])
+
+
 class TheBenchmarksPrompt(unittest.TestCase):
     def test_the_template_is_the_benchmarks_prompt_with_only_two_names_changed(self):
         official = runpy.run_path(str(BENCHMARK_PROMPTS))["ANSWER_WHOLISTIC_EVALUATION_PROMPT"]
@@ -86,10 +158,14 @@ class TheBenchmarksPrompt(unittest.TestCase):
                 .replace("{generated_answer}", "{candidate_answer}"))
         self.assertEqual(ours, official)
 
+    def test_the_fact_template_is_the_benchmarks_fact_prompt_unchanged(self):
+        self.assertEqual(FACT_TEMPLATE.template, runpy.run_path(str(BENCHMARK_PROMPTS))["INDIVIDUAL_FACT_VALIDATOR_PROMPT"])
+
 
 class Doctests(unittest.TestCase):
     def test_doctests(self):
-        self.assertEqual(doctest.testmod(judge).failed, 0)
+        for module in (judge, judge_prompts):
+            self.assertEqual(doctest.testmod(module).failed, 0)
 
 
 if __name__ == "__main__":
