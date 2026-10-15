@@ -33,3 +33,9 @@ There is no linter or build step. Tests use plain `unittest`. Each test module d
 ## Story workflow
 
 All work is driven by stories. The rules, template, glossary and index are in `docs/stories.md`, and the stories themselves are in `docs/stories/<n>-<stage>.md` (IDs `PARSE-n`, `GMAIL-n`, `LINEAR-n`, `SLACK-n`). One story = one function = one small PR (about 60 lines including tests), done TDD (red tests first). Every module opens with a docstring naming its story and the real corpus example that made it necessary, followed by input → output doctests. A rule that can misfire also gets an audit count on the real corpus. The why behind each design is in `docs/design/` (numbered per source: 1-parser, 2-chunker, 3-gmail, 4-linear, 5-slack) and `docs/decisions/`.
+
+## Claude setup (`.claude/`)
+
+- **Hooks** (`settings.json`): `.env` can't be read; `rm -r data/`, pushes to master and commits on master are blocked; `gh pr create` is blocked above 200 Python lines / 6 files; on Stop, doctests of changed modules and changed test files must pass. Running `pipeline.eval.*` modules (paid APIs) and editing goldens or truth sets ask first.
+- **Agents**: `code-reviewer`, `corpus-auditor`, `eval-analyst`, `cloud-architect` (read-only) and `rag-engineer`.
+- **Skills**: `/groom-story`, `/open-pr`, `/run-eval`, `/update-golden`, plus `llamaindex-docs` and `qdrant-advisor`.

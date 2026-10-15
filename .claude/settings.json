@@ -1,0 +1,66 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv sync)",
+      "Bash(uv run python -m unittest*)",
+      "Bash(uv run python -m pipeline.slack.corpus)",
+      "Bash(uv run python -m pipeline.gmail.corpus)",
+      "Bash(uv run python -m tools.*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git switch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks*)"
+    ],
+    "ask": [
+      "Bash(uv run python -m pipeline.eval.*)",
+      "Bash(uv run --with * python -m pipeline.eval.*)",
+      "Bash(uv add *)",
+      "Bash(uv remove *)",
+      "Bash(git push*)",
+      "Bash(gh pr create*)",
+      "Edit(tests/golden/**)",
+      "Write(tests/golden/**)",
+      "Edit(tests/fixtures/*/expected.json)",
+      "Write(tests/fixtures/*/expected.json)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./.env)",
+      "Edit(./.env.*)",
+      "Bash(git push origin master*)",
+      "Bash(git push * master)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-env.sh" }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.sh" },
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pr-size-gate.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-on-stop.sh", "timeout": 600 }
+        ]
+      }
+    ]
+  }
+}
