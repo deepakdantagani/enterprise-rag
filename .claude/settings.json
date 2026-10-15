@@ -28,7 +28,15 @@
       "Edit(tests/golden/**)",
       "Write(tests/golden/**)",
       "Edit(tests/fixtures/*/expected.json)",
-      "Write(tests/fixtures/*/expected.json)"
+      "Write(tests/fixtures/*/expected.json)",
+      "Bash(terraform apply*)",
+      "Bash(terraform destroy*)",
+      "Bash(cdk deploy*)",
+      "Bash(cdk destroy*)",
+      "Bash(docker push*)",
+      "Bash(aws *)",
+      "Bash(gcloud *)",
+      "Bash(az *)"
     ],
     "deny": [
       "Read(./.env)",
@@ -44,21 +52,34 @@
       {
         "matcher": "Read|Edit|Write",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-env.sh" }
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-env.sh"
+          }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.sh" },
-          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pr-size-gate.sh" }
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-bash.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pr-size-gate.sh"
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-on-stop.sh", "timeout": 600 }
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-on-stop.sh",
+            "timeout": 600
+          }
         ]
       }
     ]
