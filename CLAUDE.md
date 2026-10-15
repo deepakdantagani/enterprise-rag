@@ -37,5 +37,5 @@ All work is driven by stories. The rules, template, glossary and index are in `d
 ## Claude setup (`.claude/`)
 
 - **Hooks** (`settings.json`): `.env` can't be read; `rm -r data/`, pushes to master and commits on master are blocked; `gh pr create` is blocked above 200 Python lines / 6 files; on Stop, doctests of changed modules and changed test files must pass. Running `pipeline.eval.*` modules (paid APIs) and editing goldens or truth sets ask first.
-- **Agents**: `code-reviewer`, `corpus-auditor`, `eval-analyst`, `cloud-architect` (read-only) and `rag-engineer`.
+- **Agents**: `code-reviewer`, `corpus-auditor`, `eval-analyst`, `cloud-architect`, `security-reviewer` (read-only), `rag-engineer` and `platform-engineer`. Cloud commands that create, change or delete resources (`terraform apply`, `cdk deploy`, `docker push`, `aws`/`gcloud`/`az`) ask first.
 - **Skills**: `/groom-story`, `/open-pr`, `/run-eval`, `/update-golden`, plus `llamaindex-docs` and `qdrant-advisor`.
