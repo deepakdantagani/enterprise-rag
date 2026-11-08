@@ -38,7 +38,7 @@ Retrieval glossary:
 | RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
 | RET-9a  `titles_like`: every document whose title matches, capped with a total; the agent loop's `list` tool | ✅ |
 | RET-9b  `container_of`: Linear/Jira project key from the raw filename, the one real container in the data | ⬜ |
-| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` ✅ · 10d `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
+| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` ✅ · 10d-a run helpers ✅ · 10d-b `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
 
 ---
 
@@ -921,9 +921,11 @@ iterations, budget_exhausted)`, `titles_text`, `AGENT_PROMPT`, `STATE_PROMPT`, `
 `additional_kwargs={"output_config": {"effort": "medium"}}`; never `tool_required` (the wrapper
 would send a forced tool choice, rejected with thinking on) · UI: N/A
 
-## RET-10d  `agent_answers`: run the loop over questions, resumable, recorded  ⬜
+## RET-10d  `agent_answers`: run the loop over questions, resumable, traced  ⬜
 
-**Status:** To do
+**Status:** split in two PRs. **10d-a** ✅ (helpers: `usage_of`, `candidate_ids`, `candidate_prefetcher`,
+`finished_rows`, merged first so the runner's PR stays small) · **10d-b** ⬜ (`agent_answers`, the
+trace sidecar, the `on_event` hook in `aanswer_question`)
 
 **As a** RAG developer
 **I want to** one row per question `{question_id, answer, documents, iterations, tool_calls,
@@ -939,10 +941,18 @@ skipped, and every tool call recorded to a sidecar file so a replay run costs $0
 - Given the row, Then it is accepted by the judge (`pipeline/eval/judge.py`) and the official
   scorer's `answers.jsonl` shape (`question_id`, `answer`, `documents`)
 
-**Dependencies**: APIs `agent_answers(agent, questions, out_path, record_path) -> int` in
-`pipeline/eval/agent.py`; pattern of `save_answers` (GEN-2e), `save_completions` /
-`SavedCompletions` (RET-7) · Database: `data/_index/answers/agent-*.jsonl`,
-`data/_index/agent/tool_calls-*.jsonl` (gitignored) · UI: N/A
+**10d-a, measured 2026-11-08**: the saved top-200 candidates hold a median of 179 distinct documents
+per question; 10 questions prefetch 1,671 documents (10.5 MB) in one 3.7 s scan; all 470 at once
+would be 67,823 documents, about 290 MB. `finished_rows` drops a last line cut by a crash and
+rewrites the file, so a resumed run appends cleanly. `usage_of` counts cached reads and cache writes
+into input (Anthropic reports them apart from `input_tokens`).
+
+**Dependencies**: APIs (10d-a) `usage_of(raw)`, `candidate_ids(candidates_path)`,
+`candidate_prefetcher(candidates, documents, parquet_path)`, `finished_rows(path)`; (10d-b)
+`agent_answers(agent, questions, out_path, trace_path, prefetch=None, batch=10, max_iterations=8)
+-> int` in `pipeline/eval/agent_run.py`, `aanswer_question(..., on_event=)` in `pipeline/eval/agent.py`;
+pattern of `save_answers` (GEN-2e) and `rerank_saved` (RET-5) · Database:
+`data/_index/answers/agent-*.jsonl`, `data/_index/agent/trace-*.jsonl` (gitignored) · UI: N/A
 
 ## RET-10e  First measured run: the 69 and 50 controls, then all 500  ⬜
 
