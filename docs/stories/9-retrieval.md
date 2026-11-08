@@ -1113,9 +1113,20 @@ rows, no model call.
 **Dependencies**: `titles_like(..., limit=None)` for the full rows (RET-9a); `title_groups(rows, top=8)` in
 `pipeline/eval/titles.py`; `titles_text(result, limit=200)` in `pipeline/eval/agent.py` · UI: N/A
 
-## RET-10e-c  `RetrievalAgent.stop_prompt`: the forced answer names what was read, in our shape  ⬜
+## RET-10e-c  `RetrievalAgent`, `stop_prompt`: the forced answer names what was read, in our shape  ✅
 
-**Status:** To do
+**Status:** Done 2026-11-08. `stop_prompt(read, titles)`, `STOP_BUDGET`/`STOP_READ`/`STOP_NOTHING_READ` and
+`RetrievalAgent(FunctionAgent)` in `pipeline/eval/agent.py`; `retrieval_agent(llm, tools, titles=)` returns it.
+Root cause found while building it: the library's forced call (llama-index-core 0.14.24) sends the system
+prompt, the memory and its own text, but during a run the memory holds only the question; the turn's tool
+calls and results sit in the scratchpad until `finalize`. The model was asked to answer from nothing, so
+"I did not read any documents" was true of what it saw. The override adds the scratchpad, minus the
+assistant turn that hit the budget (its calls never ran, and the API rejects a `tool_use` without its
+`tool_result`: the first live try failed with exactly that 400). Decisions: ledger shown as `id | title`
+(the agent takes the titles dict); appended as a system message like the library's. Live rerun on
+qst_0437: the forced answer quoted the one document read and said one document cannot support the count,
+in both tags; recall still 0/9 because the model listed 73 titles holding all 9 gold and read none of
+them (RET-10e-d). 4 new tests; the budget test's marker is now ours.
 
 **As a** RAG developer
 **I want to** our own text for the answer the loop forces at the budget, in place of the library's,
@@ -1143,13 +1154,16 @@ history Haiku lost track of its own reads. The prompt is generic: no question ty
 
 **Acceptance Criteria (Gherkin)**
 - Given the agent hits the budget, Then the final model call carries our prompt and not the
-  library's: the scripted-LLM test (tests/test_eval_agent.py) sees `STOP_PROMPT`'s text and the
+  library's: the scripted-LLM test (tests/test_eval_agent.py) sees `stop_prompt()`'s text and the
   ledger's ids in the last system message, and does not see "maximum number of iterations"
 - Given the ledger is empty at the budget, Then the prompt says so and asks for the answer the
   question allows (which may be that the documents were not found), still in the two tags
 - Given the forced answer, Then `answer_of` and `quotes_of` parse it as for any other answer
-- Given the history before the forced call, Then it is unchanged (the prompt is appended, nothing
-  removed, so the prompt cache still covers the prefix)
+- Given the history before the forced call, Then it is unchanged but for the turn that hit the budget
+  (its calls never ran; as a text answer it would be a prefill the API rejects under thinking), and
+  the stop message is appended. Review 2026-11-08: the forced call is not a cache hit anyway, since
+  the library sends it without tools and the system text changes; it costs one uncached read of
+  the history on budget-hit questions only
 - Given the prompt text, Then it names no question, source or score
 
 **Example with real data**: qst_0437's forced call today ends with the library's system message;
@@ -1163,12 +1177,12 @@ few hundred tokens, on budget-hit questions only.
 messages it receives). Reuse: `FunctionAgent` has no prompt field for this, so `RetrievalAgent(FunctionAgent)`
 overrides `_generate_early_stopping_response` (about 15 lines in llama-index-core 0.14.24: read
 memory, prepend the system prompt, append the stop message, one LLM call, write the AgentOutput);
-the override builds the message from `STOP_PROMPT` and the state's ledger and otherwise mirrors the
+the override builds the message with `stop_prompt()` from the state's ledger and otherwise mirrors the
 library. Patching the module constant at import was rejected: a global side effect on every agent in
 the process, and it cannot see the ledger.
 
-**Dependencies**: `STOP_PROMPT` (str, formatted with the ledger) and `RetrievalAgent` in
-`pipeline/eval/agent.py`; `retrieval_agent()` returns it · UI: N/A
+**Dependencies**: `stop_prompt(read, titles)` (the formatted message; `STOP_BUDGET`, `STOP_READ`, `STOP_NOTHING_READ`
+are its parts) and `RetrievalAgent` in `pipeline/eval/agent.py`; `retrieval_agent(llm, tools, titles)` returns it · UI: N/A
 
 ## RET-10e-d  `AGENT_PROMPT` rule: a listed set is read, several documents per turn  ⬜
 

@@ -23,7 +23,8 @@ TITLES = {"dsid_a": ("confluence", "Postmortem: Streaming stalls"), "dsid_b": ("
 TABLE = pa.Table.from_pylist([{"doc_id": d, "source_type": s, "title": t} for d, (s, t) in TITLES.items()])
 DOCS = {"dsid_a": ("Postmortem: Streaming stalls", "Action items: platform team, 3."), "dsid_b": ("incidents | eng", "sam: paged")}
 ANSWER = [TextBlock(text='<quotes>\n"Action items: platform team, 3."\n</quotes>\n<answer>\nThe platform team, with 3.\n</answer>')]
-BUDGET_PROMPT = "maximum number of iterations"  # the library's early-stopping prompt (llama-index-core 0.14.24, agent/workflow/prompts.py)
+LIBRARY_STOP = "maximum number of iterations"  # the library's early-stopping prompt (llama-index-core 0.14.24, agent/workflow/prompts.py)
+BUDGET_PROMPT = "tool budget is used up"  # ours (RET-10e-c)
 
 
 class FakeRetriever(BaseRetriever):
@@ -36,10 +37,13 @@ def call(name, **kwargs):
     return ToolCallBlock(tool_call_id=f"{name}-{sorted(kwargs.items())}", tool_name=name, tool_kwargs=kwargs)
 
 
-def scripted_llm(*steps, log):
-    """A tool-calling LLM that answers each call with the next scripted blocks (the last one repeats) and logs every tool result."""
+def scripted_llm(*steps, log, seen=None):
+    """A tool-calling LLM that answers each call with the next scripted blocks (the last one repeats), logs every tool result,
+    and appends each call's messages to `seen`."""
     def generate(messages, **kwargs):
         log.extend(str(m.content) for m in messages if m.role == "tool")
+        if seen is not None:
+            seen.append(list(messages))
         if any(BUDGET_PROMPT in str(m.content) for m in messages):
             return ChatMessage(role="assistant", content="<answer>Best answer from what was read.</answer>")
         blocks = steps[min(len(log) and sum(1 for m in messages if m.role == "assistant"), len(steps) - 1)]
@@ -47,12 +51,13 @@ def scripted_llm(*steps, log):
     return MockFunctionCallingLLM(response_generator=generate)
 
 
-def run(*steps, max_iterations=8, log=None):
+def run(*steps, max_iterations=8, log=None, seen=None):
     tools = agent_tools(FakeRetriever(), TITLES, TABLE, dict(DOCS), parquet_path=None)
-    return answer_question(retrieval_agent(scripted_llm(*steps, log=[] if log is None else log), tools), "Which team had the most action items?", max_iterations)
+    agent = retrieval_agent(scripted_llm(*steps, log=[] if log is None else log, seen=seen), tools, titles=TITLES)
+    return answer_question(agent, "Which team had the most action items?", max_iterations)
 
 
-class RetrievalAgent(unittest.TestCase):
+class Loop(unittest.TestCase):
     def test_search_then_read_then_answer_gives_the_parsed_answer_and_a_ledger_of_one(self):
         result = run([call("search", query="action items")], [call("read", doc_id="dsid_a")], ANSWER)
         self.assertEqual(result, AgentAnswer("The platform team, with 3.", '"Action items: platform team, 3."', ["dsid_a"], 3, False))
@@ -64,6 +69,42 @@ class RetrievalAgent(unittest.TestCase):
     def test_a_model_that_never_stops_is_cut_at_the_budget_and_still_answers(self):
         result = run([call("search", query="again")], max_iterations=4)
         self.assertEqual((result.iterations, result.budget_exhausted, result.read, result.answer), (5, True, [], "Best answer from what was read."))
+
+    def test_the_forced_call_carries_our_stop_message_with_the_ledger_s_ids_and_titles_not_the_library_s(self):
+        seen = []
+        run([call("read", doc_id="dsid_a")], [call("search", query="again")], max_iterations=3, seen=seen)
+        last = seen[-1][-1]
+        self.assertEqual(last.role, "system")
+        self.assertIn("dsid_a | Postmortem: Streaming stalls", str(last.content))
+        self.assertTrue(all(LIBRARY_STOP not in str(m.content) for m in seen[-1]))
+
+    def test_the_forced_call_with_nothing_read_says_so_and_still_asks_for_the_two_tags(self):
+        seen = []
+        result = run([call("search", query="again")], max_iterations=2, seen=seen)
+        text = str(seen[-1][-1].content)
+        self.assertIn("read no document in full", text)
+        self.assertIn("<quotes>", text)
+        self.assertEqual((result.budget_exhausted, result.answer), (True, "Best answer from what was read."))
+
+    def test_the_forced_call_sees_the_whole_turn_so_far_plus_our_message_and_nothing_is_removed(self):
+        seen = []
+        run([call("search", query="again")], max_iterations=3, seen=seen)
+        before, forced = seen[-2], seen[-1]
+        self.assertEqual([(m.role, str(m.content)) for m in before], [(m.role, str(m.content)) for m in forced[:len(before)]])
+        self.assertEqual([m.role for m in forced[len(before):]], ["system"])  # the turn that hit the budget is dropped: its call never ran
+        self.assertEqual(forced[-2].role, "tool")  # never a dangling tool_use, never an assistant prefill
+        self.assertTrue(any("again in dsid_a" in str(m.content) for m in forced))  # the library's own forced call sends the question alone
+
+    def test_an_answer_arriving_on_the_call_past_the_budget_is_not_sent_back_as_a_prefill(self):
+        seen = []
+        result = run([call("search", query="a")], [call("search", query="b")], [call("read", doc_id="dsid_a")], ANSWER, max_iterations=3, seen=seen)
+        self.assertEqual([m.role for m in seen[-1][-3:]], ["assistant", "tool", "system"])
+        self.assertEqual((result.budget_exhausted, result.read), (True, ["dsid_a"]))
+
+    def test_the_stop_message_names_no_question_source_or_score(self):
+        from pipeline.eval.agent import STOP_BUDGET, STOP_NOTHING_READ, STOP_READ
+        text = (STOP_BUDGET + STOP_READ + STOP_NOTHING_READ).lower()
+        self.assertFalse(any(w in text for w in ("postmortem", "redwood", "confluence", "slack", "score", "judge")))
 
     def test_two_reads_in_one_step_are_one_iteration_and_both_enter_the_ledger(self):
         result = run([call("read", doc_id="dsid_a"), call("read", doc_id="dsid_b")], ANSWER)
