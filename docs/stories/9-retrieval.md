@@ -1019,9 +1019,13 @@ and found three things the measured run (RET-10e) cannot start without. Each is 
   `claude-haiku-5-5` (its context-size table stops at Claude 4), and it still sends `temperature`,
   which the Anthropic SDK 1.11 / API 2026-10-21 removed.
 
-## RET-10e-a  `claude_llm`: the Anthropic wrapper that works for Claude 5, with prompt caching  ⬜
+## RET-10e-a  `claude_llm`: the Anthropic wrapper that works for Claude 5, with prompt caching  ✅
 
-**Status:** To do
+**Status:** Done 2026-11-08. `pipeline/eval/claude.py` (`Claude5`, `claude_llm`), `tests/test_eval_claude.py`
+(8 tests, no API call). Decisions: sampling parameters are dropped for every model, not only unknown
+ids, because the SDK rejects them for all; `max_tokens` defaults to 8,000 (longest agent answer so far
+1,547 tokens). The smoke script (`data/_index/experiments/agent_smoke.py`, gitignored scratch) now calls
+`claude_llm`, so the next live run exercises this code.
 
 **As a** RAG developer
 **I want to** one function returning a LlamaIndex `Anthropic` LLM that a Claude 5 model id works
@@ -1046,8 +1050,10 @@ Glossary:
   `cache_control={"type": "ephemeral"}`
 - Given an effort argument, Then it lands in `output_config`; default `medium`
 - Given a recorded live call, Then the usage of call 1 shows a cache write of the prompt and tools
-  and call 2 a cache read of the same size (the smoke run: write 1,350, then read 1,350)
-- Given a model id the wrapper already knows, Then nothing else changes
+  and call 2 a cache read of the same size (the smoke run: write 1,350, then read 1,350; pinned
+  from the smoke log, not a test)
+- Given a model id the wrapper already knows, Then it keeps the library's metadata, and the
+  sampling parameters are still not sent (the SDK rejects them for every model)
 
 **Example with real data** (qst_0001, cached rerun): per model call, `uncached | cache read |
 cache write | output`: 4 | 0 | 1,350 | 62 → 2 | 1,350 | 3,421 | 263 → 2 | 4,771 | 2,696 | 390 → … →
@@ -1056,11 +1062,14 @@ cache writes; at Haiku's prices about half a cent, where the uncached run of qst
 full-price input tokens.
 
 **Non-functional Requirements**: shared NFRs; no model call in tests (the request is inspected,
-the live numbers are pinned from the trace file). Reuse: a subclass of
+the live numbers are pinned from the smoke log). Reuse: a subclass of
 `llama_index.llms.anthropic.Anthropic` overriding `metadata` and `_get_all_kwargs`, nothing else.
 
 **Dependencies**: APIs `claude_llm(model, effort="medium", max_tokens=8_000) -> Anthropic`,
-`Claude5(Anthropic)` in `pipeline/eval/claude.py` · UI: the Ask page switches to it later
+`Claude5(Anthropic)` in `pipeline/eval/claude.py` · UI: the Ask page switches to it later ·
+Judge (GEN-9c) not yet: review 2026-11-08 found that `structured_predict` bypasses `_get_all_kwargs`,
+that `claude-haiku-5-5` falls back to a forced tool call (`tool_choice: any`) next to adaptive thinking,
+and that `judge.py` nests `temperature` under `extra_body`; the story that moves the judge handles those
 
 ## RET-10e-b  `titles_text` when the list is cut: the largest title groups, not 200 lines  ⬜
 
