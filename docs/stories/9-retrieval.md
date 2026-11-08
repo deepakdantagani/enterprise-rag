@@ -38,7 +38,7 @@ Retrieval glossary:
 | RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
 | RET-9a  `titles_like`: every document whose title matches, capped with a total; the agent loop's `list` tool | ✅ |
 | RET-9b  `container_of`: Linear/Jira project key from the raw filename, the one real container in the data | ⬜ |
-| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` ✅ · 10d-a run helpers ✅ · 10d-b `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
+| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` ✅ · 10d-a run helpers ✅ · 10d-b `agent_answers` ✅ · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
 
 ---
 
@@ -921,31 +921,51 @@ iterations, budget_exhausted)`, `titles_text`, `AGENT_PROMPT`, `STATE_PROMPT`, `
 `additional_kwargs={"output_config": {"effort": "medium"}}`; never `tool_required` (the wrapper
 would send a forced tool choice, rejected with thinking on) · UI: N/A
 
-## RET-10d  `agent_answers`: run the loop over questions, resumable, traced  ⬜
+## RET-10d  `agent_answers`: run the loop over questions, resumable, traced  ✅
 
-**Status:** split in two PRs. **10d-a** ✅ (helpers: `usage_of`, `candidate_ids`, `candidate_prefetcher`,
-`finished_rows`, merged first so the runner's PR stays small) · **10d-b** ⬜ (`agent_answers`, the
-trace sidecar, the `on_event` hook in `aanswer_question`)
+**Status:** Done, in two PRs. **10d-a** ✅ (helpers: `usage_of`, `candidate_ids`, `candidate_prefetcher`,
+`finished_rows`) · **10d-b** ✅ (`agent_answers`, the trace sidecar, the `on_event` hook in
+`aanswer_question`)
 
 **As a** RAG developer
-**I want to** one row per question `{question_id, answer, documents, iterations, tool_calls,
-input_tokens, output_tokens}` appended to a JSONL as each finishes, questions already there
-skipped, and every tool call recorded to a sidecar file so a replay run costs $0
-**So that** a crash never repeats a paid question and a re-score is deterministic
+**I want to** one row per question `{question_id, answer, document_ids, quotes, iterations,
+budget_exhausted, input_tokens, output_tokens}` appended to a JSONL as each finishes, questions
+already there skipped, each batch's candidate documents prefetched in one scan, and every tool
+and model call written to a trace sidecar
+**So that** a crash never repeats a paid question, reads do not scan the corpus, and a wrong answer
+can be explained from its trace without re-running anything
 
 **Acceptance Criteria (Gherkin)**
 - Given 2 questions and a fake agent, Then 2 rows, flushed one at a time
 - Given a re-run, Then no agent call and 0 rows added
-- Given a recorded sidecar, Then the replay run gives byte-identical rows with no network
-- Given `documents`, Then it is the ledger (read ids) in read order, never the search hits
-- Given the row, Then it is accepted by the judge (`pipeline/eval/judge.py`) and the official
-  scorer's `answers.jsonl` shape (`question_id`, `answer`, `documents`)
+- Given a trace sidecar, Then one line per question with every tool call (name, arguments,
+  result size) and the model-call count
+- Given `document_ids`, Then it is the ledger (read ids) in read order, never the search hits
+  (the test's search hits one document and the agent reads another)
+- Given the row, Then it is the shape the judge (`question_id`, `answer`) and the official scorer
+  (`question_id`, `answer`, `document_ids`) read; extra keys are ignored
+- Given a prefetch and a batch size, Then prefetch is called once per batch with its question ids
+- Given a crash on the second question, Then the first row is on disk and a re-run answers only the
+  second; given a last line cut mid-write, Then it is dropped and appends stay well-formed
+- Given the whole run, Then one event loop: the Anthropic wrapper's async client keeps sockets
+  bound to the loop that opened them, so a loop per question fails on the second question
+- Given raw model responses with usage, Then input and output tokens are summed per question; 0 when
+  the provider (or the test mock) reports none
 
 **10d-a, measured 2026-11-08**: the saved top-200 candidates hold a median of 179 distinct documents
 per question; 10 questions prefetch 1,671 documents (10.5 MB) in one 3.7 s scan; all 470 at once
 would be 67,823 documents, about 290 MB. `finished_rows` drops a last line cut by a crash and
 rewrites the file, so a resumed run appends cleanly. `usage_of` counts cached reads and cache writes
 into input (Anthropic reports them apart from `input_tokens`).
+
+**Decisions (10d-b)**
+- A trace sidecar, not a replay of the model: the model is the nondeterministic part and nothing
+  downstream needs a byte-identical re-run; the answers file is what every judge and report reads,
+  and a question is paid for once (resume). Same contract as `save_answers` and `rerank_saved`.
+- Prefetch per batch of 10 from the saved candidates; ids outside them (from `list_titles`) use
+  RET-10b's lazy scan.
+- The trace line is written before the row, so a crash between the two leaves a trace without an
+  answer, which the resume redoes, never an answer without a trace.
 
 **Dependencies**: APIs (10d-a) `usage_of(raw)`, `candidate_ids(candidates_path)`,
 `candidate_prefetcher(candidates, documents, parquet_path)`, `finished_rows(path)`; (10d-b)
