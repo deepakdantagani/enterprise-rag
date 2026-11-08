@@ -38,7 +38,7 @@ Retrieval glossary:
 | RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
 | RET-9a  `titles_like`: every document whose title matches, capped with a total; the agent loop's `list` tool | ✅ |
 | RET-9b  `container_of`: Linear/Jira project key from the raw filename, the one real container in the data | ⬜ |
-| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` ✅ · 10d-a run helpers ✅ · 10d-b `agent_answers` ✅ · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
+| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` ✅ · 10d-a run helpers ✅ · 10d-b `agent_answers` ✅ · 10e-a `claude_llm` · 10e-b cut list groups · 10e-c stop prompt · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
 
 ---
 
@@ -999,3 +999,126 @@ under 1.5; on all 500 an official score above 80.
 **Dependencies**: RET-10a to 10d, RET-9a; `exp_claude_judge.py` (experiments) or
 `pipeline/eval/judge.py`; the official scorer staging in the session scratchpad · UI:
 `docs/eval/report.html` gets the run
+
+---
+
+## RET-10e preparation: what the first live run showed  (10e-a, 10e-b, 10e-c)
+
+The smoke run of 2026-11-08 (the loop live on qst_0437 and qst_0001, Haiku 5.5, live hybrid
+search + Voyage reranker; script `data/_index/experiments/agent_smoke.py`) proved the plumbing
+and found three things the measured run (RET-10e) cannot start without. Each is one function.
+
+- qst_0001: correct, recall 1/1, 5 to 7 model calls, about half a cent. The run-to-run variance is
+  real: a second run took 7 calls and read 8 documents where the first took 5 and read 6.
+- qst_0437: recall 1/9, 11 documents submitted, budget exhausted at 9 calls, 268K input tokens, and
+  the forced answer said "I have not searched or read any postmortem documents", which was false.
+  Its second call was `list_titles(source=null, pattern="postmortem")`: 1,468 titles match, the
+  tool showed the first 200 in title order (linear 65, gmail 42, google_drive 38, slack 33,
+  fireflies 14, github 4, confluence 4) and nothing told the model the list was cut.
+- Before any model call, the LlamaIndex Anthropic wrapper (0.12.2) failed twice: it does not know
+  `claude-haiku-5-5` (its context-size table stops at Claude 4), and it still sends `temperature`,
+  which the Anthropic SDK 1.11 / API 2026-10-21 removed.
+
+## RET-10e-a  `claude_llm`: the Anthropic wrapper that works for Claude 5, with prompt caching  ✅
+
+**Status:** Done 2026-11-08. `pipeline/eval/claude.py` (`Claude5`, `claude_llm`), `tests/test_eval_claude.py`
+(8 tests, no API call). Decisions: sampling parameters are dropped for every model, not only unknown
+ids, because the SDK rejects them for all; `max_tokens` defaults to 8,000 (longest agent answer so far
+1,547 tokens). The smoke script (`data/_index/experiments/agent_smoke.py`, gitignored scratch) now calls
+`claude_llm`, so the next live run exercises this code.
+
+**As a** RAG developer
+**I want to** one function returning a LlamaIndex `Anthropic` LLM that a Claude 5 model id works
+with: a metadata table that knows the model, the removed sampling parameters never sent, adaptive
+thinking and an effort level passed through, and the API's top-level prompt caching on
+**So that** the agent (RET-10c) and the judge (GEN-9c) call Claude through the library component,
+and a loop of 8 calls pays for its growing history once, not eight times
+
+Glossary:
+- **Prompt caching**: the API keeps the prefix of a request (tools, then system prompt, then
+  messages) and a later request with the same prefix reads it at a tenth of the input price
+  instead of re-reading it. With the top-level `cache_control` field the API caches up to the
+  last cacheable block automatically, so an agent loop reuses everything but its newest tool
+  result. The wrapper's own `cache_idx` marks every message, and the API allows four cache
+  points per request, so it is unusable for a loop.
+
+**Acceptance Criteria (Gherkin)**
+- Given `claude_llm("claude-haiku-5-5")`, Then `.metadata` reports a tool-calling chat model with a
+  1M context window and the model name; no `ValueError: Unknown model`
+- Given the request the wrapper builds (`_get_all_kwargs`), Then it has no `temperature`, `top_p`
+  or `top_k`, has `thinking={"type": "adaptive"}`, `output_config={"effort": <level>}` and
+  `cache_control={"type": "ephemeral"}`
+- Given an effort argument, Then it lands in `output_config`; default `medium`
+- Given a recorded live call, Then the usage of call 1 shows a cache write of the prompt and tools
+  and call 2 a cache read of the same size (the smoke run: write 1,350, then read 1,350; pinned
+  from the smoke log, not a test)
+- Given a model id the wrapper already knows, Then it keeps the library's metadata, and the
+  sampling parameters are still not sent (the SDK rejects them for every model)
+
+**Example with real data** (qst_0001, cached rerun): per model call, `uncached | cache read |
+cache write | output`: 4 | 0 | 1,350 | 62 → 2 | 1,350 | 3,421 | 263 → 2 | 4,771 | 2,696 | 390 → … →
+2 | 19,016 | 1,681 | 1,547. Seven calls, 78,906 input tokens of which 58K were cache reads and 21K
+cache writes; at Haiku's prices about half a cent, where the uncached run of qst_0437 spent 268K
+full-price input tokens.
+
+**Non-functional Requirements**: shared NFRs; no model call in tests (the request is inspected,
+the live numbers are pinned from the smoke log). Reuse: a subclass of
+`llama_index.llms.anthropic.Anthropic` overriding `metadata` and `_get_all_kwargs`, nothing else.
+
+**Dependencies**: APIs `claude_llm(model, effort="medium", max_tokens=8_000) -> Anthropic`,
+`Claude5(Anthropic)` in `pipeline/eval/claude.py` · UI: the Ask page switches to it later ·
+Judge (GEN-9c) not yet: review 2026-11-08 found that `structured_predict` bypasses `_get_all_kwargs`,
+that `claude-haiku-5-5` falls back to a forced tool call (`tool_choice: any`) next to adaptive thinking,
+and that `judge.py` nests `temperature` under `extra_body`; the story that moves the judge handles those
+
+## RET-10e-b  `titles_text` when the list is cut: the largest title groups, not 200 lines  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** the list tool, when more titles match than it shows, to print how many matched, the
+largest title groups with their count and source, and one line telling the model to narrow with
+a longer pattern or a source, instead of the first 200 lines in title order
+**So that** a cut list steers the next call instead of hiding what matched
+
+Glossary: **title group** = the text before the first `:`, ` — ` or ` (` of a title (RET-9a's
+title family): `Postmortem: Streaming stalls` and `Postmortem: Latency regression` are one group.
+
+**Acceptance Criteria (Gherkin)**
+- Given 1,468 matches for `postmortem` across all sources and a cap of 200, Then no title lines;
+  instead the count, the groups `postmortems 560 slack`, `incident-bot 134 slack`,
+  `Postmortem 38 confluence`, `Postmortem 23 linear`, … (at most 8), how many titles are in groups
+  of one (593), and the narrowing line
+- Given a result that fits the cap, Then the text is unchanged (RET-10c's `titles_text`)
+- Given the narrowed call `list_titles(None, "Postmortem:")`, Then 128 titles, all 9 gold pages of
+  qst_0437 inside; given `list_titles("confluence", "postmortem")`, Then 73
+
+**Example with real data**: the call the model made and what it got are in the preparation note
+above; the groups are measured (2026-11-08) on the 1,468 matches. Cost: one pass over the matched
+rows, no model call.
+
+**Dependencies**: `titles_like(..., limit=None)` or a second call for the full rows (RET-9a),
+`titles_text(result, groups=...)` in `pipeline/eval/agent.py` · UI: N/A
+
+## RET-10e-c  The stop prompt: answer from what was read, in our shape  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** our own text for the forced answer at the budget, in place of the library's
+("Do not attempt to use any more tools. Simply summarize what you have learned"): answer the
+question from the documents you read, `<quotes>` then `<answer>`, and say which parts have no
+quote
+**So that** a question that hits the budget still gets the evidence it gathered, in the shape the
+parsers read, instead of the smoke run's "I have not searched or read any documents"
+
+**Acceptance Criteria (Gherkin)**
+- Given the agent hits the budget, Then the final model call carries our prompt and not the
+  library's (the scripted-LLM test sees the text)
+- Given the forced answer, Then `answer_of` and `quotes_of` parse it as for any other answer
+- Given the prompt text, Then it names no question, source or score
+
+**Dependencies**: `FunctionAgent` has no prompt field for this; it is `DEFAULT_EARLY_STOPPING_PROMPT`
+in `llama_index.core.agent.workflow.prompts`, formatted with `max_iterations`. Override by
+subclassing `FunctionAgent._generate_early_stopping_response` or by patching the module constant
+at import, whichever the `/story` step 5 decides; `STOP_PROMPT` in `pipeline/eval/agent.py` · UI: N/A
