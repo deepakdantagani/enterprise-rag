@@ -1002,7 +1002,7 @@ under 1.5; on all 500 an official score above 80.
 
 ---
 
-## RET-10e preparation: what the first live run showed  (10e-a, 10e-b, 10e-c)
+## RET-10e preparation: what the first live run showed  (10e-a, 10e-b, 10e-c, 10e-d)
 
 The smoke run of 2026-11-08 (the loop live on qst_0437 and qst_0001, Haiku 5.5, live hybrid
 search + Voyage reranker; script `data/_index/experiments/agent_smoke.py`) proved the plumbing
@@ -1113,25 +1113,110 @@ rows, no model call.
 **Dependencies**: `titles_like(..., limit=None)` for the full rows (RET-9a); `title_groups(rows, top=8)` in
 `pipeline/eval/titles.py`; `titles_text(result, limit=200)` in `pipeline/eval/agent.py` · UI: N/A
 
-## RET-10e-c  The stop prompt: answer from what was read, in our shape  ⬜
+## RET-10e-c  `RetrievalAgent`, `stop_prompt`: the forced answer names what was read, in our shape  ✅
+
+**Status:** Done 2026-11-08. `stop_prompt(read, titles)`, `STOP_BUDGET`/`STOP_READ`/`STOP_NOTHING_READ` and
+`RetrievalAgent(FunctionAgent)` in `pipeline/eval/agent.py`; `retrieval_agent(llm, tools, titles=)` returns it.
+Root cause found while building it: the library's forced call (llama-index-core 0.14.24) sends the system
+prompt, the memory and its own text, but during a run the memory holds only the question; the turn's tool
+calls and results sit in the scratchpad until `finalize`. The model was asked to answer from nothing, so
+"I did not read any documents" was true of what it saw. The override adds the scratchpad, minus the
+assistant turn that hit the budget (its calls never ran, and the API rejects a `tool_use` without its
+`tool_result`: the first live try failed with exactly that 400). Decisions: ledger shown as `id | title`
+(the agent takes the titles dict); appended as a system message like the library's. Live rerun on
+qst_0437: the forced answer quoted the one document read and said one document cannot support the count,
+in both tags; recall still 0/9 because the model listed 73 titles holding all 9 gold and read none of
+them (RET-10e-d). 4 new tests; the budget test's marker is now ours.
+
+**As a** RAG developer
+**I want to** our own text for the answer the loop forces at the budget, in place of the library's,
+telling the model which documents it read (the ledger), to answer the question from them in
+`<quotes>` then `<answer>`, and to say which parts have no quote
+**So that** a question that hits the budget still gets the evidence it gathered, in the shape the
+parsers read, instead of a denial of the work done
+
+Glossary:
+- **Budget**: `MAX_ITERATIONS` = 8 tool-using model calls per question (RET-10c). Hitting it is
+  `budget_exhausted` in the answer row.
+- **Forced answer**: with `early_stopping_method="generate"`, LlamaIndex's `FunctionAgent` makes one
+  more model call when the budget is hit, with the whole history plus a system message
+  (`DEFAULT_EARLY_STOPPING_PROMPT` in `llama_index.core.agent.workflow.prompts`): "You have reached
+  the maximum number of iterations (N). ... Do not attempt to use any more tools. Simply summarize
+  what you have learned and provide the best possible answer." Tools are not offered on that call.
+- **Ledger**: the ids read in full, `state["read"]`, what a run submits (RET-10c/10d).
+
+**Why** (smoke run 2026-11-08, qst_0437, Haiku 5.5, after RET-10e-b): 10 model calls, 16 tool calls
+(10 searches, 3 lists, 3 reads), budget hit; the forced answer began "I can't answer this yet. I
+did not search or read any incident postmortems, so I have no data ..." and carried no `<quotes>`
+or `<answer>` tags, so `answer_of` fell back to the whole text and `document_ids` was 3 pages the
+text disowned. The library's text asks for a summary and names no documents; after 50K tokens of
+history Haiku lost track of its own reads. The prompt is generic: no question type, source or score.
+
+**Acceptance Criteria (Gherkin)**
+- Given the agent hits the budget, Then the final model call carries our prompt and not the
+  library's: the scripted-LLM test (tests/test_eval_agent.py) sees `stop_prompt()`'s text and the
+  ledger's ids in the last system message, and does not see "maximum number of iterations"
+- Given the ledger is empty at the budget, Then the prompt says so and asks for the answer the
+  question allows (which may be that the documents were not found), still in the two tags
+- Given the forced answer, Then `answer_of` and `quotes_of` parse it as for any other answer
+- Given the history before the forced call, Then it is unchanged but for the turn that hit the budget
+  (its calls never ran; as a text answer it would be a prefill the API rejects under thinking), and
+  the stop message is appended. Review 2026-11-08: the forced call is not a cache hit anyway, since
+  the library sends it without tools and the system text changes; it costs one uncached read of
+  the history on budget-hit questions only
+- Given the prompt text, Then it names no question, source or score
+
+**Example with real data**: qst_0437's forced call today ends with the library's system message;
+after the story it ends with, for that run's ledger: "You have used your tool budget. You read these
+documents in full: dsid_0abf8e94..., dsid_5c5657fb..., dsid_140d90d0.... Answer the question now
+from them, in <quotes> then <answer>, with the document id on each quote. For a part of the question
+none of them answers, say so in <answer>. Do not say you read nothing." Cost: one system message, a
+few hundred tokens, on budget-hit questions only.
+
+**Non-functional Requirements**: shared NFRs; no model call in tests (the scripted LLM records the
+messages it receives). Reuse: `FunctionAgent` has no prompt field for this, so `RetrievalAgent(FunctionAgent)`
+overrides `_generate_early_stopping_response` (about 15 lines in llama-index-core 0.14.24: read
+memory, prepend the system prompt, append the stop message, one LLM call, write the AgentOutput);
+the override builds the message with `stop_prompt()` from the state's ledger and otherwise mirrors the
+library. Patching the module constant at import was rejected: a global side effect on every agent in
+the process, and it cannot see the ledger.
+
+**Dependencies**: `stop_prompt(read, titles)` (the formatted message; `STOP_BUDGET`, `STOP_READ`, `STOP_NOTHING_READ`
+are its parts) and `RetrievalAgent` in `pipeline/eval/agent.py`; `retrieval_agent(llm, tools, titles)` returns it · UI: N/A
+
+## RET-10e-d  `AGENT_PROMPT` rule: a listed set is read, several documents per turn  ⬜
 
 **Status:** To do
 
 **As a** RAG developer
-**I want to** our own text for the forced answer at the budget, in place of the library's
-("Do not attempt to use any more tools. Simply summarize what you have learned"): answer the
-question from the documents you read, `<quotes>` then `<answer>`, and say which parts have no
-quote
-**So that** a question that hits the budget still gets the evidence it gathered, in the shape the
-parsers read, instead of the smoke run's "I have not searched or read any documents"
+**I want to** the working rules to say that when `list_titles` returns the set a question asks
+about (all / every / each / how many), the next move is to read those documents, several `read`
+calls in one turn, not another search
+**So that** the list tool's answer set is used instead of sampled around
+
+**Why** (smoke run 2026-11-08, qst_0437, after RET-10e-b): the cut list (543 characters) steered the
+model to `list_titles("confluence", "Postmortem")`, 73 titles with all 9 gold pages at positions
+13 to 65. It then read 3 documents, none from that list, and searched 10 more times until the
+budget. Rule 4 says to list and "then read the ones the question needs"; nothing says the list is
+the set, or that several reads fit in one turn. The same run shows the model does read in parallel
+when it decides to: qst_0001 made 6 reads in 6 model calls, two turns holding several reads each.
+A generic rule, no question or source named.
 
 **Acceptance Criteria (Gherkin)**
-- Given the agent hits the budget, Then the final model call carries our prompt and not the
-  library's (the scripted-LLM test sees the text)
-- Given the forced answer, Then `answer_of` and `quotes_of` parse it as for any other answer
-- Given the prompt text, Then it names no question, source or score
+- Given `AGENT_PROMPT`, Then rule 4 says: when the list holds the documents the question is about,
+  read them next, several per turn (one model call can make several read calls), and search again
+  only for what the list does not cover
+- Given the `read` tool description, Then it says several documents can be read in one turn
+- Given the prompt text, Then it names no question, source or score (test: the words "postmortem",
+  "Redwood", "confluence" are absent)
+- Given the existing scripted-LLM tests, Then they still pass (the prompt changes, the loop does not)
 
-**Dependencies**: `FunctionAgent` has no prompt field for this; it is `DEFAULT_EARLY_STOPPING_PROMPT`
-in `llama_index.core.agent.workflow.prompts`, formatted with `max_iterations`. Override by
-subclassing `FunctionAgent._generate_early_stopping_response` or by patching the module constant
-at import, whichever the `/story` step 5 decides; `STOP_PROMPT` in `pipeline/eval/agent.py` · UI: N/A
+**Example with real data**: qst_0437's run above. After the story, the expected trace is: one
+search, one list (cut), one narrowed list of 73, then two or three turns of parallel reads over the
+38 `Postmortem:` pages the question is about, within the budget of 8. Whether Haiku follows it is
+measured in RET-10e, not asserted here.
+
+**Non-functional Requirements**: shared NFRs; text only, no model call in tests.
+
+**Dependencies**: `AGENT_PROMPT` and the `read` docstring in `pipeline/eval/agent.py` (RET-10c) ·
+after RET-10e-c, so one smoke run measures both · UI: N/A

@@ -46,7 +46,7 @@ def scripted_agent(calls, fail_on=None):
         blocks = [[ToolCallBlock(tool_call_id="s", tool_name="search", tool_kwargs={"query": "team"})],
                   [ToolCallBlock(tool_call_id="r", tool_name="read", tool_kwargs={"doc_id": "dsid_a"})], [TextBlock(text=ANSWER)]][min(turn, 2)]
         return ChatMessage(role="assistant", blocks=blocks)
-    return retrieval_agent(MockFunctionCallingLLM(response_generator=generate), agent_tools(FakeRetriever(), TITLES, TABLE, dict(DOCS), None))
+    return retrieval_agent(MockFunctionCallingLLM(response_generator=generate), agent_tools(FakeRetriever(), TITLES, TABLE, dict(DOCS), None), TITLES)
 
 
 class AgentAnswers(unittest.TestCase):
