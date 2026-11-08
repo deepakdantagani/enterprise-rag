@@ -87,6 +87,38 @@ class RetrievalAgent(unittest.TestCase):
         self.assertFalse([w for w in ("qst_", "gold", "judge", "question_type", "benchmark", "leaderboard") if w in AGENT_PROMPT.lower()])
         self.assertEqual([r for r in ("read", "search again", "all", "quote") if r not in AGENT_PROMPT.lower()], [])
 
+    def test_a_cut_list_prints_the_total_the_largest_groups_and_the_singletons_instead_of_lines(self):
+        from pipeline.eval.agent import titles_text
+        from pipeline.eval.titles import TitleList
+        rows = [("confluence", "dsid_a", "Postmortem: Streaming stalls"), ("confluence", "dsid_b", "Postmortem: Latency regression"), ("slack", "dsid_c", "postmortems")]
+        self.assertEqual(titles_text(TitleList(rows=rows, total=3), limit=2),
+                         "3 titles match, more than the 2 this tool lists. Largest title groups (the text before ':', ' — ' or ' ('):\n"
+                         "  2 | confluence | Postmortem\n1 titles are in groups of one.\n"
+                         "Narrow with a longer pattern (for a 'Name:' family, the name with its ':') or a source; when a group's titles are all the same (a channel), search instead.")
+
+    def test_a_list_already_capped_by_titles_like_prints_its_rows_not_groups_over_a_partial_list(self):
+        from pipeline.eval.agent import titles_text
+        from pipeline.eval.titles import TitleList
+        capped = TitleList(rows=[("confluence", "dsid_a", "Postmortem: Streaming stalls")], total=1468)
+        self.assertEqual(titles_text(capped), "1468 titles match; showing 1\ndsid_a | Postmortem: Streaming stalls")
+
+    def test_list_titles_returns_the_groups_when_more_than_the_limit_match(self):
+        big = pa.Table.from_pylist([{"doc_id": f"dsid_{i}", "source_type": "slack", "title": f"eng-security: thread {i}"} for i in range(201)])
+        _, _, list_titles = agent_tools(FakeRetriever(), TITLES, big, dict(DOCS), parquet_path=None)
+        text = list_titles.call(source=None, pattern="eng-security").content
+        self.assertTrue(text.startswith("201 titles match, more than the 200 this tool lists."), text)
+        self.assertIn("  201 | slack | eng-security\n", text)
+        self.assertNotIn("smaller groups", text)
+        self.assertNotIn("dsid_", text)
+
+    def test_groups_past_the_top_eight_are_counted_in_a_smaller_groups_line_so_the_counts_add_up(self):
+        from pipeline.eval.agent import titles_text
+        from pipeline.eval.titles import TitleList
+        rows = [("slack", f"{name}{i}", name) for name in "abcdefghi" for i in range(2)] + [("slack", "x", "lone")]  # 9 groups of 2, 1 alone
+        text = titles_text(TitleList(rows=rows, total=19), limit=3)
+        self.assertEqual(text.count(" | slack | "), 8)
+        self.assertIn("  2 | slack | h\n2 titles are in smaller groups.\n1 titles are in groups of one.\n", text)
+
     def test_the_three_tools_are_named_for_the_model_and_list_titles_prints_total_then_lines(self):
         search, read, list_titles = agent_tools(FakeRetriever(), TITLES, TABLE, dict(DOCS), parquet_path=None)
         self.assertEqual([t.metadata.name for t in (search, read, list_titles)], ["search", "read", "list_titles"])

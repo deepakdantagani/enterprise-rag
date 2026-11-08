@@ -30,7 +30,7 @@ from llama_index.core.workflow import Context
 
 from pipeline.eval.agent_tools import chunks_by_document, read_document, search_snippets
 from pipeline.eval.answers import answer_of, quotes_of
-from pipeline.eval.titles import TitleList, titles_like
+from pipeline.eval.titles import DEFAULT_LIMIT, TitleList, title_groups, titles_like
 
 MAX_ITERATIONS = 8  # tool-using model calls per question; PipesHub caps a sub-agent at 8 turns
 
@@ -57,9 +57,17 @@ class AgentAnswer(NamedTuple):
     budget_exhausted: bool  # the loop hit MAX_ITERATIONS and the answer was forced from what was gathered
 
 
-def titles_text(result: TitleList) -> str:
-    """The list tool's text: the total, then one `doc_id | title` line per row."""
-    return f"{result.total} titles match; showing {len(result.rows)}\n" + "\n".join(f"{doc_id} | {title}" for _, doc_id, title in result.rows)
+def titles_text(result: TitleList, limit: int = DEFAULT_LIMIT) -> str:
+    """The list tool's text: the total, then one `doc_id | title` line per row. Given more rows than `limit` (the tool passes
+    every match), the title groups instead (RET-10e-b); a list already capped by titles_like prints its rows as before."""
+    if len(result.rows) <= limit:
+        return f"{result.total} titles match; showing {len(result.rows)}\n" + "\n".join(f"{doc_id} | {title}" for _, doc_id, title in result.rows)
+    summary = title_groups(result.rows)
+    smaller = len(result.rows) - sum(count for count, _, _ in summary.groups) - summary.singletons  # groups past the top, if any
+    return (f"{result.total} titles match, more than the {limit} this tool lists. Largest title groups (the text before ':', ' — ' or ' ('):\n"
+            + "".join(f"  {count} | {source} | {group}\n" for count, source, group in summary.groups)
+            + (f"{smaller} titles are in smaller groups.\n" if smaller else "") + f"{summary.singletons} titles are in groups of one.\n"
+            "Narrow with a longer pattern (for a 'Name:' family, the name with its ':') or a source; when a group's titles are all the same (a channel), search instead.")
 
 
 def agent_tools(retriever: BaseRetriever, titles: Dict[str, Tuple[str, str]], table: pa.Table, documents: Dict[str, Tuple[str, str]],
@@ -85,8 +93,8 @@ def agent_tools(retriever: BaseRetriever, titles: Dict[str, Tuple[str, str]], ta
         return text
 
     def list_titles(source: Optional[str], pattern: str) -> str:
-        """List every document whose title contains `pattern` (case-insensitive), up to 200, with the total. Use it for all / every / how many questions. `source` as in search, or null for all sources."""
-        return titles_text(titles_like(table, source, pattern))
+        """List every document whose title contains `pattern` (case-insensitive), up to 200, with the total; past 200, the largest title groups to narrow by. Use it for all / every / how many questions. `source` as in search, or null for all sources."""  # "200" is DEFAULT_LIMIT; the model reads this literal, so the two move together
+        return titles_text(titles_like(table, source, pattern, limit=None))
 
     return [FunctionTool.from_defaults(async_fn=search, name="search"), FunctionTool.from_defaults(async_fn=read, name="read"),
             FunctionTool.from_defaults(fn=list_titles, name="list_titles")]

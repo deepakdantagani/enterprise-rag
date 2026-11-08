@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import titles as titles_module  # noqa: E402
-from pipeline.eval.titles import TitleList, document_titles, titles_like  # noqa: E402
+from pipeline.eval.titles import TitleGroups, TitleList, document_titles, title_groups, titles_like  # noqa: E402
 
 DOCUMENTS = ROOT / "data/_full/documents.parquet"
 QUESTIONS = ROOT / "data/_full/questions.jsonl"
@@ -67,6 +67,31 @@ class TitlesLike(unittest.TestCase):
         self.assertEqual(doctest.testmod(titles_module).failed, 0)
 
 
+class TitleGroupsOf(unittest.TestCase):
+    ROWS = [("confluence", "dsid_a", "Postmortem: Streaming stalls"), ("confluence", "dsid_b", "Postmortem: Latency regression"),
+            ("linear", "dsid_c", "Postmortem: Queue backlog"), ("slack", "dsid_d", "postmortems"), ("slack", "dsid_e", "postmortems"),
+            ("gmail", "dsid_f", "Request — postmortem copy"), ("confluence", "dsid_g", "Playbook (postmortem) v2"), ("gmail", "dsid_h", "Lone title")]
+
+    def test_groups_are_the_text_before_the_first_separator_per_source_largest_first_then_singletons(self):
+        self.assertEqual(title_groups(self.ROWS), TitleGroups(groups=[(2, "confluence", "Postmortem"), (2, "slack", "postmortems")], singletons=4))
+
+    def test_the_same_group_name_in_two_sources_is_two_groups(self):
+        rows = [("confluence", "1", "Postmortem: a"), ("confluence", "2", "Postmortem: b"), ("linear", "3", "Postmortem: c"), ("linear", "4", "Postmortem: d")]
+        self.assertEqual(title_groups(rows).groups, [(2, "confluence", "Postmortem"), (2, "linear", "Postmortem")])
+
+    def test_the_separators_are_colon_spaced_em_dash_and_space_paren(self):
+        rows = [("gmail", "1", "Request — copy"), ("gmail", "2", "Request — again"), ("confluence", "3", "Playbook (v1)"), ("confluence", "4", "Playbook (v2)"),
+                ("slack", "5", "a-b-c"), ("slack", "6", "a-b-c")]
+        self.assertEqual(title_groups(rows).groups, [(2, "confluence", "Playbook"), (2, "gmail", "Request"), (2, "slack", "a-b-c")])
+
+    def test_top_caps_the_groups_and_ties_break_by_name(self):
+        rows = [("slack", str(i), name) for name in ("b", "a", "c") for i in range(2)]
+        self.assertEqual(title_groups(rows, top=2).groups, [(2, "slack", "a"), (2, "slack", "b")])
+
+    def test_no_rows_gives_no_groups_and_no_singletons(self):
+        self.assertEqual(title_groups([]), TitleGroups(groups=[], singletons=0))
+
+
 @unittest.skipUnless(DOCUMENTS.is_file() and QUESTIONS.is_file(), "needs data/_full")
 class RealCorpus(unittest.TestCase):
     @classmethod
@@ -83,6 +108,17 @@ class RealCorpus(unittest.TestCase):
     def test_a_slack_channel_is_cut_at_the_limit_with_the_full_total(self):
         result = titles_like(self.table, "slack", "eng-security")
         self.assertEqual((len(result.rows), result.total), (200, 12432))
+
+    def test_postmortem_across_sources_groups_as_measured_with_all_rows_when_the_limit_is_off(self):
+        result = titles_like(self.table, None, "postmortem", limit=None)
+        summary = title_groups(result.rows)
+        self.assertEqual((result.total, len(result.rows), summary.singletons), (1468, 1468, 599))
+        self.assertEqual(summary.groups[:4], [(560, "slack", "postmortems"), (134, "slack", "incident-bot"), (38, "confluence", "Postmortem"), (23, "linear", "Postmortem")])
+
+    def test_the_narrowed_call_postmortem_colon_lists_128_titles_with_all_9_gold_pages(self):
+        result = titles_like(self.table, None, "Postmortem:")
+        gold = set(self.questions["qst_0437"]["expected_doc_ids"])
+        self.assertEqual((result.total, gold <= {doc_id for _, doc_id, _ in result.rows}), (128, True))
 
 
 if __name__ == "__main__":
