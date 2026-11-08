@@ -80,17 +80,23 @@ def snippet_of(text: str, title: str, chars: int) -> str:
     return body if len(body) <= chars else body[:chars] + "…"
 
 
-def search_snippets(ranked: Sequence[NodeWithScore], titles: Dict[str, Tuple[str, str]], source: Optional[str] = None,
-                    read: Collection[str] = (), seen: Collection[str] = (), documents: int = DOCUMENTS_PER_SEARCH,
-                    per_document: int = SNIPPETS_PER_DOCUMENT, snippet_chars: int = SNIPPET_CHARS) -> str:
-    """One block per document, in best-chunk order, at most `documents`; `titles` maps doc_id to (source, title)."""
+def chunks_by_document(ranked: Sequence[NodeWithScore], titles: Dict[str, Tuple[str, str]], source: Optional[str] = None,
+                       documents: int = DOCUMENTS_PER_SEARCH) -> "OrderedDict[str, List[Tuple[int, str]]]":
+    """The first `documents` documents of `source` in best-chunk order, each with its (rank, text) chunks."""
     by_document: "OrderedDict[str, List[Tuple[int, str]]]" = OrderedDict()
     for rank, chunk in enumerate(ranked, 1):
         doc_id = chunk.node.ref_doc_id
         if source is None or titles.get(doc_id, NO_TITLE)[0] == source:
             by_document.setdefault(doc_id, []).append((rank, chunk.node.text))
+    return OrderedDict(list(by_document.items())[:documents])
+
+
+def search_snippets(ranked: Sequence[NodeWithScore], titles: Dict[str, Tuple[str, str]], source: Optional[str] = None,
+                    read: Collection[str] = (), seen: Collection[str] = (), documents: int = DOCUMENTS_PER_SEARCH,
+                    per_document: int = SNIPPETS_PER_DOCUMENT, snippet_chars: int = SNIPPET_CHARS) -> str:
+    """One block per document, in best-chunk order, at most `documents`; `titles` maps doc_id to (source, title)."""
     blocks = []
-    for number, (doc_id, chunks) in enumerate(list(by_document.items())[:documents], 1):
+    for number, (doc_id, chunks) in enumerate(chunks_by_document(ranked, titles, source, documents).items(), 1):
         doc_source, title = titles.get(doc_id, NO_TITLE)
         shown = chunks[:per_document]
         marker = " (read)" if doc_id in read else " (seen)" if doc_id in seen else ""  # read wins: it says more
