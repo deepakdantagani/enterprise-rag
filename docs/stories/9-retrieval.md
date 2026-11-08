@@ -1071,9 +1071,22 @@ Judge (GEN-9c) not yet: review 2026-11-08 found that `structured_predict` bypass
 that `claude-haiku-5-5` falls back to a forced tool call (`tool_choice: any`) next to adaptive thinking,
 and that `judge.py` nests `temperature` under `extra_body`; the story that moves the judge handles those
 
-## RET-10e-b  `titles_text` when the list is cut: the largest title groups, not 200 lines  ⬜
+## RET-10e-b  `titles_text` when the list is cut: the largest title groups, not 200 lines  ✅
 
-**Status:** To do
+**Status:** Done 2026-11-08. `title_groups(rows, top=8) -> TitleGroups(groups, singletons)` in
+`pipeline/eval/titles.py`; `titles_text(result, limit=200)` in `pipeline/eval/agent.py` prints the groups when
+it is given more rows than the limit, and the `list_titles` tool now calls `titles_like(..., limit=None)`.
+Decisions: separators are the story's three (`:`, ` — `, ` (`; adding ` - ` and ` | ` changes no top group);
+8 groups; the branch keys on the rows present, not the total, so a list already capped by `titles_like`
+prints its rows as before instead of groups over a partial list; ties break by group name then source.
+Measured: 1,468 matches fold in under a millisecond; all rows for 26,880 matches cost 29 ms; the cut
+text is about 500 characters against 26,971 before, and the counts add up: groups shown, a "titles in
+smaller groups" line, singletons. Singletons on `postmortem` are 599 with these separators (593 in the
+grooming count used a wider set). Worst case measured by review: an empty pattern pulls all 511,947 rows
+into Python, 0.5 s and about 490 MB over the process baseline; fine for one question at a time, to
+revisit if questions run in parallel in one process. The narrowing line also tells the model to search
+when a group's titles are all the same (a Slack channel), since no pattern splits those. 9 new tests plus
+2 real-corpus pins.
 
 **As a** RAG developer
 **I want to** the list tool, when more titles match than it shows, to print how many matched, the
@@ -1088,7 +1101,7 @@ title family): `Postmortem: Streaming stalls` and `Postmortem: Latency regressio
 - Given 1,468 matches for `postmortem` across all sources and a cap of 200, Then no title lines;
   instead the count, the groups `postmortems 560 slack`, `incident-bot 134 slack`,
   `Postmortem 38 confluence`, `Postmortem 23 linear`, … (at most 8), how many titles are in groups
-  of one (593), and the narrowing line
+  of one (599), and the narrowing line
 - Given a result that fits the cap, Then the text is unchanged (RET-10c's `titles_text`)
 - Given the narrowed call `list_titles(None, "Postmortem:")`, Then 128 titles, all 9 gold pages of
   qst_0437 inside; given `list_titles("confluence", "postmortem")`, Then 73
@@ -1097,8 +1110,8 @@ title family): `Postmortem: Streaming stalls` and `Postmortem: Latency regressio
 above; the groups are measured (2026-11-08) on the 1,468 matches. Cost: one pass over the matched
 rows, no model call.
 
-**Dependencies**: `titles_like(..., limit=None)` or a second call for the full rows (RET-9a),
-`titles_text(result, groups=...)` in `pipeline/eval/agent.py` · UI: N/A
+**Dependencies**: `titles_like(..., limit=None)` for the full rows (RET-9a); `title_groups(rows, top=8)` in
+`pipeline/eval/titles.py`; `titles_text(result, limit=200)` in `pipeline/eval/agent.py` · UI: N/A
 
 ## RET-10e-c  The stop prompt: answer from what was read, in our shape  ⬜
 
