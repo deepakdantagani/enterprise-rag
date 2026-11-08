@@ -19,7 +19,7 @@ gathered instead of raising. The prompt is generic: nothing about question types
 """
 import asyncio
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 import pyarrow as pa
 from llama_index.core.agent.workflow import FunctionAgent
@@ -97,9 +97,16 @@ def retrieval_agent(llm: LLM, tools: Sequence[FunctionTool]) -> FunctionAgent:
     return FunctionAgent(tools=list(tools), llm=llm, system_prompt=AGENT_PROMPT, initial_state={"read": []}, early_stopping_method="generate")
 
 
-async def aanswer_question(agent: FunctionAgent, question: str, max_iterations: int = MAX_ITERATIONS) -> AgentAnswer:
-    """The async body of answer_question, for callers already inside an event loop (the Ask page)."""
+async def aanswer_question(agent: FunctionAgent, question: str, max_iterations: int = MAX_ITERATIONS,
+                           on_event: Optional[Callable[[Any], None]] = None) -> AgentAnswer:
+    """The async body of answer_question, for callers already inside an event loop (the Ask page).
+
+    `on_event` sees every workflow event (ToolCallResult, AgentOutput, ...): the runner (RET-10d) builds its trace from them.
+    """
     handler = agent.run(question, max_iterations=max_iterations + 1)  # the library counts the answering call too
+    if on_event is not None:
+        async for event in handler.stream_events():
+            on_event(event)
     response = str(await handler)
     state, calls = await handler.ctx.store.get("state"), await handler.ctx.store.get("num_iterations")
     return AgentAnswer(answer_of(response), quotes_of(response), state["read"], calls, calls > max_iterations)
