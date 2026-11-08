@@ -38,7 +38,7 @@ Retrieval glossary:
 | RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
 | RET-9a  `titles_like`: every document whose title matches, capped with a total; the agent loop's `list` tool | ✅ |
 | RET-9b  `container_of`: Linear/Jira project key from the raw filename, the one real container in the data | ⬜ |
-| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` · 10c `retrieval_agent`, `AGENT_PROMPT` · 10d `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
+| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` · 10d `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
 
 ---
 
@@ -813,9 +813,9 @@ per_document=2, snippet_chars=400) -> str`, `snippet_of(text, title, chars)` in
 (RET-9a); the ranked chunks come from `live_retriever` + `live_reranker` (GEN-8a) or
 `replay_retriever` (RET-5) · Database: none · UI: N/A
 
-## RET-10b  `read_document`: a whole document by id, with a window for the long ones  ⬜
+## RET-10b  `read_document`: a whole document by id, with a window for the long ones  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** RAG developer
 **I want to** the title and content of one document by `doc_id`, whole when it fits, else a
@@ -826,9 +826,14 @@ list, a step without its condition) come from
 **Acceptance Criteria (Gherkin)**
 - Given a document of 2,904 characters and a cap of 30,000, Then the whole content and no
   trailing note
-- Given a 41,317-character document, Then the first 30,000 and the line
-  `… 11,317 more characters; call again with start=30000`
-- Given `start=30000` on it, Then the rest and no note
+- Given a 41,317-character document, Then the window ends at the last line break before
+  30,000 and the line `… 11,3xx more characters; call again with start=<that position + 1>`
+  (a transcript line is never split; with no line break inside the window, a hard cut)
+- Given `start=30000` on it, Then the rest and no note; given a start past the end, Then
+  `<id> has 41317 characters; nothing after <start>`
+- Given an empty title (15 Slack rows), Then the heading is the id
+- Given an id not in the cache and a corpus path, Then one scan fills the cache and a second
+  read never touches the file
 - Given an unknown id, Then the text `No document with id dsid_x`, never an exception (the agent
   may mistype an id)
 - Given one of the 4 ids that name two documents, Then both texts, the second after a separator
@@ -839,9 +844,19 @@ list, a step without its condition) come from
 taxonomy working session (v1)", 41,317). The 9 gold pages of qst_0437 are 1,654 to 2,904
 characters, 18.6K in total, so an agent reads all nine in about 5K tokens.
 
-**Dependencies**: APIs `read_document(parquet_path, doc_id, start=0, chars=30_000) -> str` in
-`pipeline/eval/agent_tools.py`; reuses `documents_by_id` (one 1.2 s scan; a per-run cache keyed
-by id) · Database: `data/_full/documents.parquet` · UI: N/A
+**Decisions**
+- A dict cache plus the parquet as fallback, not a scan per read: a cold read scans the 1.4 GB
+  single-row-group parquet in 2.1 s (measured 2026-11-08; GEN-2b saw 1.2 s on an idle machine),
+  which would be about 12 minutes of scanning for 119 questions at 3 reads each. RET-10d
+  prefetches each question's candidate documents in one scan, the GEN-2b pattern, so the scan
+  happens only for ids that came from `list`. A SQLite store would be faster still; not needed
+  while the cache covers the common case.
+- The window ends at the last line break: the 22 long documents are Fireflies transcripts of
+  `[mm:ss] Speaker:` lines, and a hard cut at 30,000 splits a sentence across two reads.
+
+**Dependencies**: APIs `read_document(doc_id, documents, parquet_path=None, start=0, chars=30_000)
+-> str` in `pipeline/eval/agent_tools.py`, `documents` being `{doc_id: (title, content)}`; reuses
+`documents_by_id` (GEN-2b) for a miss · Database: `data/_full/documents.parquet` · UI: N/A
 
 ## RET-10c  `retrieval_agent` and `AGENT_PROMPT`: the loop  ⬜
 

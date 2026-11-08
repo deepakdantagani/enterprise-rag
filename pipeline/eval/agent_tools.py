@@ -1,4 +1,5 @@
 """RET-10a: search_snippets, ranked chunks as one block per document: the text the agent's search tool returns.
+RET-10b: read_document, a whole document by id, the text the agent's read tool returns.
 
 The agent loop (RET-10) searches with the same hybrid retriever and reranker as today, but a
 model has to read the result and decide what to do next, and the raw result is 50 to 200 chunks
@@ -29,16 +30,46 @@ M blocks" and "shown passages give way to new ones" in our words.
       (rank 3) review: 25MB?
     [2] docs | slack | dsid_b | 1 chunk matched, 1 shown (read)
       (rank 2) sam: 415s
+
+RET-10b: once the agent picks a document it reads the whole text, because today's misses sit in
+the same document outside the matched chunk (part of a list, a step without its condition).
+Documents are small: p50 4,276 characters, p99 11,846; only 22 of 511,962 exceed 30,000, all
+Fireflies transcripts (the longest 41,317, "Incident taxonomy working session (v1)"). Those come
+back as windows of 30,000 characters that end at a line break, so a "[25:22] Allison Grant: …"
+line is never split, with a note saying how much follows and the next `start`. The corpus is one
+1.4 GB parquet row group, so a read from disk scans it all (2.1 s): reads go through a dict the
+runner (RET-10d) prefetches with each question's candidates, and a miss scans once and is kept.
+An unknown id gets a sentence, not an exception: the agent may mistype an id, and the loop must
+go on. An id that names two documents (4 do) returns both, as documents_by_id joins them (GEN-2b).
+
+    >>> docs = {"dsid_s": ("Rollback runbook", "Step 1: stop traffic.\\nStep 2: roll back.")}
+    >>> print(read_document("dsid_s", docs))
+    # Rollback runbook
+    <BLANKLINE>
+    Step 1: stop traffic.
+    Step 2: roll back.
+    >>> print(read_document("dsid_s", docs, chars=25))
+    # Rollback runbook
+    <BLANKLINE>
+    Step 1: stop traffic.
+    <BLANKLINE>
+    … 18 more characters; call again with start=22
+    >>> read_document("dsid_zz", docs)
+    'No document with id dsid_zz'
 """
 from collections import OrderedDict
-from typing import Collection, Dict, List, Optional, Sequence, Tuple
+from pathlib import Path
+from typing import Collection, Dict, List, Optional, Sequence, Tuple, Union
 
 from llama_index.core.schema import NodeWithScore
+
+from pipeline.eval.answers import documents_by_id
 
 DOCUMENTS_PER_SEARCH = 10  # as the benchmark's baseline answerer and GEN-2a
 SNIPPETS_PER_DOCUMENT = 2  # a second snippet shows a document that matched in two places
 SNIPPET_CHARS = 400  # one or two sentences: enough to decide whether to read; the full chunk is ~2,350
 NO_TITLE = ("?", "(no title)")  # a doc_id the title table does not know: the agent may mistype one
+READ_CHARS = 30_000  # above the p99 of 11,846: only the 22 longest Fireflies transcripts are windowed
 
 
 def snippet_of(text: str, title: str, chars: int) -> str:
@@ -67,3 +98,28 @@ def search_snippets(ranked: Sequence[NodeWithScore], titles: Dict[str, Tuple[str
                 f"{len(shown)} shown{marker}")
         blocks.append("\n".join([head] + [f"  (rank {rank}) {snippet_of(text, title, snippet_chars)}" for rank, text in shown]))
     return "\n".join(blocks) if blocks else "No documents matched."
+
+
+def read_document(doc_id: str, documents: Dict[str, Tuple[str, str]], parquet_path: Optional[Union[str, Path]] = None,
+                  start: int = 0, chars: int = READ_CHARS) -> str:
+    """The title as a heading and the content from `start`, whole if it fits in `chars`, else cut at a line break with a note.
+
+    `documents` is `{doc_id: (title, content)}` and is the cache: a miss read from `parquet_path` is added to it.
+    """
+    if doc_id not in documents and parquet_path is not None:
+        documents.update(documents_by_id(parquet_path, [doc_id]))  # one scan of the corpus, then cached
+    if doc_id not in documents:
+        return f"No document with id {doc_id}"
+    title, content = documents[doc_id]
+    start = max(start, 0)
+    if start and start >= len(content):  # an empty document still shows its title
+        return f"{doc_id} has {len(content)} characters; nothing after {start}"
+    heading = f"# {title or doc_id}\n\n"
+    if len(content) - start <= chars:
+        return heading + content[start:]
+    end = content.rfind("\n", start, start + chars)
+    if end <= start:  # no line break inside the window (or only at its start): hard cut
+        end = next_start = start + chars
+    else:
+        next_start = end + 1  # skip the newline
+    return f"{heading}{content[start:end]}\n\n… {len(content) - next_start:,} more characters; call again with start={next_start}"
