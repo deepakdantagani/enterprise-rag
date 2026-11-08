@@ -36,6 +36,8 @@ Retrieval glossary:
 | RET-7  `multi_query_retriever`: the question + 3 local-LLM queries, fused by RRF (measured: worse than v1) | ✅ |
 | RET-7b  the query prompt: keep the question's details (recall@50 0.838 → 0.848; reranked 0.807 vs v2 0.800, within noise: v2 stays) | ✅ |
 | RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
+| RET-9a  `titles_like`: every document whose title matches, capped with a total; the agent loop's `list` tool | ✅ |
+| RET-9b  `container_of`: Linear/Jira project key from the raw filename, the one real container in the data | ⬜ |
 
 ---
 
@@ -572,3 +574,132 @@ so they were not reranked: top 200 with the question alone, no LLM planner, is t
 - APIs: `hybrid_retriever(..., top_k=200)`, `rerank_saved`, `voyage_rerank`, `replay_retriever` (unchanged)
 - Database: `data/_index/rerank/v1_top{100,200}_candidates.jsonl`, `top{100,200}-rerank-3-lite.jsonl`
   (gitignored); runs in `docs/eval/runs/*-rrf-top{100,200}-rerank-3-lite`
+
+---
+
+## RET-9a  `titles_like`: list every document whose title matches, for "all / every / how many" questions  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** one function that lists every document of a source whose title contains a
+pattern: `(source_type, doc_id, title)` rows plus the total count, capped
+**So that** an agent can enumerate a set ("all incident postmortems", "every Project Orion
+weekly update") instead of sampling it with top-k search, which is where recall is lost today
+
+**Why this story.** Search returns a sample, not a set. 19 of the 470 questions with gold
+documents ask for all/every/how many; their official-judge recall is 79.4% (13 full, 2 zero)
+and their score 56.5 against 76.9 overall. On 16 of the 19 every gold document is one source,
+and the gold documents share a **title family**: the text before the first `:`, ` — ` or ` (`.
+The corpus has 6,230 title families of two or more documents covering 330,074 of 511,962 rows.
+A Slack document's title *is* its channel (36 channels on 273,519 of 285,605 rows), so the same
+function lists a channel. This is the first tool of the agentic retrieval loop (see
+[pipeshub-design] in `docs/design/`, to be written with RET-10); the others are search, read
+and grep. It is also how PipesHub (leaderboard #1) answers enumeration questions: "one search
+returns a sample, not the set: list the records of the folder".
+
+Glossary:
+- **Title family**: documents whose titles share the part before the first `:`, ` — ` or ` (`,
+  e.g. 38 Confluence pages `Postmortem: …`. Not a field in the data; a pattern over titles.
+- **Container**: where a document lives at its source (Slack channel, Linear/Jira project key,
+  Confluence space, Drive folder). Only Slack (title) and Linear/Jira (raw filename key, RET-9b)
+  carry one; Confluence, Drive, GitHub, Gmail and Fireflies do not, anywhere in the data
+  (audit 2026-11-08: `Space:` in 3 of 5,189 Confluence pages, `Folder:` in 1 of 25,108 Drive files).
+
+**Acceptance Criteria (Gherkin)**
+- Given the document table, source `confluence` and pattern `Postmortem`, Then every row
+  whose title contains it, case-insensitive, as `(source_type, doc_id, title)` in title order, and
+  `total` = the number of rows; no row from another source
+- Given a pattern that matches more rows than `limit` (default 200), Then the first `limit`
+  rows and the full `total`, so the caller knows the list was cut and can narrow the pattern
+- Given a source of `None`, Then all sources are searched and each row keeps its own source
+  (a `doc_id` can appear in two sources: 3 ids do; the row is `(source_type, doc_id, title)`)
+- Given a pattern nothing matches, Then no rows and `total` 0
+- Given a row with an empty title (15 Slack rows), Then it never matches
+- Given the real table, Then `titles_like(t, "confluence", "Postmortem")` returns 73 rows
+  that include all 9 gold documents of qst_0437, and `titles_like(t, "slack", "eng-security")`
+  returns 200 rows with `total` 12,432 (82 path-style titles such as `slack/eng-security/…json`
+  contain the channel name; the channel itself is 12,350 rows)
+
+**Example with real data**
+qst_0437 "Across all incident postmortems, which Redwood team was assigned the most follow-up
+action items?" has 9 gold documents and recall 0.0 with today's hybrid search + rerank: the
+question's words ("team", "follow-up action items") match no single postmortem better than the
+other postmortems: every one has an action-items section. Their titles:
+
+    Postmortem: Streaming stalls during peak traffic (2026-01-12)
+    Postmortem: Latency regression after tokenizer update (2026-01-27)
+    Postmortem: Rate limit misconfiguration caused elevated 429s (2026-02-…)
+    P0 Incident Postmortem: … (2 of the 9)
+
+Before: the loop submitted 40 documents (Slack `postmortems` and `incidents` messages, Gmail
+incident threads), 0 of 9 gold. After: `titles_like(t, "confluence", "Postmortem")` → 73 rows,
+all 9 inside (38 start with `Postmortem:`, 2 gold ones with `P0 Incident Postmortem:`, the rest
+are playbooks and templates that name postmortems); the agent reads the 73 titles (one line
+each, ~2.5K tokens) and fetches the ones the question needs. Same for qst_0439 (5 gold, all `Postmortem:`, recall 60%) and qst_0435
+(6 gold `Project Orion — Weekly status update (date)`, a family of exactly 6). Where it does
+not help: qst_0444 (6 gold pages, 6 different families) and qst_0450 (8 Fireflies calls with
+unrelated titles: that one needs grep on "residency", a later story).
+
+Cost: the title column is 511,962 short strings, read once from `data/_full/documents.parquet`
+(pyarrow, no content column); a match is a vectorised `match_substring` over it, milliseconds,
+no index, no model call, $0.
+
+**Decisions**
+- Case-insensitive substring, not an anchored prefix or a regex: the prefix `Postmortem:` gives 38
+  rows but misses the 2 `P0 Incident Postmortem:` gold pages; a regex is more precise but the
+  model writes it and an empty list gives no signal why. Can be added later as a parameter.
+- Substring on the title, not a derived container table: the families that matter
+  (`Postmortem`, `Project Orion`) are title patterns, and five of nine sources have no
+  container field at all. RET-9b adds the one real container the data has (Linear/Jira key).
+- A cap with the total, not an error: the agent sees "200 of 12,432" and narrows, the same
+  way a human would with a folder of 12,000 files.
+- Rows carry `source_type` because `doc_id` is not unique across sources (3 collisions).
+
+**Non-functional Requirements**
+- Shared NFRs. Deterministic, $0, no network. Reuse: the table comes from
+  `parquet_documents`' source file; pyarrow `compute.match_substring(ignore_case=True)` does the
+  match, no custom loop. Returns a NamedTuple `TitleList(rows, total)`.
+- Audit (2026-11-08, real corpus): 19 of the 470 questions with gold ask for all/every/how many;
+  for 11 of them every gold document sits in one title family of ≤ 200 titles. A cap of 200
+  lists 6,171 of the 6,230 families with ≥ 2 documents whole (50 lists 6,096; 500 lists 6,191).
+  Measured by `tests/test_eval_titles.py` on the real table: 73 rows / 9 of 9 gold for
+  qst_0437; 200 rows of 12,432 for the Slack channel.
+
+**Dependencies**
+- APIs: `titles_like(table, source_type, pattern, limit=200) -> TitleList` in
+  `pipeline/eval/titles.py`; `document_titles(path) -> pyarrow.Table` loading `doc_id`,
+  `source_type`, `title` only
+- Service Bus: N/A · Database: reads `data/_full/documents.parquet` · UI: N/A
+- Blocks: RET-10 (the agent loop's `list` tool wraps this function as a `FunctionTool`)
+
+## RET-9b  `container_of`: Linear/Jira project key from the raw filename  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** the one container the data really carries, the Linear/Jira project key
+(`ENG`, `PM`, `DES`, `SUP`, `INT`), as a `(source_type, doc_id) -> key` table built from the raw
+filenames `dsid_<id>__<KEY>-<n>-<slug>.txt`
+**So that** `titles_like` can be narrowed to a project ("every SUP ticket about …") where titles
+alone cannot, since only 3 of 41,428 Linear/Jira titles contain their key
+
+**Acceptance Criteria (Gherkin)**
+- Given `dsid_2fd1dda7…__SUP-613947-unexpected-429s.txt`, Then `("jira", "dsid_2fd1dda7…", "SUP")`
+- Given a Linear file with no key (`…__suggestions-risk-badge-visual-exploration.txt`, 1 of 35,308),
+  Then key `None`, never an exception
+- Given the real archives, Then 35,307 Linear and 6,120 Jira rows with a key; prefix counts
+  ENG 23,168, PM 8,703, DES 3,436, SUP 4,584, INT 1,536 (the audit row)
+- Given the one doc_id with two Jira files (`dsid_6df52fdb…`, INT-7832 twice), Then both rows kept
+
+**Example with real data**
+Jira titles read "Log retention exception  Northstar Bank (disable prompt/completion log …)";
+the key `SUP-…` is only in the filename. Before: no way to list "all SUP tickets". After:
+`titles_like` rows joined to this table give 4,584 SUP tickets, narrowable by title pattern.
+
+**Non-functional Requirements**: shared NFRs; a pure function over filenames plus one scan
+of the archive listings; writes `data/_index/containers.parquet` (gitignored).
+
+**Dependencies**: APIs `container_of(filename) -> Optional[str]`, `write_containers(archives, out)`
+in `pipeline/eval/titles.py` · Database: `data/_index/containers.parquet` · Blocks: nothing;
+RET-9a and RET-10 work without it.
