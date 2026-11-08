@@ -38,6 +38,7 @@ Retrieval glossary:
 | RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
 | RET-9a  `titles_like`: every document whose title matches, capped with a total; the agent loop's `list` tool | ✅ |
 | RET-9b  `container_of`: Linear/Jira project key from the raw filename, the one real container in the data | ⬜ |
+| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` · 10c `retrieval_agent`, `AGENT_PROMPT` · 10d `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
 
 ---
 
@@ -703,3 +704,232 @@ of the archive listings; writes `data/_index/containers.parquet` (gitignored).
 **Dependencies**: APIs `container_of(filename) -> Optional[str]`, `write_containers(archives, out)`
 in `pipeline/eval/titles.py` · Database: `data/_index/containers.parquet` · Blocks: nothing;
 RET-9a and RET-10 work without it.
+
+---
+
+## RET-10  The agentic retrieval loop: search, read, list, answer from what was read  ⬜
+
+**Status:** To do (split into 10a to 10e below; each merges alone)
+
+**Why this story.** Today's retrieval is a fixed script: hybrid search, rerank, a CRAG verdict,
+gap queries, search again, then hand the top documents to the answerer. It reaches document
+recall 90.27% and the official judge-only score 76.94 (v4 answers). The 69 questions with
+recall below 100 miss 126 gold documents; measured on the saved top-200 (audit 2026-11-08):
+
+| where the missed gold document ranks (reranked) | docs |
+|---|---|
+| 1–10 (retrieved, cut by the safe rule) | 10 |
+| 11–50 | 27 |
+| 51–200 | 25 |
+| not in the top 200 | 64 |
+
+Half are already in the candidate pool and need a reader that looks past the first few; the other
+half need a *different query*: in 29 questions every missed document is outside the top 200, and
+the question's words never reach it. One identifier question (qst_0341, "SLOs") would be found by
+an exact-string search; every ticket key and customer name in the 69 questions already appears
+in a submitted document, so grep is not a recall lever here and is left out of RET-10.
+
+What is: an agent that reads whole documents, writes down which parts of the question are still
+unanswered, searches again in the vocabulary of the documents it read, lists a title family when
+the question asks for all/every/how many (RET-9a), and stops when every part has a quote or after
+8 tool calls. It submits only the documents it read: the 401 full-recall questions submit 5.12
+documents today of which 1.22 are gold (3.90 extras; 294 questions carry exactly 2), the
+leaderboard's #1 submits 0.4 extras. This is PipesHub's design (leaderboard #1, 93.24) and A-RAG's
+(arXiv 2602.03442: hierarchical tools beat a single-search agent on every dataset and use a tenth
+of its tokens); see `docs/design/` note "agentic-rag-best-practices" in the memory of 2026-11-08.
+
+Glossary:
+- **Agent loop**: the model is called repeatedly; each call either picks one **tool** (a Python
+  function it can call with arguments) and gets the result back, or writes the final answer.
+  LlamaIndex's `FunctionAgent` runs this loop with Claude's native tool calling.
+- **Iteration**: one model call plus the tool call it makes. `max_iterations` caps the loop.
+- **Ledger**: the set of document ids the agent has read in full. The submitted document list.
+- **Record / replay**: every tool call's arguments and result are saved to a file on the first
+  run; a later run answers from the file, so tests and re-scores cost $0 and are deterministic
+  (the pattern of `SavedCompletions` in `multi_query.py` and `ReplayRetriever` in `rerank.py`).
+
+**Non-functional Requirements (all sub-stories)**: shared NFRs. Determinism through record/replay.
+Every tool call emits an observability event (`pipeline/observability.py`), never a print. The
+agent prompt is generic: nothing about question types, gold answers or the judge. Budget per
+question: 8 iterations, 3 reads. Cost is estimated and approved before the first paid run.
+
+## RET-10a  `search_snippets`: the search tool's text, one block per document  ✅
+
+**Status:** Done
+
+**As a** RAG developer
+**I want to** the existing retriever's ranked chunks turned into the text a tool returns: one
+block per document (title, source, doc_id, how many chunks matched) with its best two chunks as
+400-character snippets, documents in the order of their best chunk, at most 10 documents
+**So that** the agent sees candidates with their ids and enough text to decide what to read, in
+about 1.6K tokens, instead of 50 bare chunks of 512 tokens
+
+**Acceptance Criteria (Gherkin)**
+- Given ranked chunks where one document holds chunks ranked 1, 2 and 8, Then it is one block with
+  its two best chunks and the document count is not inflated
+- Given 14 chunks over 10 documents, Then 10 blocks in best-chunk order (the GEN-2a rule)
+- Given a `source` filter, Then only chunks of documents of that source are kept, before the cut,
+  so the 10 slots stay full (the source comes from the title table, RET-9a; replayed chunks carry
+  no metadata)
+- Given a document already in the ledger, Then its block says `(read)`; one shown by an earlier
+  search of the same question says `(seen)` (PipesHub: shown passages give way to new ones)
+- Given a chunk that starts with its document title, Then the snippet starts after it; a snippet
+  longer than 400 characters ends with `…`; newlines become spaces
+- Given a doc_id the title table does not know, Then `(no title) | ?`, never an exception
+- Given no chunks at all, Then the one line `No documents matched.`, so the model gets a sentence
+  to act on, not an empty string
+- Given a document both read and seen, Then `(read)` alone: it says more
+- Given the saved reranked top 200 and qst_0001, Then 10 blocks, the first the gold document
+  with `3 chunks matched, 2 shown`, and the text under 2,500 tokens
+
+**Example with real data**: qst_0001 ("default size limits for file uploads …"): the gold
+document's chunks rank #1, #2 and #8 (GEN-2a); 14 chunks hold 10 documents. Before: 14 chunk
+texts of ~2,350 characters. After: 10 blocks, the first
+`[1] add multipart/form-data handling, … | github | dsid_ae068ee4… | 3 chunks matched, 2 shown`
+with the rank-1 snippet (the PR description) and the rank-2 snippet (the review thread), about
+1.6K tokens in all.
+
+Measured on all 470 questions (saved reranked top 200, 2026-11-08): 10 documents are reached at
+chunk rank 11 (median, max 26); 129 questions have a top-10 document with 3 or more chunks in that
+window; 46,509 of 91,496 chunks start with their title (40,716 of 83,823 distinct chunks); in 90 of
+those the title is only a word prefix (`incidents` before `incidents-bot: …`), so the strip needs
+the next character to be a line end or a colon. Output per search, median / p90 tokens:
+2 full chunks per document 6,656 / 9,249; 1 full chunk 5,095 / 5,756; 2 × 800 characters
+2,912 / 3,897; **2 × 400: 1,615 / 2,118** (chosen); 1 × 400: 1,287 / 1,351.
+
+**Decisions**
+- Snippets of 400 characters, two per document: a chunk is ~512 tokens and the agent reads the
+  document in full anyway (RET-10b), so a long preview is paid twice. PipesHub's own note:
+  search passages were most of a question's cost, and missing details sat in parts the search did
+  not show; the fix was a focused read, not longer previews.
+- The block says how many chunks matched (`3 chunks matched, 2 shown`): the agent learns there is
+  more to read without being shown it.
+- A pure function over ranked chunks plus a title map, not a function that calls the retriever:
+  testable on the saved candidates at $0; RET-10c wraps it with the live retriever.
+
+**Dependencies**: APIs `search_snippets(ranked, titles, source=None, read=(), seen=(), documents=10,
+per_document=2, snippet_chars=400) -> str`, `snippet_of(text, title, chars)` in
+`pipeline/eval/agent_tools.py`; `titles` is `{doc_id: (source_type, title)}` from `document_titles`
+(RET-9a); the ranked chunks come from `live_retriever` + `live_reranker` (GEN-8a) or
+`replay_retriever` (RET-5) · Database: none · UI: N/A
+
+## RET-10b  `read_document`: a whole document by id, with a window for the long ones  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** the title and content of one document by `doc_id`, whole when it fits, else a
+window of `chars` from `start` with a line saying how much follows
+**So that** the agent answers from the full text, where today's chunk-level misses (part of a
+list, a step without its condition) come from
+
+**Acceptance Criteria (Gherkin)**
+- Given a document of 2,904 characters and a cap of 30,000, Then the whole content and no
+  trailing note
+- Given a 41,317-character document, Then the first 30,000 and the line
+  `… 11,317 more characters; call again with start=30000`
+- Given `start=30000` on it, Then the rest and no note
+- Given an unknown id, Then the text `No document with id dsid_x`, never an exception (the agent
+  may mistype an id)
+- Given one of the 4 ids that name two documents, Then both texts, the second after a separator
+  (the `documents_by_id` rule, GEN-2b)
+
+**Example with real data**: document length is small: p50 4,276 characters, p99 11,846, and only
+22 of 511,962 exceed 30,000 (all Fireflies transcripts; the longest, `dsid_5bc9e06d…` "Incident
+taxonomy working session (v1)", 41,317). The 9 gold pages of qst_0437 are 1,654 to 2,904
+characters, 18.6K in total, so an agent reads all nine in about 5K tokens.
+
+**Dependencies**: APIs `read_document(parquet_path, doc_id, start=0, chars=30_000) -> str` in
+`pipeline/eval/agent_tools.py`; reuses `documents_by_id` (one 1.2 s scan; a per-run cache keyed
+by id) · Database: `data/_full/documents.parquet` · UI: N/A
+
+## RET-10c  `retrieval_agent` and `AGENT_PROMPT`: the loop  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** a LlamaIndex `FunctionAgent` over three `FunctionTool`s (search → RET-10a, read →
+RET-10b, list → RET-9a `titles_like`), a ledger of read ids kept in the agent's state, a budget
+of 8 iterations, and one generic system prompt
+**So that** the model decides what to search, read and list, and the answer rests on documents
+it read
+
+**Acceptance Criteria (Gherkin)**
+- Given a fake LLM that calls search, then read on the first id, then answers, Then the ledger
+  holds that one id and the answer is returned with it
+- Given a fake LLM that never stops, Then the loop ends after 8 iterations and the answer is
+  written from what was gathered (A-RAG's forced synthesis), with `budget_exhausted` true
+- Given a read of an id already in the ledger, Then the tool returns `already read` at no cost
+- Given parallel tool calls in one step, Then all results return in one message (Claude's rule)
+- Given the prompt text, Then it contains no question id, gold text, question type or judge word
+
+**The prompt (generic, PipesHub's rules in our words)**: search first with a short query; read in
+full the 1 to 3 documents the answer will rest on; list which parts of the question still have
+no quote and search again for each in the words the documents use (system, team, customer, ticket
+id), not the question's; for "all / every / how many", list the titles instead of searching; stop
+when every part has a quote; answer only from documents you read, values verbatim with their
+qualifiers, a procedure from one document; when two documents disagree about the same thing,
+prefer the explicit supersession, then the narrower scope, then the most recent, and say so in
+a few words.
+
+**Example with real data**: qst_0437. Expected trace: `search("incident postmortem follow-up
+action items")` → 10 blocks, Slack `postmortems` and `incidents` messages; the model sees no
+Confluence postmortem and the word "all"; `list("confluence", "Postmortem")` → 73 titles; `read`
+on the dated `Postmortem: …` pages (up to the budget of 3 reads per step, 9 in 3 steps); answer
+with the team counted. Submitted: the 9 read ids. Today: 40 ids, 0 gold.
+
+**Dependencies**: APIs `retrieval_agent(llm, tools, max_iterations=8) -> FunctionAgent`,
+`agent_tools(retriever, parquet_path, titles, ledger) -> list[FunctionTool]`, `AGENT_PROMPT` in
+`pipeline/eval/agent.py`; LlamaIndex `FunctionAgent`, `FunctionTool`, `Context` state; Claude via
+`llama_index.llms.anthropic.Anthropic` with `thinking_dict={"type": "adaptive"}` and
+`additional_kwargs={"output_config": {"effort": "medium"}}`; never `tool_required` (the wrapper
+would send a forced tool choice, rejected with thinking on) · UI: N/A
+
+## RET-10d  `agent_answers`: run the loop over questions, resumable, recorded  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** one row per question `{question_id, answer, documents, iterations, tool_calls,
+input_tokens, output_tokens}` appended to a JSONL as each finishes, questions already there
+skipped, and every tool call recorded to a sidecar file so a replay run costs $0
+**So that** a crash never repeats a paid question and a re-score is deterministic
+
+**Acceptance Criteria (Gherkin)**
+- Given 2 questions and a fake agent, Then 2 rows, flushed one at a time
+- Given a re-run, Then no agent call and 0 rows added
+- Given a recorded sidecar, Then the replay run gives byte-identical rows with no network
+- Given `documents`, Then it is the ledger (read ids) in read order, never the search hits
+- Given the row, Then it is accepted by the judge (`pipeline/eval/judge.py`) and the official
+  scorer's `answers.jsonl` shape (`question_id`, `answer`, `documents`)
+
+**Dependencies**: APIs `agent_answers(agent, questions, out_path, record_path) -> int` in
+`pipeline/eval/agent.py`; pattern of `save_answers` (GEN-2e), `save_completions` /
+`SavedCompletions` (RET-7) · Database: `data/_index/answers/agent-*.jsonl`,
+`data/_index/agent/tool_calls-*.jsonl` (gitignored) · UI: N/A
+
+## RET-10e  First measured run: the 69 and 50 controls, then all 500  ⬜
+
+**Status:** To do
+
+**As a** RAG developer
+**I want to** the loop run on the 69 questions with recall below 100 plus 50 full-recall
+controls, judged by the Claude judge against the same questions' v4 answers; then, if recall rises
+and the controls hold, all 500 through the official judge-only batch (~$5)
+**So that** the change is measured on the official ruler before it becomes the default
+
+**Acceptance Criteria (Gherkin)**
+- Given the 119-question run, Then a table: document recall, extras per question, correct,
+  completeness, iterations and tokens per question, for the 69 and the 50 separately, next to
+  today's values (69: recall 0 to 99, 9.67 extras; 50: recall 100, 3.90 extras)
+- Given the all-500 run, Then the official judge-only score next to 76.94, recall next to
+  90.27%, invalid extra next to 4.75, and the result in `docs/eval/results.md`
+- Given the cost estimate before each run, Then it is shown and approved first; the loop cannot
+  use the Batch API (each step depends on the last)
+
+**Success**: recall above 93% on the 69-plus-50 set with the 50 controls still at 100, extras
+under 1.5; on all 500 an official score above 80.
+
+**Dependencies**: RET-10a to 10d, RET-9a; `exp_claude_judge.py` (experiments) or
+`pipeline/eval/judge.py`; the official scorer staging in the session scratchpad · UI:
+`docs/eval/report.html` gets the run
