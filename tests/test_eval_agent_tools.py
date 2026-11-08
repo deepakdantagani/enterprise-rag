@@ -1,4 +1,5 @@
 """RET-10a: search_snippets, ranked chunks as one block per document, the search tool's text.
+RET-10b: read_document, a whole document by id, with a window for the long ones.
 
 Run: uv run python -m unittest tests.test_eval_agent_tools
 """
@@ -13,7 +14,7 @@ from llama_index.core.schema import NodeRelationship, NodeWithScore, RelatedNode
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from pipeline.eval import agent_tools as agent_tools_module  # noqa: E402
-from pipeline.eval.agent_tools import search_snippets  # noqa: E402
+from pipeline.eval.agent_tools import read_document, search_snippets  # noqa: E402
 
 RERANK = ROOT / "data/_index/rerank"
 CANDIDATES, ORDER = RERANK / "lite_titles_top200_candidates.jsonl", RERANK / "lite-titles-top200-rerank-3-lite.jsonl"
@@ -82,6 +83,64 @@ class SearchSnippets(unittest.TestCase):
         self.assertEqual(doctest.testmod(agent_tools_module).failed, 0)
 
 
+DOCS = {"dsid_short": ("Postmortem: Streaming stalls", "Impact: 12 minutes.\nAction items: none."),
+        "dsid_long": ("Working session", "\n".join(f"[{n:02d}:00] Speaker: line {n}" for n in range(40))),  # 989 chars: lines of 23 or 24 + newlines
+        "dsid_untitled": ("", "sam: hi")}
+
+
+class ReadDocument(unittest.TestCase):
+    def test_a_short_document_comes_back_whole_with_its_title_as_heading(self):
+        self.assertEqual(read_document("dsid_short", DOCS), "# Postmortem: Streaming stalls\n\nImpact: 12 minutes.\nAction items: none.")
+
+    def test_a_long_document_is_cut_at_the_last_line_break_before_the_window_end_with_a_note(self):
+        text = read_document("dsid_long", DOCS, chars=100)
+        body = text.split("\n\n")[1]
+        self.assertTrue(body.endswith("[03:00] Speaker: line 3"))  # 4 whole lines fit in 100 characters, the 5th does not
+        self.assertEqual(len(body), 95)  # 4 lines x 23 + 3 newlines
+        self.assertTrue(text.endswith("… 893 more characters; call again with start=96"), text[-60:])
+
+    def test_the_next_window_starts_where_the_note_said_and_the_last_one_has_no_note(self):
+        text = read_document("dsid_long", DOCS, start=96, chars=100)
+        self.assertTrue(text.split("\n\n")[1].startswith("[04:00] Speaker: line 4"))
+        self.assertNotIn("more characters", read_document("dsid_long", DOCS, start=900, chars=100))
+
+    def test_a_start_past_the_end_says_so(self):
+        self.assertEqual(read_document("dsid_short", DOCS, start=5000), "dsid_short has 39 characters; nothing after 5000")
+
+    def test_an_empty_title_falls_back_to_the_id(self):
+        self.assertEqual(read_document("dsid_untitled", DOCS), "# dsid_untitled\n\nsam: hi")
+
+    def test_an_unknown_id_without_a_corpus_path_gives_a_sentence_not_an_exception(self):
+        self.assertEqual(read_document("dsid_zz", DOCS), "No document with id dsid_zz")
+
+    def test_an_empty_document_still_shows_its_title(self):
+        self.assertEqual(read_document("dsid_e", {"dsid_e": ("general", "")}), "# general\n\n")
+
+    def test_an_id_that_names_two_documents_returns_both_in_order(self):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        import tempfile
+        rows = [{"doc_id": "dsid_d", "source_type": "confluence", "title": "Account brief", "content": "renewal notes"},
+                {"doc_id": "dsid_d", "source_type": "hubspot", "title": "Signal Peak", "content": "ARR 120k"}]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "documents.parquet"
+            pq.write_table(pa.Table.from_pylist(rows), path)
+            self.assertEqual(read_document("dsid_d", {}, path), "# Account brief\n\nrenewal notes\n\nSignal Peak\n\nARR 120k")
+
+    def test_a_miss_is_read_from_the_corpus_once_and_cached(self):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "documents.parquet"
+            pq.write_table(pa.Table.from_pylist([{"doc_id": "dsid_p", "source_type": "slack", "title": "general", "content": "hello"}]), path)
+            cache = {}
+            self.assertEqual(read_document("dsid_p", cache, path), "# general\n\nhello")
+            path.unlink()
+            self.assertEqual(read_document("dsid_p", cache, path), "# general\n\nhello")  # second read never touches the file
+            self.assertEqual(read_document("dsid_q", cache, None), "No document with id dsid_q")
+
+
 @unittest.skipUnless(all(p.is_file() for p in (CANDIDATES, ORDER, DOCUMENTS, QUESTIONS)), "needs data/_index/rerank and data/_full")
 class RealCorpus(unittest.TestCase):
     def test_qst_0001_gives_10_blocks_with_the_gold_document_first_in_under_2500_tokens(self):
@@ -97,6 +156,14 @@ class RealCorpus(unittest.TestCase):
         self.assertIn(f"[1] add multipart/form-data handling, strict content-type validation, and payload limit enforcement for API "
                       f"tool/file inputs | github | {question['expected_doc_ids'][0]} | 3 chunks matched, 2 shown", blocks[0])
         self.assertLess(len(text) / 4, 2500)
+
+    def test_the_longest_document_is_read_in_two_windows_and_a_gold_page_whole(self):
+        cache = {}
+        first = read_document("dsid_5bc9e06d059d43f7aa5c5ff0fc00a5a5", cache, DOCUMENTS)
+        self.assertTrue(first.startswith("# Incident taxonomy working session (v1)"))
+        self.assertRegex(first, r"… 11,[0-9]{3} more characters; call again with start=(29|30)[0-9]{3}$")
+        self.assertNotIn("more characters", read_document("dsid_5bc9e06d059d43f7aa5c5ff0fc00a5a5", cache, DOCUMENTS, start=30_000))
+        self.assertEqual(len(read_document("dsid_15a9d93cc59c4241a97a7e72f749a216", cache, DOCUMENTS)), 2904 + len("# Postmortem: Streaming stalls during peak traffic (2026-01-12)\n\n"))
 
 
 if __name__ == "__main__":
