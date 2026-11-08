@@ -38,7 +38,7 @@ Retrieval glossary:
 | RET-8  a deeper pool for the reranker: top 200 reranked, recall@10 0.800 → 0.853 | ✅ |
 | RET-9a  `titles_like`: every document whose title matches, capped with a total; the agent loop's `list` tool | ✅ |
 | RET-9b  `container_of`: Linear/Jira project key from the raw filename, the one real container in the data | ⬜ |
-| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` · 10d `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
+| RET-10  the agentic retrieval loop: 10a `search_snippets` ✅ · 10b `read_document` ✅ · 10c `retrieval_agent`, `AGENT_PROMPT` ✅ · 10d `agent_answers` · 10e first measured run (69 + 50 controls, then all 500 on the official judge) | ⬜ |
 
 ---
 
@@ -858,9 +858,9 @@ characters, 18.6K in total, so an agent reads all nine in about 5K tokens.
 -> str` in `pipeline/eval/agent_tools.py`, `documents` being `{doc_id: (title, content)}`; reuses
 `documents_by_id` (GEN-2b) for a miss · Database: `data/_full/documents.parquet` · UI: N/A
 
-## RET-10c  `retrieval_agent` and `AGENT_PROMPT`: the loop  ⬜
+## RET-10c  `retrieval_agent` and `AGENT_PROMPT`: the loop  ✅
 
-**Status:** To do
+**Status:** Done
 
 **As a** RAG developer
 **I want to** a LlamaIndex `FunctionAgent` over three `FunctionTool`s (search → RET-10a, read →
@@ -877,6 +877,8 @@ it read
 - Given a read of an id already in the ledger, Then the tool returns `already read` at no cost
 - Given parallel tool calls in one step, Then all results return in one message (Claude's rule)
 - Given the prompt text, Then it contains no question id, gold text, question type or judge word
+- Given the three tools, Then they are named `search`, `read`, `list_titles` with descriptions the
+  model reads, and `list_titles` prints the total then one `doc_id | title` line per row
 
 **The prompt (generic, PipesHub's rules in our words)**: search first with a short query; read in
 full the 1 to 3 documents the answer will rest on; list which parts of the question still have
@@ -887,14 +889,33 @@ qualifiers, a procedure from one document; when two documents disagree about the
 prefer the explicit supersession, then the narrower scope, then the most recent, and say so in
 a few words.
 
-**Example with real data**: qst_0437. Expected trace: `search("incident postmortem follow-up
+**Example with real data** (spike 2026-11-08: the real tools on the saved candidates, title table
+and corpus, driven by a scripted LLM): `search("incident postmortem follow-up action items owner")`
+→ 5,247 characters, 10 Slack/Gmail blocks, no gold; `list_titles("confluence", "Postmortem")` →
+8,210 characters, 73 titles, all 9 gold inside; three `read` calls in one step → 2,969 / 2,279 /
+2,332 characters, one iteration; answer. 4 of 8 iterations, ledger = the 3 read ids, 4.6 s with
+cold parquet scans. The script stopped at 3 reads; a real model is expected to read the 9 dated
+`Postmortem: …` pages. Expected trace as written before the spike: `search("incident postmortem follow-up
 action items")` → 10 blocks, Slack `postmortems` and `incidents` messages; the model sees no
 Confluence postmortem and the word "all"; `list("confluence", "Postmortem")` → 73 titles; `read`
 on the dated `Postmortem: …` pages (up to the budget of 3 reads per step, 9 in 3 steps); answer
 with the team counted. Submitted: the 9 read ids. Today: 40 ids, 0 gold.
 
-**Dependencies**: APIs `retrieval_agent(llm, tools, max_iterations=8) -> FunctionAgent`,
-`agent_tools(retriever, parquet_path, titles, ledger) -> list[FunctionTool]`, `AGENT_PROMPT` in
+**Decisions**
+- The model sees one line of state each step, `Documents read so far: {'read': [...]}`, not the
+  library's dump of the whole state; the seen ids live under a separate store key.
+- The answer keeps prompt v3's shape, `<quotes>` then `<answer>`, so `answer_of` / `quotes_of`
+  (GEN-13b) parse it and the quotes-first habit that lifted completeness in v4 stays.
+- "Read 1 to 3 documents per step" is a prompt rule; the hard budget is `max_iterations=8`, which
+  LlamaIndex enforces, with `early_stopping_method="generate"` so the budget ends in an answer
+  (the default `"force"` raises).
+- A mistyped id (`No document with id …`) never enters the ledger; a repeated read returns
+  `already read` without touching the corpus.
+
+**Dependencies**: APIs `retrieval_agent(llm, tools) -> FunctionAgent`,
+`agent_tools(retriever, titles, table, documents, parquet_path) -> list[FunctionTool]`,
+`answer_question(agent, question, max_iterations=8) -> AgentAnswer(answer, quotes, read,
+iterations, budget_exhausted)`, `titles_text`, `AGENT_PROMPT`, `STATE_PROMPT`, `MAX_ITERATIONS` in
 `pipeline/eval/agent.py`; LlamaIndex `FunctionAgent`, `FunctionTool`, `Context` state; Claude via
 `llama_index.llms.anthropic.Anthropic` with `thinking_dict={"type": "adaptive"}` and
 `additional_kwargs={"output_config": {"effort": "medium"}}`; never `tool_required` (the wrapper
